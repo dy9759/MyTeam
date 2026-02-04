@@ -20,7 +20,6 @@ import {
   GatewayClient,
   StreamAction,
   type ConnectionState,
-  type SendErrorResponse,
   type StreamPayload,
   type AgentEvent,
   type GetAgentMessagesResult,
@@ -35,7 +34,7 @@ interface ConnectionStoreState {
   hubId: string | null
   agentId: string | null
   connectionState: ConnectionState
-  lastError: SendErrorResponse | null
+  lastError: { code: string; message: string } | null
 }
 
 interface ConnectionStoreActions {
@@ -146,13 +145,20 @@ function createClient(
         return
       }
 
+      // Handle error messages from Hub (e.g. UNAUTHORIZED)
+      if (msg.action === "error") {
+        const payload = msg.payload as { code: string; message: string }
+        set({ lastError: { code: payload.code, message: payload.message } })
+        return
+      }
+
       // Handle direct (non-streaming) messages
       const payload = msg.payload as { agentId?: string; content?: string }
       if (payload?.agentId && payload?.content) {
         useMessagesStore.getState().addAssistantMessage(payload.content, payload.agentId)
       }
     })
-    .onSendError((error) => set({ lastError: error }))
+    .onSendError((error) => set({ lastError: { code: error.code, message: error.error } }))
 }
 
 /** Fetch message history from Hub via RPC after connection is established */

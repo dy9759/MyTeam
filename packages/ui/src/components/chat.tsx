@@ -16,6 +16,7 @@ export function Chat() {
   const agentId = useConnectionStore((s) => s.agentId)
   const gwState = useConnectionStore((s) => s.connectionState)
   const hubId = useConnectionStore((s) => s.hubId)
+  const lastError = useConnectionStore((s) => s.lastError)
 
   const messages = useMessagesStore((s) => s.messages)
   const streamingIds = useMessagesStore((s) => s.streamingIds)
@@ -64,6 +65,23 @@ export function Chat() {
           <MessageList messages={messages} streamingIds={streamingIds} />
         )}
       </main>
+
+      {/* Error banner */}
+      {lastError && (
+        <div className="px-4 py-2 max-w-4xl mx-auto w-full" role="alert" aria-live="polite">
+          <div className="rounded-md bg-destructive/10 text-destructive text-sm px-3 py-2 flex items-center justify-between">
+            <span>{lastError.message} ({lastError.code})</span>
+            <button
+              type="button"
+              aria-label="Dismiss error"
+              onClick={() => useConnectionStore.setState({ lastError: null })}
+              className="text-destructive/60 hover:text-destructive ml-2 text-xs focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 rounded outline-none"
+            >
+              &times;
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Footer */}
       <footer className="w-full p-2 pt-1 max-w-4xl mx-auto">
