@@ -15,6 +15,7 @@ export {
   isResponseSuccess,
   isResponseError,
   type AgentMessageItem,
+  DEFAULT_MESSAGES_LIMIT,
   type GetAgentMessagesParams,
   type GetAgentMessagesResult,
   type GetHubInfoResult,
@@ -44,3 +45,11 @@ export {
   type ImageContent,
   extractThinkingFromEvent,
 } from "./stream";
+
+export {
+  ExecApprovalRequestAction,
+  type ApprovalDecision,
+  type ExecApprovalRequestPayload,
+  type ResolveExecApprovalParams,
+  type ResolveExecApprovalResult,
+} from "./exec-approval";

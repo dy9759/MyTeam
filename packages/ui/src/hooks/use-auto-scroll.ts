@@ -1,15 +1,15 @@
-import { type RefObject, useEffect, useRef } from "react"
+import { type RefObject, useEffect, useRef, useCallback } from "react"
 
 /**
  * Auto-scrolls a scroll container to the bottom when its inner content grows,
  * as long as the user hasn't scrolled up to read older content.
  *
- * Observes child element size changes via ResizeObserver on all children,
- * plus MutationObserver for added/removed nodes. Works for new messages,
- * history loads, streaming updates, and image loads.
+ * Returns a `lockRef` that can be set to `true` to temporarily suppress
+ * auto-scroll (e.g. during history prepend operations).
  */
 export function useAutoScroll(ref: RefObject<HTMLElement | null>) {
   const stickRef = useRef(true)
+  const lockRef = useRef(false)
 
   useEffect(() => {
     const el = ref.current
@@ -25,6 +25,7 @@ export function useAutoScroll(ref: RefObject<HTMLElement | null>) {
     }
 
     const onContentChange = () => {
+      if (lockRef.current) return
       if (stickRef.current) {
         scrollToBottom()
       }
@@ -61,4 +62,12 @@ export function useAutoScroll(ref: RefObject<HTMLElement | null>) {
       mo.disconnect()
     }
   }, [ref])
+
+  /** Temporarily suppress auto-scroll during prepend operations */
+  const suppressAutoScroll = useCallback(() => {
+    lockRef.current = true
+    return () => { lockRef.current = false }
+  }, [])
+
+  return { suppressAutoScroll }
 }

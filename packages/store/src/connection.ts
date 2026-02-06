@@ -1,5 +1,3 @@
-const STORAGE_KEY = "multica-connection"
-
 export interface ConnectionInfo {
   type: "multica-connect"
   gateway: string
@@ -87,30 +85,4 @@ export function parseConnectionCode(input: string): ConnectionInfo {
   }
 
   return parsed
-}
-
-export function saveConnection(info: ConnectionInfo): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(info))
-}
-
-export function loadConnection(): ConnectionInfo | null {
-  const raw = localStorage.getItem(STORAGE_KEY)
-  if (!raw) return null
-
-  try {
-    const info = JSON.parse(raw)
-    if (!isConnectionInfo(info)) return null
-    if (isExpired(info.expires)) {
-      localStorage.removeItem(STORAGE_KEY)
-      return null
-    }
-    return info
-  } catch {
-    localStorage.removeItem(STORAGE_KEY)
-    return null
-  }
-}
-
-export function clearConnection(): void {
-  localStorage.removeItem(STORAGE_KEY)
 }

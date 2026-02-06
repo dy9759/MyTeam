@@ -60,6 +60,9 @@ export function isResponseError(
 
 // ============ RPC Method Types ============
 
+/** Default number of messages returned per page */
+export const DEFAULT_MESSAGES_LIMIT = 200;
+
 /** getAgentMessages - request params */
 export interface GetAgentMessagesParams {
   agentId: string;

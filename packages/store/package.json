@@ -8,13 +8,9 @@
     "./*": "./src/*.ts"
   },
   "dependencies": {
-    "@multica/sdk": "workspace:*",
-    "react": "catalog:",
-    "uuid": "^13.0.0",
-    "zustand": "catalog:"
+    "@multica/sdk": "workspace:*"
   },
   "devDependencies": {
-    "@types/react": "catalog:",
     "typescript": "catalog:"
   }
 }
