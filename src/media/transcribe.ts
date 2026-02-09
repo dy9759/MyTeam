@@ -18,8 +18,8 @@ import { execFile, execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { credentialManager } from "../agent/credentials.js";
 
-/** Cached path to local whisper binary, or false if not found */
-let cachedWhisperBin: string | false | undefined;
+/** Cached path to local whisper binary (only caches success; misses re-check each time) */
+let cachedWhisperBin: string | undefined;
 
 /** Find local whisper binary in PATH */
 function findWhisperBin(): string | false {
@@ -35,7 +35,7 @@ function findWhisperBin(): string | false {
     }
   }
 
-  cachedWhisperBin = false;
+  // Don't cache failure — whisper may be installed while the process is running
   return false;
 }
 
