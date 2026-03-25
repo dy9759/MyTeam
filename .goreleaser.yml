@@ -51,5 +51,8 @@ brews:
     directory: Formula
     homepage: "https://github.com/multica-ai/super-multica"
     description: "Multica CLI — local agent runtime and management tool for the Multica platform"
+    license: "MIT"
     install: |
       bin.install "multica-cli"
+    test: |
+      system "#{bin}/multica-cli", "version"
