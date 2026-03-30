@@ -182,6 +182,14 @@ func (h *Handler) CreateIssue(w http.ResponseWriter, r *http.Request) {
 		assigneeID = parseUUID(*req.AssigneeID)
 	}
 
+	// Enforce agent visibility: private agents can only be assigned by owner/admin.
+	if req.AssigneeType != nil && *req.AssigneeType == "agent" && req.AssigneeID != nil {
+		if ok, msg := h.canAssignAgent(r.Context(), r, *req.AssigneeID, workspaceID); !ok {
+			writeError(w, http.StatusForbidden, msg)
+			return
+		}
+	}
+
 	var parentIssueID pgtype.UUID
 	if req.ParentIssueID != nil {
 		parentIssueID = parseUUID(*req.ParentIssueID)
@@ -347,6 +355,14 @@ func (h *Handler) UpdateIssue(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Enforce agent visibility: private agents can only be assigned by owner/admin.
+	if req.AssigneeType != nil && *req.AssigneeType == "agent" && req.AssigneeID != nil {
+		if ok, msg := h.canAssignAgent(r.Context(), r, *req.AssigneeID, workspaceID); !ok {
+			writeError(w, http.StatusForbidden, msg)
+			return
+		}
+	}
+
 	issue, err := h.Queries.UpdateIssue(r.Context(), params)
 	if err != nil {
 		slog.Warn("update issue failed", append(logger.RequestAttrs(r), "error", err, "issue_id", id, "workspace_id", workspaceID)...)
@@ -401,6 +417,34 @@ func (h *Handler) UpdateIssue(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// canAssignAgent checks whether the requesting user is allowed to assign issues
+// to the given agent. Private agents can only be assigned by their owner or
+// workspace admins/owners.
+func (h *Handler) canAssignAgent(ctx context.Context, r *http.Request, agentID, workspaceID string) (bool, string) {
+	agent, err := h.Queries.GetAgentInWorkspace(ctx, db.GetAgentInWorkspaceParams{
+		ID:          parseUUID(agentID),
+		WorkspaceID: parseUUID(workspaceID),
+	})
+	if err != nil {
+		return false, "agent not found"
+	}
+	if agent.Visibility != "private" {
+		return true, ""
+	}
+	userID := requestUserID(r)
+	if uuidToString(agent.OwnerID) == userID {
+		return true, ""
+	}
+	member, err := h.getWorkspaceMember(ctx, userID, workspaceID)
+	if err != nil {
+		return false, "cannot assign to private agent"
+	}
+	if roleAllowed(member.Role, "owner", "admin") {
+		return true, ""
+	}
+	return false, "cannot assign to private agent"
 }
 
 func (h *Handler) shouldEnqueueAgentTask(ctx context.Context, issue db.Issue) bool {
@@ -577,6 +621,13 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 				params.DueDate = pgtype.Timestamptz{Time: t, Valid: true}
 			} else {
 				params.DueDate = pgtype.Timestamptz{Valid: false}
+			}
+		}
+
+		// Enforce agent visibility for batch assignment.
+		if req.Updates.AssigneeType != nil && *req.Updates.AssigneeType == "agent" && req.Updates.AssigneeID != nil {
+			if ok, _ := h.canAssignAgent(r.Context(), r, *req.Updates.AssigneeID, workspaceID); !ok {
+				continue
 			}
 		}
 
