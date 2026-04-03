@@ -112,8 +112,10 @@ export function AgentLiveCard({ issueId, agentName, scrollContainerRef }: AgentL
   const [autoScroll, setAutoScroll] = useState(true);
   const [cancelling, setCancelling] = useState(false);
   const [isStuck, setIsStuck] = useState(false);
+  const [cardHeight, setCardHeight] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
   const seenSeqs = useRef(new Set<string>());
 
   // Check for active task on mount
@@ -237,7 +239,13 @@ export function AgentLiveCard({ issueId, agentName, scrollContainerRef }: AgentL
 
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0]) setIsStuck(!entries[0].isIntersecting);
+        if (!entries[0]) return;
+        const stuck = !entries[0].isIntersecting;
+        // Capture expanded height before collapsing to use as placeholder
+        if (stuck && cardRef.current) {
+          setCardHeight(cardRef.current.offsetHeight);
+        }
+        setIsStuck(stuck);
       },
       { root, threshold: 0, rootMargin: "-40px 0px 0px 0px" },
     );
@@ -284,7 +292,10 @@ export function AgentLiveCard({ issueId, agentName, scrollContainerRef }: AgentL
       {/* Sentinel — zero-height element that IntersectionObserver watches */}
       <div ref={sentinelRef} className="mt-4 h-0 pointer-events-none" aria-hidden />
 
+      {/* Placeholder preserves card height when stuck, preventing layout shift */}
+      <div style={{ minHeight: isStuck && cardHeight ? cardHeight : undefined }}>
       <div
+        ref={cardRef}
         className={cn(
           "rounded-lg border transition-all duration-200",
           isStuck
@@ -373,6 +384,7 @@ export function AgentLiveCard({ issueId, agentName, scrollContainerRef }: AgentL
             </div>
           )}
         </div>
+      </div>
       </div>
     </>
   );
