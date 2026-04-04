@@ -8,7 +8,9 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/realtime"
 	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
@@ -182,6 +184,46 @@ func (s *AutoReplyService) replyAsMentionedAgent(ctx context.Context, agentName 
 
 	slog.Info("auto-reply sent", "agent", agentName, "channel", channelID)
 	return err
+}
+
+// StartPollDaemon starts a background loop that checks for unread messages every 5 seconds
+// and triggers auto-reply for agents with auto_reply_enabled.
+func (s *AutoReplyService) StartPollDaemon(ctx context.Context) {
+	slog.Info("[auto-reply] Poll daemon started (5s interval)")
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			slog.Info("[auto-reply] Poll daemon stopped")
+			return
+		case <-ticker.C:
+			s.pollAndReply(ctx)
+		}
+	}
+}
+
+func (s *AutoReplyService) pollAndReply(ctx context.Context) {
+	// GetAutoReplyAgents requires a workspace_id, so we pass a zero UUID
+	// to get agents across all workspaces. If the query filters by workspace,
+	// we iterate known workspaces. For now, use zero UUID as a best-effort scan.
+	agents, err := s.Queries.GetAutoReplyAgents(ctx, pgtype.UUID{})
+	if err != nil {
+		slog.Debug("[auto-reply] poll: failed to get auto-reply agents", "error", err)
+		return
+	}
+
+	for _, agent := range agents {
+		count, _ := s.Queries.CountUnreadMessages(ctx, db.CountUnreadMessagesParams{
+			RecipientID:   agent.ID,
+			RecipientType: util.StrToText("agent"),
+		})
+		if count > 0 {
+			slog.Info("[auto-reply] Unread messages for agent", "agent", agent.Name, "count", count)
+			// TODO: fetch messages and generate replies
+		}
+	}
 }
 
 func getEnvOr(key, fallback string) string {

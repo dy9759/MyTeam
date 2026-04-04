@@ -316,6 +316,19 @@ type Plan struct {
 	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
 }
 
+type RemoteSession struct {
+	ID          pgtype.UUID        `json:"id"`
+	AgentID     pgtype.UUID        `json:"agent_id"`
+	WorkspaceID pgtype.UUID        `json:"workspace_id"`
+	OwnerID     pgtype.UUID        `json:"owner_id"`
+	Status      string             `json:"status"`
+	Title       pgtype.Text        `json:"title"`
+	Environment []byte             `json:"environment"`
+	Events      []byte             `json:"events"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
 type RuntimeUsage struct {
 	ID               pgtype.UUID        `json:"id"`
 	RuntimeID        pgtype.UUID        `json:"runtime_id"`

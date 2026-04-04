@@ -216,6 +216,32 @@ func ptrToInt8(n *int64) pgtype.Int8 {
 	return pgtype.Int8{Int64: *n, Valid: true}
 }
 
+// POST /api/typing
+func (h *Handler) SendTypingIndicator(w http.ResponseWriter, r *http.Request) {
+	type Req struct {
+		ChannelID string `json:"channel_id"`
+		SessionID string `json:"session_id"`
+		IsTyping  bool   `json:"is_typing"`
+	}
+	var req Req
+	json.NewDecoder(r.Body).Decode(&req)
+
+	userID, ok := requireUserID(w, r)
+	if !ok {
+		return
+	}
+	workspaceID := resolveWorkspaceID(r)
+
+	h.publish("typing", workspaceID, "member", userID, map[string]any{
+		"channel_id": req.ChannelID,
+		"session_id": req.SessionID,
+		"is_typing":  req.IsTyping,
+		"sender_id":  userID,
+	})
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // queryInt reads an integer query parameter with a default.
 func queryInt(r *http.Request, key string, def int) int {
 	v := r.URL.Query().Get(key)

@@ -56,6 +56,9 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 	h.PlanGenerator = service.NewPlanGeneratorService(queries)
 	h.Scheduler = service.NewSchedulerService(queries, hub)
 
+	// Start auto-reply poll daemon
+	go h.AutoReplyService.StartPollDaemon(context.Background())
+
 	// Audit + notification services
 	auditSvc := service.NewAuditService(queries)
 	auditSvc.SubscribeToEvents(bus)
@@ -163,6 +166,23 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireWorkspaceMember(queries))
 
+			// Listen (long-poll for MCP tools)
+			r.Get("/api/listen", h.Listen)
+
+			// Typing
+			r.Post("/api/typing", h.SendTypingIndicator)
+
+			// Remote sessions
+			r.Route("/api/remote-sessions", func(r chi.Router) {
+				r.Post("/", h.CreateRemoteSession)
+				r.Get("/", h.ListRemoteSessions)
+				r.Route("/{remoteSessionID}", func(r chi.Router) {
+					r.Get("/", h.GetRemoteSession)
+					r.Patch("/status", h.UpdateRemoteSessionStatus)
+					r.Post("/events", h.AddRemoteSessionEvent)
+				})
+			})
+
 			// Search
 			r.Get("/api/search", h.Search)
 
@@ -245,6 +265,7 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 					r.Get("/files", h.ListSkillFiles)
 					r.Put("/files", h.UpsertSkillFile)
 					r.Delete("/files/{fileId}", h.DeleteSkillFile)
+					r.Post("/broadcast", h.SkillBroadcast)
 				})
 			})
 
@@ -283,6 +304,9 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 				})
 			})
 
+			// Listen (long-poll)
+			r.Get("/api/listen", h.Listen)
+
 			r.Route("/api/sessions", func(r chi.Router) {
 				r.Post("/", h.CreateSession)
 				r.Get("/", h.ListSessions)
@@ -292,6 +316,9 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 					r.Post("/join", h.JoinSession)
 					r.Get("/messages", h.ListSessionMessages)
 					r.Get("/summary", h.SessionSummary)
+					r.Post("/auto-start", h.StartAutoDiscussion)
+					r.Post("/auto-stop", h.StopAutoDiscussion)
+					r.Put("/context", h.ShareSessionContext)
 				})
 			})
 

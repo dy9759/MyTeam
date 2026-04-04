@@ -35,6 +35,37 @@ type SessionParticipantResponse struct {
 	JoinedAt        string `json:"joined_at"`
 }
 
+// PUT /api/sessions/{sessionID}/context
+func (h *Handler) ShareSessionContext(w http.ResponseWriter, r *http.Request) {
+	sessionID := chi.URLParam(r, "sessionID")
+
+	var context json.RawMessage
+	if err := json.NewDecoder(r.Body).Decode(&context); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+
+	err := h.Queries.UpdateSessionContext(r.Context(), db.UpdateSessionContextParams{
+		ID:      parseUUID(sessionID),
+		Context: context,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update context")
+		return
+	}
+
+	workspaceID := resolveWorkspaceID(r)
+	userID, _ := requireUserID(w, r)
+	h.publish("session:context_updated", workspaceID, "member", userID, map[string]any{
+		"session_id": sessionID,
+	})
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"session_id": sessionID,
+		"message":    "Context updated",
+	})
+}
+
 func sessionToResponse(s db.Session) SessionResponse {
 	return SessionResponse{
 		ID:          uuidToString(s.ID),
@@ -387,5 +418,49 @@ func (h *Handler) SessionSummary(w http.ResponseWriter, r *http.Request) {
 		"sender_counts": senderCounts,
 		"participants":  partResp,
 		"timeline":      timeline,
+	})
+}
+
+// POST /api/sessions/{sessionID}/auto-start
+func (h *Handler) StartAutoDiscussion(w http.ResponseWriter, r *http.Request) {
+	sessionID := chi.URLParam(r, "sessionID")
+
+	session, err := h.Queries.GetSession(r.Context(), parseUUID(sessionID))
+	if err != nil {
+		writeError(w, http.StatusNotFound, "session not found")
+		return
+	}
+
+	if session.Status != "active" {
+		writeError(w, http.StatusBadRequest, "session is not active")
+		return
+	}
+
+	workspaceID := resolveWorkspaceID(r)
+	userID, _ := requireUserID(w, r)
+	h.publish("session:auto_started", workspaceID, "member", userID, map[string]any{
+		"session_id": sessionID,
+	})
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"session_id":      sessionID,
+		"auto_discussion": true,
+		"message":         "Auto-discussion started",
+	})
+}
+
+// POST /api/sessions/{sessionID}/auto-stop
+func (h *Handler) StopAutoDiscussion(w http.ResponseWriter, r *http.Request) {
+	sessionID := chi.URLParam(r, "sessionID")
+
+	workspaceID := resolveWorkspaceID(r)
+	userID, _ := requireUserID(w, r)
+	h.publish("session:auto_stopped", workspaceID, "member", userID, map[string]any{
+		"session_id": sessionID,
+	})
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"session_id":      sessionID,
+		"auto_discussion": false,
 	})
 }
