@@ -18,6 +18,7 @@ import {
   MessageCircle,
   Hash,
   RefreshCw,
+  GitBranch,
 } from "lucide-react";
 import { WorkspaceAvatar } from "@/features/workspace";
 import { useIssueDraftStore } from "@/features/issues/stores/draft-store";
@@ -58,6 +59,7 @@ const communicationNav = [
   { href: "/chat", label: "Chat", icon: MessageCircle },
   { href: "/channels", label: "Channels", icon: Hash },
   { href: "/sessions", label: "Sessions", icon: RefreshCw },
+  { href: "/workflows", label: "Workflows", icon: GitBranch },
 ];
 
 const workspaceNav = [

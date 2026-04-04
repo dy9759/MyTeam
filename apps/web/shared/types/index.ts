@@ -40,3 +40,9 @@ export type {
   SessionParticipant,
   Conversation,
 } from "./messaging";
+export type {
+  PlanStep,
+  Plan,
+  WorkflowStep,
+  Workflow,
+} from "./workflow";

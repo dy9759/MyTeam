@@ -61,4 +61,14 @@ const (
 	// Daemon events
 	EventDaemonHeartbeat = "daemon:heartbeat"
 	EventDaemonRegister  = "daemon:register"
+
+	// Workflow events
+	EventWorkflowCreated       = "workflow:created"
+	EventWorkflowStarted       = "workflow:started"
+	EventWorkflowCompleted     = "workflow:completed"
+	EventWorkflowStepCompleted = "workflow:step:completed"
+	EventWorkflowStepFailed    = "workflow:step:failed"
+
+	// Plan events
+	EventPlanGenerated = "plan:generated"
 )

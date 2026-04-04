@@ -165,6 +165,32 @@ func (h *Handler) DeletePlan(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
+// GeneratePlan uses LLM to parse natural language into a structured plan.
+// POST /api/plans/generate
+func (h *Handler) GeneratePlan(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Input string `json:"input"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Input == "" {
+		writeError(w, http.StatusBadRequest, "input is required")
+		return
+	}
+
+	workspaceID := resolveWorkspaceID(r)
+	if workspaceID == "" {
+		writeError(w, http.StatusBadRequest, "workspace_id is required")
+		return
+	}
+
+	plan, err := h.PlanGenerator.GeneratePlanFromText(r.Context(), req.Input, workspaceID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to generate plan")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, plan)
+}
+
 // optionalUUID converts an optional string pointer to a pgtype.UUID.
 func optionalUUID(s *string) pgtype.UUID {
 	if s == nil || *s == "" {

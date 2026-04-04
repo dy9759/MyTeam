@@ -56,6 +56,13 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 	h.PlanGenerator = service.NewPlanGeneratorService(queries)
 	h.Scheduler = service.NewSchedulerService(queries, hub)
 
+	// Audit + notification services
+	auditSvc := service.NewAuditService(queries)
+	auditSvc.SubscribeToEvents(bus)
+
+	notifSvc := service.NewNotificationService(queries, hub)
+	notifSvc.SubscribeToEvents(bus)
+
 	r := chi.NewRouter()
 
 	// Global middleware
@@ -285,6 +292,7 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 			r.Route("/api/plans", func(r chi.Router) {
 				r.Post("/", h.CreatePlan)
 				r.Get("/", h.ListPlans)
+				r.Post("/generate", h.GeneratePlan)
 				r.Route("/{planID}", func(r chi.Router) {
 					r.Get("/", h.GetPlan)
 					r.Delete("/", h.DeletePlan)

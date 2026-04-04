@@ -633,4 +633,24 @@ export class ApiClient {
   }
 
   async getSessionSummary(id: string) { return this.fetch<any>(`/api/sessions/${id}/summary`) }
+
+  // Plans
+  async listPlans(limit = 20, offset = 0) { return this.fetch<{ plans: any[] }>(`/api/plans?limit=${limit}&offset=${offset}`) }
+  async createPlan(data: { title: string; description?: string; source_type?: string; steps?: any[] }) {
+    return this.fetch<any>('/api/plans', { method: 'POST', body: JSON.stringify(data) })
+  }
+  async getPlan(id: string) { return this.fetch<any>(`/api/plans/${id}`) }
+  async generatePlan(input: string) { return this.fetch<any>('/api/plans/generate', { method: 'POST', body: JSON.stringify({ input }) }) }
+  async deletePlan(id: string) { return this.fetch<void>(`/api/plans/${id}`, { method: 'DELETE' }) }
+
+  // Workflows
+  async listWorkflows(limit = 20, offset = 0) { return this.fetch<{ workflows: any[] }>(`/api/workflows?limit=${limit}&offset=${offset}`) }
+  async createWorkflow(data: { title: string; plan_id?: string; type?: string; cron_expr?: string }) {
+    return this.fetch<any>('/api/workflows', { method: 'POST', body: JSON.stringify(data) })
+  }
+  async getWorkflow(id: string) { return this.fetch<any>(`/api/workflows/${id}`) }
+  async getWorkflowSteps(id: string) { return this.fetch<{ steps: any[] }>(`/api/workflows/${id}/steps`) }
+  async startWorkflow(id: string) { return this.fetch<any>(`/api/workflows/${id}/start`, { method: 'POST' }) }
+  async updateWorkflowDAG(id: string, dag: any) { return this.fetch<any>(`/api/workflows/${id}/dag`, { method: 'PATCH', body: JSON.stringify({ dag }) }) }
+  async deleteWorkflow(id: string) { return this.fetch<void>(`/api/workflows/${id}`, { method: 'DELETE' }) }
 }
