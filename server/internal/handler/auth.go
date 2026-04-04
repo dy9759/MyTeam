@@ -238,9 +238,18 @@ func (h *Handler) SendCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.EmailService.SendVerificationCode(email, code); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to send verification code")
-		return
+	// Dev mode: if no email service configured, log code to console
+	if os.Getenv("RESEND_API_KEY") == "" {
+		slog.Warn("DEV MODE: verification code (no email service)", "email", email, "code", code)
+		fmt.Fprintf(os.Stderr, "\n╔══════════════════════════════════════╗\n")
+		fmt.Fprintf(os.Stderr, "║  Verification Code for %-14s ║\n", email)
+		fmt.Fprintf(os.Stderr, "║  Code: %-30s ║\n", code)
+		fmt.Fprintf(os.Stderr, "╚══════════════════════════════════════╝\n\n")
+	} else {
+		if err := h.EmailService.SendVerificationCode(email, code); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to send verification code")
+			return
+		}
 	}
 
 	// Best-effort cleanup of expired codes
