@@ -82,6 +82,15 @@ func (h *Handler) CreateMessage(w http.ResponseWriter, r *http.Request) {
 		"message": messageToResponse(msg),
 	})
 
+	// Check for @mentions and trigger auto-reply
+	if h.AutoReplyService != nil {
+		mentions := ParseMentions(req.Content)
+		if len(mentions) > 0 {
+			h.AutoReplyService.CheckAndReply(r.Context(), mentions, workspaceID,
+				uuidToString(msg.ChannelID), msg)
+		}
+	}
+
 	writeJSON(w, http.StatusCreated, messageToResponse(msg))
 }
 

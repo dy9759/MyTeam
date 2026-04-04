@@ -11,6 +11,51 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const getAgentByName = `-- name: GetAgentByName :one
+SELECT id, workspace_id, name, avatar_url, runtime_mode, runtime_config, visibility, status, max_concurrent_tasks, owner_id, created_at, updated_at, description, tools, triggers, runtime_id, instructions, archived_at, archived_by, capabilities, auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags, agent_metadata, trigger_on_channel_mention FROM agent WHERE workspace_id = $1 AND name = $2 AND archived_at IS NULL
+`
+
+type GetAgentByNameParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	Name        string      `json:"name"`
+}
+
+func (q *Queries) GetAgentByName(ctx context.Context, arg GetAgentByNameParams) (Agent, error) {
+	row := q.db.QueryRow(ctx, getAgentByName, arg.WorkspaceID, arg.Name)
+	var i Agent
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Name,
+		&i.AvatarUrl,
+		&i.RuntimeMode,
+		&i.RuntimeConfig,
+		&i.Visibility,
+		&i.Status,
+		&i.MaxConcurrentTasks,
+		&i.OwnerID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Description,
+		&i.Tools,
+		&i.Triggers,
+		&i.RuntimeID,
+		&i.Instructions,
+		&i.ArchivedAt,
+		&i.ArchivedBy,
+		&i.Capabilities,
+		&i.AutoReplyEnabled,
+		&i.AutoReplyConfig,
+		&i.DisplayName,
+		&i.Avatar,
+		&i.Bio,
+		&i.Tags,
+		&i.AgentMetadata,
+		&i.TriggerOnChannelMention,
+	)
+	return i, err
+}
+
 const getAgentProfile = `-- name: GetAgentProfile :one
 SELECT id, name, display_name, avatar, bio, tags, capabilities, agent_metadata, status, description
 FROM agent WHERE id = $1

@@ -166,6 +166,16 @@ type DaemonToken struct {
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 }
 
+type ImpersonationSession struct {
+	ID          pgtype.UUID        `json:"id"`
+	OwnerID     pgtype.UUID        `json:"owner_id"`
+	AgentID     pgtype.UUID        `json:"agent_id"`
+	WorkspaceID pgtype.UUID        `json:"workspace_id"`
+	StartedAt   pgtype.Timestamptz `json:"started_at"`
+	ExpiresAt   pgtype.Timestamptz `json:"expires_at"`
+	EndedAt     pgtype.Timestamptz `json:"ended_at"`
+}
+
 type InboxItem struct {
 	ID            pgtype.UUID        `json:"id"`
 	WorkspaceID   pgtype.UUID        `json:"workspace_id"`

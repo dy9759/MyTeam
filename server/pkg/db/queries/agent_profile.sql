@@ -25,6 +25,9 @@ WHERE workspace_id = $1 AND auto_reply_enabled = TRUE AND archived_at IS NULL;
 -- name: UpdateAgentCapabilities :exec
 UPDATE agent SET capabilities = $2 WHERE id = $1;
 
+-- name: GetAgentByName :one
+SELECT * FROM agent WHERE workspace_id = $1 AND name = $2 AND archived_at IS NULL;
+
 -- name: ListAgentsWithCapability :many
 SELECT * FROM agent
 WHERE workspace_id = $1

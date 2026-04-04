@@ -52,6 +52,7 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 	s3 := storage.NewS3StorageFromEnv()
 	cfSigner := auth.NewCloudFrontSignerFromEnv()
 	h := handler.New(queries, pool, hub, bus, emailSvc, s3, cfSigner)
+	h.AutoReplyService = service.NewAutoReplyService(queries, hub)
 
 	r := chi.NewRouter()
 
@@ -208,6 +209,11 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 					r.Patch("/profile", h.UpdateAgentProfile)
 					r.Get("/auto-reply", h.GetAgentAutoReply)
 					r.Patch("/auto-reply", h.UpdateAgentAutoReply)
+
+					// Impersonation (Owner 附身)
+					r.Post("/impersonate", h.StartImpersonation)
+					r.Post("/release", h.EndImpersonation)
+					r.Get("/impersonation", h.GetImpersonation)
 				})
 			})
 

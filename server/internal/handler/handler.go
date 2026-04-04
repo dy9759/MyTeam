@@ -41,8 +41,9 @@ type Handler struct {
 	EmailService *service.EmailService
 	PingStore    *PingStore
 	UpdateStore  *UpdateStore
-	Storage      *storage.S3Storage
-	CFSigner     *auth.CloudFrontSigner
+	Storage          *storage.S3Storage
+	CFSigner         *auth.CloudFrontSigner
+	AutoReplyService *service.AutoReplyService
 }
 
 func New(queries *db.Queries, txStarter txStarter, hub *realtime.Hub, bus *events.Bus, emailService *service.EmailService, s3 *storage.S3Storage, cfSigner *auth.CloudFrontSigner) *Handler {
