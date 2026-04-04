@@ -202,6 +202,60 @@ func (h *Handler) ListChannelMessages(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"messages": resp})
 }
 
+// PATCH /api/channels/{channelID}/visibility
+func (h *Handler) UpdateChannelVisibility(w http.ResponseWriter, r *http.Request) {
+	channelID := chi.URLParam(r, "channelID")
+
+	var req struct {
+		Visibility string `json:"visibility"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.Visibility == "" {
+		writeError(w, http.StatusBadRequest, "visibility required")
+		return
+	}
+
+	err := h.Queries.UpdateChannelVisibility(r.Context(), db.UpdateChannelVisibilityParams{
+		ID:         parseUUID(channelID),
+		Visibility: req.Visibility,
+	})
+	if err != nil {
+		slog.Warn("update channel visibility failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to update visibility")
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// PATCH /api/channels/{channelID}/category
+func (h *Handler) UpdateChannelCategory(w http.ResponseWriter, r *http.Request) {
+	channelID := chi.URLParam(r, "channelID")
+
+	var req struct {
+		Category string `json:"category"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	err := h.Queries.UpdateChannelCategory(r.Context(), db.UpdateChannelCategoryParams{
+		ID:       parseUUID(channelID),
+		Category: strToText(req.Category),
+	})
+	if err != nil {
+		slog.Warn("update channel category failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to update category")
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func channelToResponse(ch db.Channel) map[string]any {
 	return map[string]any{
 		"id":              uuidToString(ch.ID),
@@ -210,6 +264,8 @@ func channelToResponse(ch db.Channel) map[string]any {
 		"description":     textToPtr(ch.Description),
 		"created_by":      uuidToString(ch.CreatedBy),
 		"created_by_type": ch.CreatedByType,
+		"visibility":      ch.Visibility,
+		"category":        textToPtr(ch.Category),
 		"created_at":      timestampToString(ch.CreatedAt),
 	}
 }

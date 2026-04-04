@@ -242,6 +242,9 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 				r.Post("/", h.CreateMessage)
 				r.Get("/", h.ListMessages)
 				r.Get("/conversations", h.ListConversations)
+				r.Route("/{messageID}", func(r chi.Router) {
+					r.Get("/thread", h.ListThread)
+				})
 			})
 
 			r.Route("/api/channels", func(r chi.Router) {
@@ -253,6 +256,8 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 					r.Post("/leave", h.LeaveChannel)
 					r.Get("/members", h.ListChannelMembers)
 					r.Get("/messages", h.ListChannelMessages)
+					r.Patch("/visibility", h.UpdateChannelVisibility)
+					r.Patch("/category", h.UpdateChannelCategory)
 				})
 			})
 

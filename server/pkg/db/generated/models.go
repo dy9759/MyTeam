@@ -112,6 +112,8 @@ type Channel struct {
 	CreatedBy     pgtype.UUID        `json:"created_by"`
 	CreatedByType string             `json:"created_by_type"`
 	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	Visibility    string             `json:"visibility"`
+	Category      pgtype.Text        `json:"category"`
 }
 
 type ChannelMember struct {
@@ -267,6 +269,10 @@ type Message struct {
 	Status          string             `json:"status"`
 	CreatedAt       pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+	ParentID        pgtype.UUID        `json:"parent_id"`
+	Type            string             `json:"type"`
+	IsImpersonated  bool               `json:"is_impersonated"`
+	ReplyExpected   bool               `json:"reply_expected"`
 }
 
 type PersonalAccessToken struct {

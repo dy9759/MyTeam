@@ -31,7 +31,7 @@ func (q *Queries) AddChannelMember(ctx context.Context, arg AddChannelMemberPara
 const createChannel = `-- name: CreateChannel :one
 INSERT INTO channel (workspace_id, name, description, created_by, created_by_type)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, workspace_id, name, description, created_by, created_by_type, created_at
+RETURNING id, workspace_id, name, description, created_by, created_by_type, created_at, visibility, category
 `
 
 type CreateChannelParams struct {
@@ -59,6 +59,8 @@ func (q *Queries) CreateChannel(ctx context.Context, arg CreateChannelParams) (C
 		&i.CreatedBy,
 		&i.CreatedByType,
 		&i.CreatedAt,
+		&i.Visibility,
+		&i.Category,
 	)
 	return i, err
 }
@@ -73,7 +75,7 @@ func (q *Queries) DeleteChannel(ctx context.Context, id pgtype.UUID) error {
 }
 
 const getChannel = `-- name: GetChannel :one
-SELECT id, workspace_id, name, description, created_by, created_by_type, created_at FROM channel WHERE id = $1
+SELECT id, workspace_id, name, description, created_by, created_by_type, created_at, visibility, category FROM channel WHERE id = $1
 `
 
 func (q *Queries) GetChannel(ctx context.Context, id pgtype.UUID) (Channel, error) {
@@ -87,12 +89,14 @@ func (q *Queries) GetChannel(ctx context.Context, id pgtype.UUID) (Channel, erro
 		&i.CreatedBy,
 		&i.CreatedByType,
 		&i.CreatedAt,
+		&i.Visibility,
+		&i.Category,
 	)
 	return i, err
 }
 
 const getChannelByName = `-- name: GetChannelByName :one
-SELECT id, workspace_id, name, description, created_by, created_by_type, created_at FROM channel WHERE workspace_id = $1 AND name = $2
+SELECT id, workspace_id, name, description, created_by, created_by_type, created_at, visibility, category FROM channel WHERE workspace_id = $1 AND name = $2
 `
 
 type GetChannelByNameParams struct {
@@ -111,12 +115,14 @@ func (q *Queries) GetChannelByName(ctx context.Context, arg GetChannelByNamePara
 		&i.CreatedBy,
 		&i.CreatedByType,
 		&i.CreatedAt,
+		&i.Visibility,
+		&i.Category,
 	)
 	return i, err
 }
 
 const getChannelsForMember = `-- name: GetChannelsForMember :many
-SELECT c.id, c.workspace_id, c.name, c.description, c.created_by, c.created_by_type, c.created_at FROM channel c
+SELECT c.id, c.workspace_id, c.name, c.description, c.created_by, c.created_by_type, c.created_at, c.visibility, c.category FROM channel c
 JOIN channel_member cm ON c.id = cm.channel_id
 WHERE cm.member_id = $1 AND cm.member_type = $2
 `
@@ -143,6 +149,8 @@ func (q *Queries) GetChannelsForMember(ctx context.Context, arg GetChannelsForMe
 			&i.CreatedBy,
 			&i.CreatedByType,
 			&i.CreatedAt,
+			&i.Visibility,
+			&i.Category,
 		); err != nil {
 			return nil, err
 		}
@@ -184,7 +192,7 @@ func (q *Queries) ListChannelMembers(ctx context.Context, channelID pgtype.UUID)
 }
 
 const listChannels = `-- name: ListChannels :many
-SELECT id, workspace_id, name, description, created_by, created_by_type, created_at FROM channel WHERE workspace_id = $1 ORDER BY created_at ASC
+SELECT id, workspace_id, name, description, created_by, created_by_type, created_at, visibility, category FROM channel WHERE workspace_id = $1 ORDER BY created_at ASC
 `
 
 func (q *Queries) ListChannels(ctx context.Context, workspaceID pgtype.UUID) ([]Channel, error) {
@@ -204,6 +212,81 @@ func (q *Queries) ListChannels(ctx context.Context, workspaceID pgtype.UUID) ([]
 			&i.CreatedBy,
 			&i.CreatedByType,
 			&i.CreatedAt,
+			&i.Visibility,
+			&i.Category,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listChannelsByCategory = `-- name: ListChannelsByCategory :many
+SELECT id, workspace_id, name, description, created_by, created_by_type, created_at, visibility, category FROM channel WHERE workspace_id = $1 AND category = $2 ORDER BY created_at ASC
+`
+
+type ListChannelsByCategoryParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	Category    pgtype.Text `json:"category"`
+}
+
+func (q *Queries) ListChannelsByCategory(ctx context.Context, arg ListChannelsByCategoryParams) ([]Channel, error) {
+	rows, err := q.db.Query(ctx, listChannelsByCategory, arg.WorkspaceID, arg.Category)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Channel{}
+	for rows.Next() {
+		var i Channel
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.Name,
+			&i.Description,
+			&i.CreatedBy,
+			&i.CreatedByType,
+			&i.CreatedAt,
+			&i.Visibility,
+			&i.Category,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPublicChannels = `-- name: ListPublicChannels :many
+SELECT id, workspace_id, name, description, created_by, created_by_type, created_at, visibility, category FROM channel WHERE workspace_id = $1 AND visibility = 'public' ORDER BY created_at ASC
+`
+
+func (q *Queries) ListPublicChannels(ctx context.Context, workspaceID pgtype.UUID) ([]Channel, error) {
+	rows, err := q.db.Query(ctx, listPublicChannels, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Channel{}
+	for rows.Next() {
+		var i Channel
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.Name,
+			&i.Description,
+			&i.CreatedBy,
+			&i.CreatedByType,
+			&i.CreatedAt,
+			&i.Visibility,
+			&i.Category,
 		); err != nil {
 			return nil, err
 		}
@@ -227,5 +310,33 @@ type RemoveChannelMemberParams struct {
 
 func (q *Queries) RemoveChannelMember(ctx context.Context, arg RemoveChannelMemberParams) error {
 	_, err := q.db.Exec(ctx, removeChannelMember, arg.ChannelID, arg.MemberID, arg.MemberType)
+	return err
+}
+
+const updateChannelCategory = `-- name: UpdateChannelCategory :exec
+UPDATE channel SET category = $2 WHERE id = $1
+`
+
+type UpdateChannelCategoryParams struct {
+	ID       pgtype.UUID `json:"id"`
+	Category pgtype.Text `json:"category"`
+}
+
+func (q *Queries) UpdateChannelCategory(ctx context.Context, arg UpdateChannelCategoryParams) error {
+	_, err := q.db.Exec(ctx, updateChannelCategory, arg.ID, arg.Category)
+	return err
+}
+
+const updateChannelVisibility = `-- name: UpdateChannelVisibility :exec
+UPDATE channel SET visibility = $2 WHERE id = $1
+`
+
+type UpdateChannelVisibilityParams struct {
+	ID         pgtype.UUID `json:"id"`
+	Visibility string      `json:"visibility"`
+}
+
+func (q *Queries) UpdateChannelVisibility(ctx context.Context, arg UpdateChannelVisibilityParams) error {
+	_, err := q.db.Exec(ctx, updateChannelVisibility, arg.ID, arg.Visibility)
 	return err
 }

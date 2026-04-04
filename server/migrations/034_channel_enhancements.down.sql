@@ -1,0 +1,6 @@
+ALTER TABLE message DROP COLUMN IF EXISTS reply_expected;
+ALTER TABLE message DROP COLUMN IF EXISTS is_impersonated;
+ALTER TABLE message DROP COLUMN IF EXISTS type;
+ALTER TABLE message DROP COLUMN IF EXISTS parent_id;
+ALTER TABLE channel DROP COLUMN IF EXISTS category;
+ALTER TABLE channel DROP COLUMN IF EXISTS visibility;

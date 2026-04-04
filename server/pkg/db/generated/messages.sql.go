@@ -11,10 +11,27 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countUnreadMessages = `-- name: CountUnreadMessages :one
+SELECT COUNT(*) FROM message
+WHERE recipient_id = $1 AND recipient_type = $2 AND status = 'sent'
+`
+
+type CountUnreadMessagesParams struct {
+	RecipientID   pgtype.UUID `json:"recipient_id"`
+	RecipientType pgtype.Text `json:"recipient_type"`
+}
+
+func (q *Queries) CountUnreadMessages(ctx context.Context, arg CountUnreadMessagesParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countUnreadMessages, arg.RecipientID, arg.RecipientType)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createMessage = `-- name: CreateMessage :one
-INSERT INTO message (workspace_id, sender_id, sender_type, channel_id, recipient_id, recipient_type, session_id, content, content_type, file_id, file_name, file_size, file_content_type, metadata)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-RETURNING id, workspace_id, sender_id, sender_type, channel_id, recipient_id, recipient_type, session_id, content, content_type, file_id, file_name, file_size, file_content_type, metadata, status, created_at, updated_at
+INSERT INTO message (workspace_id, sender_id, sender_type, channel_id, recipient_id, recipient_type, session_id, content, content_type, file_id, file_name, file_size, file_content_type, metadata, parent_id, type)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+RETURNING id, workspace_id, sender_id, sender_type, channel_id, recipient_id, recipient_type, session_id, content, content_type, file_id, file_name, file_size, file_content_type, metadata, status, created_at, updated_at, parent_id, type, is_impersonated, reply_expected
 `
 
 type CreateMessageParams struct {
@@ -32,6 +49,8 @@ type CreateMessageParams struct {
 	FileSize        pgtype.Int8 `json:"file_size"`
 	FileContentType pgtype.Text `json:"file_content_type"`
 	Metadata        []byte      `json:"metadata"`
+	ParentID        pgtype.UUID `json:"parent_id"`
+	Type            string      `json:"type"`
 }
 
 func (q *Queries) CreateMessage(ctx context.Context, arg CreateMessageParams) (Message, error) {
@@ -50,6 +69,8 @@ func (q *Queries) CreateMessage(ctx context.Context, arg CreateMessageParams) (M
 		arg.FileSize,
 		arg.FileContentType,
 		arg.Metadata,
+		arg.ParentID,
+		arg.Type,
 	)
 	var i Message
 	err := row.Scan(
@@ -71,12 +92,16 @@ func (q *Queries) CreateMessage(ctx context.Context, arg CreateMessageParams) (M
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ParentID,
+		&i.Type,
+		&i.IsImpersonated,
+		&i.ReplyExpected,
 	)
 	return i, err
 }
 
 const getMessage = `-- name: GetMessage :one
-SELECT id, workspace_id, sender_id, sender_type, channel_id, recipient_id, recipient_type, session_id, content, content_type, file_id, file_name, file_size, file_content_type, metadata, status, created_at, updated_at FROM message WHERE id = $1
+SELECT id, workspace_id, sender_id, sender_type, channel_id, recipient_id, recipient_type, session_id, content, content_type, file_id, file_name, file_size, file_content_type, metadata, status, created_at, updated_at, parent_id, type, is_impersonated, reply_expected FROM message WHERE id = $1
 `
 
 func (q *Queries) GetMessage(ctx context.Context, id pgtype.UUID) (Message, error) {
@@ -101,12 +126,16 @@ func (q *Queries) GetMessage(ctx context.Context, id pgtype.UUID) (Message, erro
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ParentID,
+		&i.Type,
+		&i.IsImpersonated,
+		&i.ReplyExpected,
 	)
 	return i, err
 }
 
 const listChannelMessages = `-- name: ListChannelMessages :many
-SELECT id, workspace_id, sender_id, sender_type, channel_id, recipient_id, recipient_type, session_id, content, content_type, file_id, file_name, file_size, file_content_type, metadata, status, created_at, updated_at FROM message WHERE channel_id = $1 ORDER BY created_at ASC LIMIT $2 OFFSET $3
+SELECT id, workspace_id, sender_id, sender_type, channel_id, recipient_id, recipient_type, session_id, content, content_type, file_id, file_name, file_size, file_content_type, metadata, status, created_at, updated_at, parent_id, type, is_impersonated, reply_expected FROM message WHERE channel_id = $1 ORDER BY created_at ASC LIMIT $2 OFFSET $3
 `
 
 type ListChannelMessagesParams struct {
@@ -143,6 +172,10 @@ func (q *Queries) ListChannelMessages(ctx context.Context, arg ListChannelMessag
 			&i.Status,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ParentID,
+			&i.Type,
+			&i.IsImpersonated,
+			&i.ReplyExpected,
 		); err != nil {
 			return nil, err
 		}
@@ -155,7 +188,7 @@ func (q *Queries) ListChannelMessages(ctx context.Context, arg ListChannelMessag
 }
 
 const listDMMessages = `-- name: ListDMMessages :many
-SELECT id, workspace_id, sender_id, sender_type, channel_id, recipient_id, recipient_type, session_id, content, content_type, file_id, file_name, file_size, file_content_type, metadata, status, created_at, updated_at FROM message
+SELECT id, workspace_id, sender_id, sender_type, channel_id, recipient_id, recipient_type, session_id, content, content_type, file_id, file_name, file_size, file_content_type, metadata, status, created_at, updated_at, parent_id, type, is_impersonated, reply_expected FROM message
 WHERE workspace_id = $1
   AND ((sender_id = $2 AND sender_type = $3 AND recipient_id = $4 AND recipient_type = $5)
     OR (sender_id = $4 AND sender_type = $5 AND recipient_id = $2 AND recipient_type = $3))
@@ -208,6 +241,70 @@ func (q *Queries) ListDMMessages(ctx context.Context, arg ListDMMessagesParams) 
 			&i.Status,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ParentID,
+			&i.Type,
+			&i.IsImpersonated,
+			&i.ReplyExpected,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMessagesByType = `-- name: ListMessagesByType :many
+SELECT id, workspace_id, sender_id, sender_type, channel_id, recipient_id, recipient_type, session_id, content, content_type, file_id, file_name, file_size, file_content_type, metadata, status, created_at, updated_at, parent_id, type, is_impersonated, reply_expected FROM message WHERE channel_id = $1 AND type = $2
+ORDER BY created_at ASC LIMIT $3 OFFSET $4
+`
+
+type ListMessagesByTypeParams struct {
+	ChannelID pgtype.UUID `json:"channel_id"`
+	Type      string      `json:"type"`
+	Limit     int32       `json:"limit"`
+	Offset    int32       `json:"offset"`
+}
+
+func (q *Queries) ListMessagesByType(ctx context.Context, arg ListMessagesByTypeParams) ([]Message, error) {
+	rows, err := q.db.Query(ctx, listMessagesByType,
+		arg.ChannelID,
+		arg.Type,
+		arg.Limit,
+		arg.Offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Message{}
+	for rows.Next() {
+		var i Message
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.SenderID,
+			&i.SenderType,
+			&i.ChannelID,
+			&i.RecipientID,
+			&i.RecipientType,
+			&i.SessionID,
+			&i.Content,
+			&i.ContentType,
+			&i.FileID,
+			&i.FileName,
+			&i.FileSize,
+			&i.FileContentType,
+			&i.Metadata,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ParentID,
+			&i.Type,
+			&i.IsImpersonated,
+			&i.ReplyExpected,
 		); err != nil {
 			return nil, err
 		}
@@ -220,7 +317,7 @@ func (q *Queries) ListDMMessages(ctx context.Context, arg ListDMMessagesParams) 
 }
 
 const listSessionMessages = `-- name: ListSessionMessages :many
-SELECT id, workspace_id, sender_id, sender_type, channel_id, recipient_id, recipient_type, session_id, content, content_type, file_id, file_name, file_size, file_content_type, metadata, status, created_at, updated_at FROM message WHERE session_id = $1 ORDER BY created_at ASC LIMIT $2 OFFSET $3
+SELECT id, workspace_id, sender_id, sender_type, channel_id, recipient_id, recipient_type, session_id, content, content_type, file_id, file_name, file_size, file_content_type, metadata, status, created_at, updated_at, parent_id, type, is_impersonated, reply_expected FROM message WHERE session_id = $1 ORDER BY created_at ASC LIMIT $2 OFFSET $3
 `
 
 type ListSessionMessagesParams struct {
@@ -257,6 +354,63 @@ func (q *Queries) ListSessionMessages(ctx context.Context, arg ListSessionMessag
 			&i.Status,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ParentID,
+			&i.Type,
+			&i.IsImpersonated,
+			&i.ReplyExpected,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listThreadMessages = `-- name: ListThreadMessages :many
+SELECT id, workspace_id, sender_id, sender_type, channel_id, recipient_id, recipient_type, session_id, content, content_type, file_id, file_name, file_size, file_content_type, metadata, status, created_at, updated_at, parent_id, type, is_impersonated, reply_expected FROM message WHERE parent_id = $1 ORDER BY created_at ASC LIMIT $2 OFFSET $3
+`
+
+type ListThreadMessagesParams struct {
+	ParentID pgtype.UUID `json:"parent_id"`
+	Limit    int32       `json:"limit"`
+	Offset   int32       `json:"offset"`
+}
+
+func (q *Queries) ListThreadMessages(ctx context.Context, arg ListThreadMessagesParams) ([]Message, error) {
+	rows, err := q.db.Query(ctx, listThreadMessages, arg.ParentID, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Message{}
+	for rows.Next() {
+		var i Message
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.SenderID,
+			&i.SenderType,
+			&i.ChannelID,
+			&i.RecipientID,
+			&i.RecipientType,
+			&i.SessionID,
+			&i.Content,
+			&i.ContentType,
+			&i.FileID,
+			&i.FileName,
+			&i.FileSize,
+			&i.FileContentType,
+			&i.Metadata,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ParentID,
+			&i.Type,
+			&i.IsImpersonated,
+			&i.ReplyExpected,
 		); err != nil {
 			return nil, err
 		}

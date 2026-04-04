@@ -1,6 +1,6 @@
 -- name: CreateMessage :one
-INSERT INTO message (workspace_id, sender_id, sender_type, channel_id, recipient_id, recipient_type, session_id, content, content_type, file_id, file_name, file_size, file_content_type, metadata)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+INSERT INTO message (workspace_id, sender_id, sender_type, channel_id, recipient_id, recipient_type, session_id, content, content_type, file_id, file_name, file_size, file_content_type, metadata, parent_id, type)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 RETURNING *;
 
 -- name: GetMessage :one
@@ -21,3 +21,14 @@ SELECT * FROM message WHERE session_id = $1 ORDER BY created_at ASC LIMIT $2 OFF
 
 -- name: UpdateMessageStatus :exec
 UPDATE message SET status = $2, updated_at = NOW() WHERE id = $1;
+
+-- name: ListThreadMessages :many
+SELECT * FROM message WHERE parent_id = $1 ORDER BY created_at ASC LIMIT $2 OFFSET $3;
+
+-- name: CountUnreadMessages :one
+SELECT COUNT(*) FROM message
+WHERE recipient_id = $1 AND recipient_type = $2 AND status = 'sent';
+
+-- name: ListMessagesByType :many
+SELECT * FROM message WHERE channel_id = $1 AND type = $2
+ORDER BY created_at ASC LIMIT $3 OFFSET $4;

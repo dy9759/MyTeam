@@ -1,25 +1,58 @@
+"use client";
+
 import { create } from "zustand";
 import type { Message, Conversation } from "@/shared/types/messaging";
+import { api } from "@/shared/api";
+import { toast } from "sonner";
 
 interface MessagingState {
   conversations: Conversation[];
   currentMessages: Message[];
   loading: boolean;
-  setConversations: (conversations: Conversation[]) => void;
-  setCurrentMessages: (messages: Message[]) => void;
+  fetch: () => Promise<void>;
+  fetchMessages: (params: { channel_id?: string; recipient_id?: string; session_id?: string }) => Promise<void>;
+  sendMessage: (params: { channel_id?: string; recipient_id?: string; recipient_type?: string; session_id?: string; content: string }) => Promise<void>;
   addMessage: (message: Message) => void;
-  setLoading: (loading: boolean) => void;
 }
 
-export const useMessagingStore = create<MessagingState>((set) => ({
+export const useMessagingStore = create<MessagingState>((set, get) => ({
   conversations: [],
   currentMessages: [],
   loading: false,
-  setConversations: (conversations) => set({ conversations }),
-  setCurrentMessages: (messages) => set({ currentMessages: messages }),
+
+  fetch: async () => {
+    set({ loading: true });
+    try {
+      const res = await api.listConversations();
+      set({ conversations: res.conversations, loading: false });
+    } catch (err) {
+      toast.error("Failed to load conversations");
+      set({ loading: false });
+    }
+  },
+
+  fetchMessages: async (params) => {
+    set({ loading: true });
+    try {
+      const res = await api.listMessages({ ...params, limit: 100 });
+      set({ currentMessages: res.messages, loading: false });
+    } catch (err) {
+      toast.error("Failed to load messages");
+      set({ loading: false });
+    }
+  },
+
+  sendMessage: async (params) => {
+    try {
+      const msg = await api.sendMessage(params);
+      set((s) => ({ currentMessages: [...s.currentMessages, msg] }));
+    } catch (err) {
+      toast.error("Failed to send message");
+    }
+  },
+
   addMessage: (message) =>
-    set((state) => ({
-      currentMessages: [...state.currentMessages, message],
+    set((s) => ({
+      currentMessages: [...s.currentMessages, message],
     })),
-  setLoading: (loading) => set({ loading }),
 }));

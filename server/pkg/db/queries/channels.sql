@@ -30,3 +30,15 @@ SELECT * FROM channel_member WHERE channel_id = $1;
 SELECT c.* FROM channel c
 JOIN channel_member cm ON c.id = cm.channel_id
 WHERE cm.member_id = $1 AND cm.member_type = $2;
+
+-- name: ListChannelsByCategory :many
+SELECT * FROM channel WHERE workspace_id = $1 AND category = $2 ORDER BY created_at ASC;
+
+-- name: UpdateChannelVisibility :exec
+UPDATE channel SET visibility = $2 WHERE id = $1;
+
+-- name: UpdateChannelCategory :exec
+UPDATE channel SET category = $2 WHERE id = $1;
+
+-- name: ListPublicChannels :many
+SELECT * FROM channel WHERE workspace_id = $1 AND visibility = 'public' ORDER BY created_at ASC;

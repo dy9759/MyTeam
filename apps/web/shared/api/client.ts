@@ -579,4 +579,58 @@ export class ApiClient {
   async deleteAttachment(id: string): Promise<void> {
     await this.fetch(`/api/attachments/${id}`, { method: "DELETE" });
   }
+
+  // Messages
+  async sendMessage(data: { channel_id?: string; recipient_id?: string; recipient_type?: string; session_id?: string; content: string; content_type?: string }) {
+    return this.fetch<any>('/api/messages', { method: 'POST', body: JSON.stringify(data) })
+  }
+
+  async listMessages(params: { channel_id?: string; recipient_id?: string; session_id?: string; limit?: number; offset?: number }) {
+    const qs = new URLSearchParams(Object.entries(params).filter(([,v]) => v != null).map(([k,v]) => [k, String(v)])).toString()
+    return this.fetch<{ messages: any[] }>(`/api/messages?${qs}`)
+  }
+
+  async listConversations() {
+    return this.fetch<{ conversations: any[] }>('/api/messages/conversations')
+  }
+
+  // Channels
+  async listChannels() { return this.fetch<{ channels: any[] }>('/api/channels') }
+
+  async createChannel(data: { name: string; description?: string }) {
+    return this.fetch<any>('/api/channels', { method: 'POST', body: JSON.stringify(data) })
+  }
+
+  async getChannel(id: string) { return this.fetch<any>(`/api/channels/${id}`) }
+
+  async joinChannel(id: string) { return this.fetch<void>(`/api/channels/${id}/join`, { method: 'POST' }) }
+
+  async leaveChannel(id: string) { return this.fetch<void>(`/api/channels/${id}/leave`, { method: 'POST' }) }
+
+  async getChannelMembers(id: string) { return this.fetch<{ members: any[] }>(`/api/channels/${id}/members`) }
+
+  async getChannelMessages(id: string, limit = 50, offset = 0) {
+    return this.fetch<{ messages: any[] }>(`/api/channels/${id}/messages?limit=${limit}&offset=${offset}`)
+  }
+
+  // Sessions
+  async listSessions(limit = 20, offset = 0) {
+    return this.fetch<{ sessions: any[] }>(`/api/sessions?limit=${limit}&offset=${offset}`)
+  }
+
+  async createSession(data: { title: string; issue_id?: string; max_turns?: number; context?: any; participants?: Array<{id: string; type: string}> }) {
+    return this.fetch<any>('/api/sessions', { method: 'POST', body: JSON.stringify(data) })
+  }
+
+  async getSession(id: string) { return this.fetch<any>(`/api/sessions/${id}`) }
+
+  async getSessionMessages(id: string) { return this.fetch<{ messages: any[] }>(`/api/sessions/${id}/messages`) }
+
+  async joinSession(id: string) { return this.fetch<void>(`/api/sessions/${id}/join`, { method: 'POST' }) }
+
+  async updateSession(id: string, data: { status?: string; context?: any }) {
+    return this.fetch<any>(`/api/sessions/${id}`, { method: 'PATCH', body: JSON.stringify(data) })
+  }
+
+  async getSessionSummary(id: string) { return this.fetch<any>(`/api/sessions/${id}/summary`) }
 }

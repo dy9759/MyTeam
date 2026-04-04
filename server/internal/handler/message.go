@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
@@ -23,6 +24,8 @@ func (h *Handler) CreateMessage(w http.ResponseWriter, r *http.Request) {
 		FileName      *string         `json:"file_name,omitempty"`
 		FileSize      *int64          `json:"file_size,omitempty"`
 		Metadata      json.RawMessage `json:"metadata,omitempty"`
+		ParentID      *string         `json:"parent_id,omitempty"`
+		Type          string          `json:"type,omitempty"`
 	}
 
 	var req CreateRequest
@@ -46,6 +49,11 @@ func (h *Handler) CreateMessage(w http.ResponseWriter, r *http.Request) {
 		contentType = "text"
 	}
 
+	msgType := req.Type
+	if msgType == "" {
+		msgType = "text"
+	}
+
 	msg, err := h.Queries.CreateMessage(r.Context(), db.CreateMessageParams{
 		WorkspaceID:     parseUUID(workspaceID),
 		SenderID:        parseUUID(senderID),
@@ -61,6 +69,8 @@ func (h *Handler) CreateMessage(w http.ResponseWriter, r *http.Request) {
 		FileSize:        ptrToInt8(req.FileSize),
 		FileContentType: pgtype.Text{},
 		Metadata:        req.Metadata,
+		ParentID:        ptrToUUID(req.ParentID),
+		Type:            msgType,
 	})
 	if err != nil {
 		slog.Warn("create message failed", "error", err)
@@ -136,6 +146,30 @@ func (h *Handler) ListConversations(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"conversations": []any{}})
 }
 
+// GET /api/messages/{messageID}/thread
+func (h *Handler) ListThread(w http.ResponseWriter, r *http.Request) {
+	messageID := chi.URLParam(r, "messageID")
+	limit := queryInt(r, "limit", 50)
+	offset := queryInt(r, "offset", 0)
+
+	messages, err := h.Queries.ListThreadMessages(r.Context(), db.ListThreadMessagesParams{
+		ParentID: parseUUID(messageID),
+		Limit:    int32(limit),
+		Offset:   int32(offset),
+	})
+	if err != nil {
+		slog.Warn("list thread failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to list thread")
+		return
+	}
+
+	resp := make([]map[string]any, len(messages))
+	for i, m := range messages {
+		resp[i] = messageToResponse(m)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"messages": resp})
+}
+
 func messageToResponse(m db.Message) map[string]any {
 	return map[string]any{
 		"id":             uuidToString(m.ID),
@@ -151,6 +185,8 @@ func messageToResponse(m db.Message) map[string]any {
 		"file_id":        uuidToPtr(m.FileID),
 		"file_name":      textToPtr(m.FileName),
 		"status":         m.Status,
+		"parent_id":      uuidToPtr(m.ParentID),
+		"type":           m.Type,
 		"created_at":     timestampToString(m.CreatedAt),
 	}
 }
