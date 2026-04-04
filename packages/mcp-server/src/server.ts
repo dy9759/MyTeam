@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { HubClient } from "./client/hub-client.js";
 import { MulticaClient } from "./client/multica-client.js";
+import { UnifiedClient } from "./client/unified-client.js";
 import { registerAgentTool } from "./tools/register.js";
 import { registerListAgentsTool } from "./tools/list-agents.js";
 import { registerSendMessageTool } from "./tools/send-message.js";
@@ -97,19 +98,18 @@ async function main() {
   const multicaToken = process.env.MULTICA_TOKEN;
   const multicaWorkspace = process.env.MULTICA_WORKSPACE_ID;
 
+  let multicaClient: MulticaClient | undefined;
   if (multicaUrl) {
     console.error(`[agentmesh-mcp] Multica mode: ${multicaUrl}`);
-    const multicaClient = new MulticaClient({
+    multicaClient = new MulticaClient({
       baseUrl: multicaUrl,
       token: multicaToken ?? "",
       workspaceId: multicaWorkspace ?? "",
     });
-    // Future: register Multica-specific tools (issues, etc.)
-    // For now, both clients coexist
   }
 
-  if (!hubUrl) {
-    console.error("[agentmesh-mcp] Error: AGENTMESH_HUB_URL is required");
+  if (!hubUrl && !multicaUrl) {
+    console.error("[agentmesh-mcp] Error: AGENTMESH_HUB_URL or MULTICA_API_URL is required");
     process.exit(1);
   }
 
@@ -117,20 +117,30 @@ async function main() {
     console.error("[agentmesh-mcp] Warning: AGENTMESH_API_KEY not set");
   }
 
-  const { server, client, state } = createMcpServer({ hubUrl, apiKey });
+  const { server, client, state } = createMcpServer({ hubUrl: hubUrl ?? "", apiKey });
   const transport = new StdioServerTransport();
 
+  // Create UnifiedClient — tools can use this for either backend
+  const unifiedClient = new UnifiedClient(
+    hubUrl ? client : undefined,
+    multicaClient,
+  );
+  console.error(`[agentmesh-mcp] Mode: ${unifiedClient.isMulticaMode ? "Multica Go" : "Hub Node.js"}`);
+
   // Resolve ownerId from API key via whoami endpoint
-  try {
-    const owner = await client.whoami();
-    state.ownerId = owner.ownerId;
-    console.error(`[agentmesh-mcp] Hub reachable at ${hubUrl}, owner: ${owner.ownerId} (${owner.name})`);
-  } catch (err) {
-    console.error(`[agentmesh-mcp] Warning: Hub not reachable at ${hubUrl}:`, err);
+  if (hubUrl) {
+    try {
+      const owner = await client.whoami();
+      state.ownerId = owner.ownerId;
+      console.error(`[agentmesh-mcp] Hub reachable at ${hubUrl}, owner: ${owner.ownerId} (${owner.name})`);
+    } catch (err) {
+      console.error(`[agentmesh-mcp] Warning: Hub not reachable at ${hubUrl}:`, err);
+    }
   }
 
-  // After agent registration, connect WebSocket for real-time notifications
+  // After agent registration, connect WebSocket for real-time notifications (Hub mode only)
   state.onRegistered = (agentId: string) => {
+    if (!hubUrl) return;
     client.connectWebSocket(agentId);
 
     // Auto-refresh JWT every 50 minutes (before 1h expiry)

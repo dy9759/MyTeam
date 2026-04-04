@@ -224,6 +224,45 @@ export class MulticaClient {
     return this.fetch("/api/me");
   }
 
+  // ─── Listen (long-poll) ────────────────────────
+
+  async listen(params: Record<string, string>): Promise<any> {
+    const qs = new URLSearchParams(params).toString();
+    return this.fetch(`/api/listen?${qs}`);
+  }
+
+  // ─── Plans (Multica native) ───────────────────
+
+  async generatePlan(input: string): Promise<any> {
+    return this.fetch("/api/plans/generate", { method: "POST", body: JSON.stringify({ input }) });
+  }
+
+  // ─── Remote sessions ─────────────────────────
+
+  async createRemoteSession(agentId: string, title?: string): Promise<any> {
+    return this.fetch("/api/remote-sessions", { method: "POST", body: JSON.stringify({ agent_id: agentId, title }) });
+  }
+
+  async getRemoteSession(id: string): Promise<any> {
+    return this.fetch(`/api/remote-sessions/${id}`);
+  }
+
+  async listRemoteSessions(): Promise<any> {
+    return this.fetch("/api/remote-sessions");
+  }
+
+  // ─── Typing ───────────────────────────────────
+
+  async sendTyping(channelId?: string, sessionId?: string): Promise<void> {
+    return this.fetch("/api/typing", { method: "POST", body: JSON.stringify({ channel_id: channelId, session_id: sessionId, is_typing: true }) });
+  }
+
+  // ─── Skill broadcast ─────────────────────────
+
+  async skillBroadcast(skillId: string, text: string): Promise<any> {
+    return this.fetch(`/api/skills/${skillId}/broadcast`, { method: "POST", body: JSON.stringify({ text }) });
+  }
+
   // ─── Health ────────────────────────────────────
 
   async health(): Promise<any> {
