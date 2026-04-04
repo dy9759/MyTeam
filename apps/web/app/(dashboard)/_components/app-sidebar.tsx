@@ -15,6 +15,9 @@ import {
   BookOpenText,
   SquarePen,
   CircleUser,
+  MessageCircle,
+  Hash,
+  RefreshCw,
 } from "lucide-react";
 import { WorkspaceAvatar } from "@/features/workspace";
 import { useIssueDraftStore } from "@/features/issues/stores/draft-store";
@@ -49,6 +52,12 @@ const primaryNav = [
   { href: "/inbox", label: "Inbox", icon: Inbox },
   { href: "/my-issues", label: "My Issues", icon: CircleUser },
   { href: "/issues", label: "Issues", icon: ListTodo },
+];
+
+const communicationNav = [
+  { href: "/chat", label: "Chat", icon: MessageCircle },
+  { href: "/channels", label: "Channels", icon: Hash },
+  { href: "/sessions", label: "Sessions", icon: RefreshCw },
 ];
 
 const workspaceNav = [
@@ -189,6 +198,28 @@ export function AppSidebar() {
                             {unreadCount > 99 ? "99+" : unreadCount}
                           </span>
                         )}
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+
+          <SidebarGroup>
+            <SidebarGroupContent>
+              <SidebarMenu className="gap-0.5">
+                {communicationNav.map((item) => {
+                  const isActive = pathname === item.href;
+                  return (
+                    <SidebarMenuItem key={item.href}>
+                      <SidebarMenuButton
+                        isActive={isActive}
+                        render={<Link href={item.href} />}
+                        className="text-muted-foreground hover:not-data-active:bg-sidebar-accent/70 data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground"
+                      >
+                        <item.icon />
+                        <span>{item.label}</span>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   );

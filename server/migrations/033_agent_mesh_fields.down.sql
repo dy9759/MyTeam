@@ -1,0 +1,9 @@
+ALTER TABLE agent DROP COLUMN IF EXISTS capabilities;
+ALTER TABLE agent DROP COLUMN IF EXISTS auto_reply_enabled;
+ALTER TABLE agent DROP COLUMN IF EXISTS auto_reply_config;
+ALTER TABLE agent DROP COLUMN IF EXISTS display_name;
+ALTER TABLE agent DROP COLUMN IF EXISTS avatar;
+ALTER TABLE agent DROP COLUMN IF EXISTS bio;
+ALTER TABLE agent DROP COLUMN IF EXISTS tags;
+ALTER TABLE agent DROP COLUMN IF EXISTS agent_metadata;
+ALTER TABLE agent DROP COLUMN IF EXISTS trigger_on_channel_mention;

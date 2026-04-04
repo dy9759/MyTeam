@@ -202,6 +202,13 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 					r.Get("/tasks", h.ListAgentTasks)
 					r.Get("/skills", h.ListAgentSkills)
 					r.Put("/skills", h.SetAgentSkills)
+
+					// Agent profile & auto-reply (AgentMesh integration)
+					agentProfileHandler := handler.NewAgentProfileHandler()
+					r.Get("/profile", agentProfileHandler.GetProfile)
+					r.Patch("/profile", agentProfileHandler.UpdateProfile)
+					r.Get("/auto-reply", agentProfileHandler.GetAutoReply)
+					r.Patch("/auto-reply", agentProfileHandler.UpdateAutoReply)
 				})
 			})
 
@@ -265,6 +272,10 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 					r.Get("/summary", sessionHandler.Summary)
 				})
 			})
+
+			// Triggers (AgentMesh integration)
+			triggerHandler := handler.NewTriggerHandler()
+			r.Post("/api/triggers/check-mentions", triggerHandler.CheckMentions)
 
 			// Inbox
 			r.Route("/api/inbox", func(r chi.Router) {
