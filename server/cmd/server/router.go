@@ -204,11 +204,10 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 					r.Put("/skills", h.SetAgentSkills)
 
 					// Agent profile & auto-reply (AgentMesh integration)
-					agentProfileHandler := handler.NewAgentProfileHandler()
-					r.Get("/profile", agentProfileHandler.GetProfile)
-					r.Patch("/profile", agentProfileHandler.UpdateProfile)
-					r.Get("/auto-reply", agentProfileHandler.GetAutoReply)
-					r.Patch("/auto-reply", agentProfileHandler.UpdateAutoReply)
+					r.Get("/profile", h.GetAgentProfile)
+					r.Patch("/profile", h.UpdateAgentProfile)
+					r.Get("/auto-reply", h.GetAgentAutoReply)
+					r.Patch("/auto-reply", h.UpdateAgentAutoReply)
 				})
 			})
 
@@ -239,43 +238,38 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 			})
 
 			// Messaging (AgentMesh integration)
-			messageHandler := handler.NewMessageHandler()
-			channelHandler := handler.NewChannelHandler()
-			sessionHandler := handler.NewSessionHandler()
-
 			r.Route("/api/messages", func(r chi.Router) {
-				r.Post("/", messageHandler.Create)
-				r.Get("/", messageHandler.List)
-				r.Get("/conversations", messageHandler.ListConversations)
+				r.Post("/", h.CreateMessage)
+				r.Get("/", h.ListMessages)
+				r.Get("/conversations", h.ListConversations)
 			})
 
 			r.Route("/api/channels", func(r chi.Router) {
-				r.Post("/", channelHandler.Create)
-				r.Get("/", channelHandler.List)
+				r.Post("/", h.CreateChannel)
+				r.Get("/", h.ListChannels)
 				r.Route("/{channelID}", func(r chi.Router) {
-					r.Get("/", channelHandler.Get)
-					r.Post("/join", channelHandler.Join)
-					r.Post("/leave", channelHandler.Leave)
-					r.Get("/members", channelHandler.ListMembers)
-					r.Get("/messages", channelHandler.ListMessages)
+					r.Get("/", h.GetChannel)
+					r.Post("/join", h.JoinChannel)
+					r.Post("/leave", h.LeaveChannel)
+					r.Get("/members", h.ListChannelMembers)
+					r.Get("/messages", h.ListChannelMessages)
 				})
 			})
 
 			r.Route("/api/sessions", func(r chi.Router) {
-				r.Post("/", sessionHandler.Create)
-				r.Get("/", sessionHandler.List)
+				r.Post("/", h.CreateSession)
+				r.Get("/", h.ListSessions)
 				r.Route("/{sessionID}", func(r chi.Router) {
-					r.Get("/", sessionHandler.Get)
-					r.Patch("/", sessionHandler.Update)
-					r.Post("/join", sessionHandler.Join)
-					r.Get("/messages", sessionHandler.ListMessages)
-					r.Get("/summary", sessionHandler.Summary)
+					r.Get("/", h.GetSession)
+					r.Patch("/", h.UpdateSession)
+					r.Post("/join", h.JoinSession)
+					r.Get("/messages", h.ListSessionMessages)
+					r.Get("/summary", h.SessionSummary)
 				})
 			})
 
 			// Triggers (AgentMesh integration)
-			triggerHandler := handler.NewTriggerHandler()
-			r.Post("/api/triggers/check-mentions", triggerHandler.CheckMentions)
+			r.Post("/api/triggers/check-mentions", h.CheckMentions)
 
 			// Inbox
 			r.Route("/api/inbox", func(r chi.Router) {

@@ -2,19 +2,15 @@ package handler
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
-type ChannelHandler struct{}
-
-func NewChannelHandler() *ChannelHandler {
-	return &ChannelHandler{}
-}
-
 // POST /api/channels
-func (h *ChannelHandler) Create(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) CreateChannel(w http.ResponseWriter, r *http.Request) {
 	type CreateRequest struct {
 		Name        string `json:"name"`
 		Description string `json:"description,omitempty"`
@@ -22,64 +18,198 @@ func (h *ChannelHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	var req CreateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error":"invalid request"}`, http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-
 	if req.Name == "" {
-		http.Error(w, `{"error":"name required"}`, http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, "name required")
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"id":   "placeholder",
-		"name": req.Name,
-		"note": "Needs sqlc wiring",
+	userID, ok := requireUserID(w, r)
+	if !ok {
+		return
+	}
+	workspaceID := resolveWorkspaceID(r)
+
+	ch, err := h.Queries.CreateChannel(r.Context(), db.CreateChannelParams{
+		WorkspaceID:   parseUUID(workspaceID),
+		Name:          req.Name,
+		Description:   strToText(req.Description),
+		CreatedBy:     parseUUID(userID),
+		CreatedByType: "member",
 	})
+	if err != nil {
+		if isUniqueViolation(err) {
+			writeError(w, http.StatusConflict, "channel name already exists")
+			return
+		}
+		slog.Warn("create channel failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to create channel")
+		return
+	}
+
+	// Auto-join creator
+	_ = h.Queries.AddChannelMember(r.Context(), db.AddChannelMemberParams{
+		ChannelID:  ch.ID,
+		MemberID:   parseUUID(userID),
+		MemberType: "member",
+	})
+
+	h.publish("channel:created", workspaceID, "member", userID, map[string]any{
+		"channel": channelToResponse(ch),
+	})
+
+	writeJSON(w, http.StatusCreated, channelToResponse(ch))
 }
 
 // GET /api/channels
-func (h *ChannelHandler) List(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"channels": []interface{}{},
-	})
+func (h *Handler) ListChannels(w http.ResponseWriter, r *http.Request) {
+	workspaceID := resolveWorkspaceID(r)
+
+	channels, err := h.Queries.ListChannels(r.Context(), parseUUID(workspaceID))
+	if err != nil {
+		slog.Warn("list channels failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to list channels")
+		return
+	}
+
+	resp := make([]map[string]any, len(channels))
+	for i, ch := range channels {
+		resp[i] = channelToResponse(ch)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"channels": resp})
 }
 
 // GET /api/channels/{channelID}
-func (h *ChannelHandler) Get(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "channelID")
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"id":   id,
-		"note": "Needs sqlc wiring",
-	})
+func (h *Handler) GetChannel(w http.ResponseWriter, r *http.Request) {
+	channelID := chi.URLParam(r, "channelID")
+
+	ch, err := h.Queries.GetChannel(r.Context(), parseUUID(channelID))
+	if err != nil {
+		if isNotFound(err) {
+			writeError(w, http.StatusNotFound, "channel not found")
+			return
+		}
+		slog.Warn("get channel failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to get channel")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, channelToResponse(ch))
 }
 
 // POST /api/channels/{channelID}/join
-func (h *ChannelHandler) Join(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) JoinChannel(w http.ResponseWriter, r *http.Request) {
+	channelID := chi.URLParam(r, "channelID")
+	userID, ok := requireUserID(w, r)
+	if !ok {
+		return
+	}
+
+	err := h.Queries.AddChannelMember(r.Context(), db.AddChannelMemberParams{
+		ChannelID:  parseUUID(channelID),
+		MemberID:   parseUUID(userID),
+		MemberType: "member",
+	})
+	if err != nil {
+		slog.Warn("join channel failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to join channel")
+		return
+	}
+
+	workspaceID := resolveWorkspaceID(r)
+	h.publish("channel:member_joined", workspaceID, "member", userID, map[string]any{
+		"channel_id": channelID,
+		"member_id":  userID,
+	})
+
 	w.WriteHeader(http.StatusNoContent)
 }
 
 // POST /api/channels/{channelID}/leave
-func (h *ChannelHandler) Leave(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) LeaveChannel(w http.ResponseWriter, r *http.Request) {
+	channelID := chi.URLParam(r, "channelID")
+	userID, ok := requireUserID(w, r)
+	if !ok {
+		return
+	}
+
+	err := h.Queries.RemoveChannelMember(r.Context(), db.RemoveChannelMemberParams{
+		ChannelID:  parseUUID(channelID),
+		MemberID:   parseUUID(userID),
+		MemberType: "member",
+	})
+	if err != nil {
+		slog.Warn("leave channel failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to leave channel")
+		return
+	}
+
+	workspaceID := resolveWorkspaceID(r)
+	h.publish("channel:member_left", workspaceID, "member", userID, map[string]any{
+		"channel_id": channelID,
+		"member_id":  userID,
+	})
+
 	w.WriteHeader(http.StatusNoContent)
 }
 
 // GET /api/channels/{channelID}/members
-func (h *ChannelHandler) ListMembers(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"members": []interface{}{},
-	})
+func (h *Handler) ListChannelMembers(w http.ResponseWriter, r *http.Request) {
+	channelID := chi.URLParam(r, "channelID")
+
+	members, err := h.Queries.ListChannelMembers(r.Context(), parseUUID(channelID))
+	if err != nil {
+		slog.Warn("list channel members failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to list channel members")
+		return
+	}
+
+	resp := make([]map[string]any, len(members))
+	for i, m := range members {
+		resp[i] = map[string]any{
+			"channel_id":  uuidToString(m.ChannelID),
+			"member_id":   uuidToString(m.MemberID),
+			"member_type": m.MemberType,
+			"joined_at":   timestampToString(m.JoinedAt),
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"members": resp})
 }
 
 // GET /api/channels/{channelID}/messages
-func (h *ChannelHandler) ListMessages(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"messages": []interface{}{},
+func (h *Handler) ListChannelMessages(w http.ResponseWriter, r *http.Request) {
+	channelID := chi.URLParam(r, "channelID")
+	limit := queryInt(r, "limit", 50)
+	offset := queryInt(r, "offset", 0)
+
+	messages, err := h.Queries.ListChannelMessages(r.Context(), db.ListChannelMessagesParams{
+		ChannelID: parseUUID(channelID),
+		Limit:     int32(limit),
+		Offset:    int32(offset),
 	})
+	if err != nil {
+		slog.Warn("list channel messages failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to list messages")
+		return
+	}
+
+	resp := make([]map[string]any, len(messages))
+	for i, m := range messages {
+		resp[i] = messageToResponse(m)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"messages": resp})
+}
+
+func channelToResponse(ch db.Channel) map[string]any {
+	return map[string]any{
+		"id":              uuidToString(ch.ID),
+		"workspace_id":    uuidToString(ch.WorkspaceID),
+		"name":            ch.Name,
+		"description":     textToPtr(ch.Description),
+		"created_by":      uuidToString(ch.CreatedBy),
+		"created_by_type": ch.CreatedByType,
+		"created_at":      timestampToString(ch.CreatedAt),
+	}
 }

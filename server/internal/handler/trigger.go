@@ -6,13 +6,7 @@ import (
 	"strings"
 )
 
-type TriggerHandler struct{}
-
-func NewTriggerHandler() *TriggerHandler {
-	return &TriggerHandler{}
-}
-
-// ParseMentions extracts @agent mentions from text
+// ParseMentions extracts @agent mentions from text.
 func ParseMentions(text string) []string {
 	var mentions []string
 	words := strings.Fields(text)
@@ -28,8 +22,8 @@ func ParseMentions(text string) []string {
 	return mentions
 }
 
-// POST /api/triggers/check-mentions — Check if message text mentions any agents
-func (h *TriggerHandler) CheckMentions(w http.ResponseWriter, r *http.Request) {
+// POST /api/triggers/check-mentions
+func (h *Handler) CheckMentions(w http.ResponseWriter, r *http.Request) {
 	type Request struct {
 		Text        string `json:"text"`
 		WorkspaceID string `json:"workspace_id"`
@@ -37,14 +31,13 @@ func (h *TriggerHandler) CheckMentions(w http.ResponseWriter, r *http.Request) {
 
 	var req Request
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error":"invalid request"}`, http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
 
 	mentions := ParseMentions(req.Text)
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	writeJSON(w, http.StatusOK, map[string]any{
 		"mentions":    mentions,
 		"has_mention": len(mentions) > 0,
 	})

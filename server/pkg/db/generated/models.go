@@ -20,25 +20,34 @@ type ActivityLog struct {
 }
 
 type Agent struct {
-	ID                 pgtype.UUID        `json:"id"`
-	WorkspaceID        pgtype.UUID        `json:"workspace_id"`
-	Name               string             `json:"name"`
-	AvatarUrl          pgtype.Text        `json:"avatar_url"`
-	RuntimeMode        string             `json:"runtime_mode"`
-	RuntimeConfig      []byte             `json:"runtime_config"`
-	Visibility         string             `json:"visibility"`
-	Status             string             `json:"status"`
-	MaxConcurrentTasks int32              `json:"max_concurrent_tasks"`
-	OwnerID            pgtype.UUID        `json:"owner_id"`
-	CreatedAt          pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
-	Description        string             `json:"description"`
-	Tools              []byte             `json:"tools"`
-	Triggers           []byte             `json:"triggers"`
-	RuntimeID          pgtype.UUID        `json:"runtime_id"`
-	Instructions       string             `json:"instructions"`
-	ArchivedAt         pgtype.Timestamptz `json:"archived_at"`
-	ArchivedBy         pgtype.UUID        `json:"archived_by"`
+	ID                      pgtype.UUID        `json:"id"`
+	WorkspaceID             pgtype.UUID        `json:"workspace_id"`
+	Name                    string             `json:"name"`
+	AvatarUrl               pgtype.Text        `json:"avatar_url"`
+	RuntimeMode             string             `json:"runtime_mode"`
+	RuntimeConfig           []byte             `json:"runtime_config"`
+	Visibility              string             `json:"visibility"`
+	Status                  string             `json:"status"`
+	MaxConcurrentTasks      int32              `json:"max_concurrent_tasks"`
+	OwnerID                 pgtype.UUID        `json:"owner_id"`
+	CreatedAt               pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt               pgtype.Timestamptz `json:"updated_at"`
+	Description             string             `json:"description"`
+	Tools                   []byte             `json:"tools"`
+	Triggers                []byte             `json:"triggers"`
+	RuntimeID               pgtype.UUID        `json:"runtime_id"`
+	Instructions            string             `json:"instructions"`
+	ArchivedAt              pgtype.Timestamptz `json:"archived_at"`
+	ArchivedBy              pgtype.UUID        `json:"archived_by"`
+	Capabilities            []string           `json:"capabilities"`
+	AutoReplyEnabled        pgtype.Bool        `json:"auto_reply_enabled"`
+	AutoReplyConfig         []byte             `json:"auto_reply_config"`
+	DisplayName             pgtype.Text        `json:"display_name"`
+	Avatar                  pgtype.Text        `json:"avatar"`
+	Bio                     pgtype.Text        `json:"bio"`
+	Tags                    []string           `json:"tags"`
+	AgentMetadata           []byte             `json:"agent_metadata"`
+	TriggerOnChannelMention pgtype.Bool        `json:"trigger_on_channel_mention"`
 }
 
 type AgentRuntime struct {
@@ -93,6 +102,23 @@ type Attachment struct {
 	ContentType  string             `json:"content_type"`
 	SizeBytes    int64              `json:"size_bytes"`
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+}
+
+type Channel struct {
+	ID            pgtype.UUID        `json:"id"`
+	WorkspaceID   pgtype.UUID        `json:"workspace_id"`
+	Name          string             `json:"name"`
+	Description   pgtype.Text        `json:"description"`
+	CreatedBy     pgtype.UUID        `json:"created_by"`
+	CreatedByType string             `json:"created_by_type"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+}
+
+type ChannelMember struct {
+	ChannelID  pgtype.UUID        `json:"channel_id"`
+	MemberID   pgtype.UUID        `json:"member_id"`
+	MemberType string             `json:"member_type"`
+	JoinedAt   pgtype.Timestamptz `json:"joined_at"`
 }
 
 type Comment struct {
@@ -222,6 +248,27 @@ type Member struct {
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 }
 
+type Message struct {
+	ID              pgtype.UUID        `json:"id"`
+	WorkspaceID     pgtype.UUID        `json:"workspace_id"`
+	SenderID        pgtype.UUID        `json:"sender_id"`
+	SenderType      string             `json:"sender_type"`
+	ChannelID       pgtype.UUID        `json:"channel_id"`
+	RecipientID     pgtype.UUID        `json:"recipient_id"`
+	RecipientType   pgtype.Text        `json:"recipient_type"`
+	SessionID       pgtype.UUID        `json:"session_id"`
+	Content         string             `json:"content"`
+	ContentType     string             `json:"content_type"`
+	FileID          pgtype.UUID        `json:"file_id"`
+	FileName        pgtype.Text        `json:"file_name"`
+	FileSize        pgtype.Int8        `json:"file_size"`
+	FileContentType pgtype.Text        `json:"file_content_type"`
+	Metadata        []byte             `json:"metadata"`
+	Status          string             `json:"status"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+}
+
 type PersonalAccessToken struct {
 	ID          pgtype.UUID        `json:"id"`
 	UserID      pgtype.UUID        `json:"user_id"`
@@ -246,6 +293,29 @@ type RuntimeUsage struct {
 	CacheWriteTokens int64              `json:"cache_write_tokens"`
 	CreatedAt        pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+}
+
+type Session struct {
+	ID          pgtype.UUID        `json:"id"`
+	WorkspaceID pgtype.UUID        `json:"workspace_id"`
+	Title       string             `json:"title"`
+	CreatorID   pgtype.UUID        `json:"creator_id"`
+	CreatorType string             `json:"creator_type"`
+	Status      string             `json:"status"`
+	MaxTurns    int32              `json:"max_turns"`
+	CurrentTurn int32              `json:"current_turn"`
+	Context     []byte             `json:"context"`
+	IssueID     pgtype.UUID        `json:"issue_id"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
+type SessionParticipant struct {
+	SessionID       pgtype.UUID        `json:"session_id"`
+	ParticipantID   pgtype.UUID        `json:"participant_id"`
+	ParticipantType string             `json:"participant_type"`
+	Role            string             `json:"role"`
+	JoinedAt        pgtype.Timestamptz `json:"joined_at"`
 }
 
 type Skill struct {
