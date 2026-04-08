@@ -42,7 +42,8 @@ export const useProjectStore = create<ProjectState & ProjectActions>((set, get) 
     const isInitialLoad = get().projects.length === 0;
     if (isInitialLoad) set({ loading: true });
     try {
-      const projects = await api.listProjects();
+      const data = await api.listProjects();
+      const projects = Array.isArray(data) ? data : [];
       logger.info("fetched", projects.length, "projects");
       set({ projects, loading: false });
     } catch (err) {
