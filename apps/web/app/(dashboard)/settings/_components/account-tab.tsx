@@ -41,9 +41,9 @@ export function AccountTab() {
       if (!result) return;
       const updated = await api.updateMe({ avatar_url: result.link });
       setUser(updated);
-      toast.success("头像已更新");
+      toast.success("Avatar updated");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "上传头像失败");
+      toast.error(err instanceof Error ? err.message : "Failed to upload avatar");
     }
   };
 
@@ -52,9 +52,9 @@ export function AccountTab() {
     try {
       const updated = await api.updateMe({ name: profileName });
       setUser(updated);
-      toast.success("个人资料已更新");
+      toast.success("Profile updated");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "更新个人资料失败");
+      toast.error(e instanceof Error ? e.message : "Failed to update profile");
     } finally {
       setProfileSaving(false);
     }
@@ -63,7 +63,7 @@ export function AccountTab() {
   return (
     <div className="space-y-8">
       <section className="space-y-4">
-        <h2 className="text-sm font-semibold">个人资料</h2>
+        <h2 className="text-sm font-semibold">Profile</h2>
 
         <Card>
           <CardContent className="space-y-4">
@@ -102,12 +102,12 @@ export function AccountTab() {
                 onChange={handleAvatarUpload}
               />
               <div className="text-xs text-muted-foreground">
-                点击上传头像
+                Click to upload avatar
               </div>
             </div>
 
             <div>
-              <Label className="text-xs text-muted-foreground">姓名</Label>
+              <Label className="text-xs text-muted-foreground">Name</Label>
               <Input
                 type="search"
                 value={profileName}
@@ -120,9 +120,10 @@ export function AccountTab() {
                 size="sm"
                 onClick={handleProfileSave}
                 disabled={profileSaving || !profileName.trim()}
+                className="bg-brand text-brand-foreground hover:opacity-90"
               >
                 <Save className="h-3 w-3" />
-                {profileSaving ? "更新中..." : "更新资料"}
+                {profileSaving ? "Updating..." : "Update Profile"}
               </Button>
             </div>
           </CardContent>

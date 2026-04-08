@@ -52,7 +52,7 @@ export function TokensTab() {
       const list = await api.listPersonalAccessTokens();
       setTokens(list);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "加载令牌失败");
+      toast.error(e instanceof Error ? e.message : "Failed to load tokens");
     } finally {
       setTokensLoading(false);
     }
@@ -81,9 +81,9 @@ export function TokensTab() {
     try {
       await api.revokePersonalAccessToken(id);
       await loadTokens();
-      toast.success("令牌已撤销");
+      toast.success("Token revoked");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "撤销令牌失败");
+      toast.error(e instanceof Error ? e.message : "Failed to revoke token");
     } finally {
       setTokenRevoking(null);
     }
@@ -126,7 +126,7 @@ export function TokensTab() {
                 </SelectContent>
               </Select>
               <Button onClick={handleCreateToken} disabled={tokenCreating || !tokenName.trim()}>
-                {tokenCreating ? "创建中..." : "创建"}
+                {tokenCreating ? "Creating..." : "Create"}
               </Button>
             </div>
           </CardContent>
@@ -198,7 +198,7 @@ export function TokensTab() {
                 setRevokeConfirmId(null);
               }}
             >
-              撤销
+              Revoke
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -213,7 +213,7 @@ export function TokensTab() {
             </DialogDescription>
           </DialogHeader>
           <div className="flex items-center gap-2">
-            <code className="flex-1 rounded-md border bg-muted/50 px-3 py-2 text-sm break-all select-all">
+            <code className="flex-1 rounded-md border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.02)] px-3 py-2 text-sm break-all select-all text-foreground">
               {newToken}
             </code>
             <Tooltip>

@@ -3,16 +3,24 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  MessageSquare,
-  FolderGit2,
-  FileText,
+  Inbox,
+  ListTodo,
+  Bot,
+  Monitor,
   ChevronDown,
+  Search,
   Settings,
   LogOut,
   User,
   Plus,
   Check,
+  BookOpenText,
   SquarePen,
+  CircleUser,
+  MessageCircle,
+  Hash,
+  RefreshCw,
+  GitBranch,
 } from "lucide-react";
 import { WorkspaceAvatar } from "@/features/workspace";
 import { useIssueDraftStore } from "@/features/issues/stores/draft-store";
@@ -40,14 +48,29 @@ import {
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { useAuthStore } from "@/features/auth";
 import { useWorkspaceStore } from "@/features/workspace";
+import { useInboxStore } from "@/features/inbox";
 import { useModalStore } from "@/features/modals";
 
-const navItems = [
-  { href: "/session", label: "Session", icon: MessageSquare },
-  { href: "/projects", label: "Projects", icon: FolderGit2 },
-  { href: "/files", label: "Files", icon: FileText },
-  { href: "/account", label: "Account", icon: User },
+const primaryNav = [
+  { href: "/inbox", label: "Inbox", icon: Inbox },
+  { href: "/my-issues", label: "My Issues", icon: CircleUser },
+  { href: "/issues", label: "Issues", icon: ListTodo },
+  { href: "/search", label: "Search", icon: Search },
+];
+
+const communicationNav = [
+  { href: "/chat", label: "Chat", icon: MessageCircle },
+  { href: "/channels", label: "Channels", icon: Hash },
+  { href: "/sessions", label: "Sessions", icon: RefreshCw },
+  { href: "/workflows", label: "Workflows", icon: GitBranch },
+];
+
+const workspaceNav = [
+  { href: "/agents", label: "Agents", icon: Bot },
+  { href: "/runtimes", label: "Runtimes", icon: Monitor },
+  { href: "/skills", label: "Skills", icon: BookOpenText },
   { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/account", label: "Account", icon: User },
 ];
 
 function DraftDot() {
@@ -65,6 +88,8 @@ export function AppSidebar() {
   const workspaces = useWorkspaceStore((s) => s.workspaces);
   const switchWorkspace = useWorkspaceStore((s) => s.switchWorkspace);
 
+  const unreadCount = useInboxStore((s) => s.unreadCount());
+
   const logout = () => {
     router.push("/");
     authLogout();
@@ -72,7 +97,7 @@ export function AppSidebar() {
   };
 
   return (
-      <Sidebar variant="inset">
+      <Sidebar variant="inset" className="bg-[#0f1011] border-r border-[rgba(255,255,255,0.05)]">
         {/* Workspace Switcher */}
         <SidebarHeader className="py-3">
           <div className="flex items-center gap-4">
@@ -83,15 +108,15 @@ export function AppSidebar() {
                     render={
                       <SidebarMenuButton>
                         <WorkspaceAvatar name={workspace?.name ?? "M"} size="sm" />
-                        <span className="flex-1 truncate font-medium">
+                        <span className="flex-1 truncate font-medium text-[#f7f8f8]">
                           {workspace?.name ?? "Multica"}
                         </span>
-                        <ChevronDown className="size-3 text-muted-foreground" />
+                        <ChevronDown className="size-3 text-[#8a8f98]" />
                       </SidebarMenuButton>
                     }
                   />
                 <DropdownMenuContent
-                  className="w-52"
+                  className="w-52 bg-[#191a1b] border-[rgba(255,255,255,0.08)]"
                   align="start"
                   side="bottom"
                   sideOffset={4}
@@ -147,7 +172,7 @@ export function AppSidebar() {
             </SidebarMenu>
             <Tooltip>
               <TooltipTrigger
-                className="relative flex h-7 w-7 items-center justify-center rounded-lg bg-background text-foreground shadow-sm hover:bg-accent"
+                className="relative flex h-7 w-7 items-center justify-center rounded-lg bg-[rgba(255,255,255,0.05)] text-[#d0d6e0] hover:bg-[rgba(255,255,255,0.08)] hover:text-[#f7f8f8]"
                 onClick={() => useModalStore.getState().open("create-issue")}
               >
                 <SquarePen className="size-3.5" />
@@ -163,14 +188,63 @@ export function AppSidebar() {
           <SidebarGroup>
             <SidebarGroupContent>
               <SidebarMenu className="gap-0.5">
-                {navItems.map((item) => {
+                {primaryNav.map((item) => {
                   const isActive = pathname === item.href;
                   return (
                     <SidebarMenuItem key={item.href}>
                       <SidebarMenuButton
                         isActive={isActive}
                         render={<Link href={item.href} />}
-                        className="text-muted-foreground hover:not-data-active:bg-sidebar-accent/70 data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground"
+                        className="text-[#d0d6e0] hover:text-[#f7f8f8] hover:not-data-active:bg-[rgba(255,255,255,0.03)] data-active:bg-[rgba(255,255,255,0.05)] data-active:text-[#f7f8f8]"
+                      >
+                        <item.icon />
+                        <span>{item.label}</span>
+                        {item.label === "Inbox" && unreadCount > 0 && (
+                          <span className="ml-auto text-xs">
+                            {unreadCount > 99 ? "99+" : unreadCount}
+                          </span>
+                        )}
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+
+          <SidebarGroup>
+            <SidebarGroupContent>
+              <SidebarMenu className="gap-0.5">
+                {communicationNav.map((item) => {
+                  const isActive = pathname === item.href;
+                  return (
+                    <SidebarMenuItem key={item.href}>
+                      <SidebarMenuButton
+                        isActive={isActive}
+                        render={<Link href={item.href} />}
+                        className="text-[#d0d6e0] hover:text-[#f7f8f8] hover:not-data-active:bg-[rgba(255,255,255,0.03)] data-active:bg-[rgba(255,255,255,0.05)] data-active:text-[#f7f8f8]"
+                      >
+                        <item.icon />
+                        <span>{item.label}</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+
+          <SidebarGroup>
+            <SidebarGroupContent>
+              <SidebarMenu className="gap-0.5">
+                {workspaceNav.map((item) => {
+                  const isActive = pathname === item.href;
+                  return (
+                    <SidebarMenuItem key={item.href}>
+                      <SidebarMenuButton
+                        isActive={isActive}
+                        render={<Link href={item.href} />}
+                        className="text-[#d0d6e0] hover:text-[#f7f8f8] hover:not-data-active:bg-[rgba(255,255,255,0.03)] data-active:bg-[rgba(255,255,255,0.05)] data-active:text-[#f7f8f8]"
                       >
                         <item.icon />
                         <span>{item.label}</span>

@@ -11,12 +11,12 @@ import { CreateProjectDialog } from "@/features/projects/components/create-proje
 import ProjectDetailInline from "./[id]/page";
 
 const STATUS_BADGE: Record<ProjectStatus, string> = {
-  not_started: "bg-muted text-muted-foreground",
-  running: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
-  paused: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
-  completed: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-  failed: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
-  archived: "bg-muted text-muted-foreground",
+  not_started: "bg-[rgba(255,255,255,0.06)] text-[#8a8f98] border-[rgba(255,255,255,0.08)]",
+  running: "bg-[rgba(94,106,210,0.15)] text-[#8b9cf7] border-[rgba(94,106,210,0.25)]",
+  paused: "bg-[rgba(255,180,50,0.15)] text-[#f0b440] border-[rgba(255,180,50,0.25)]",
+  completed: "bg-[rgba(39,166,68,0.15)] text-[#4ade80] border-[rgba(39,166,68,0.25)]",
+  failed: "bg-[rgba(239,68,68,0.15)] text-[#f87171] border-[rgba(239,68,68,0.25)]",
+  archived: "bg-[rgba(255,255,255,0.06)] text-[#62666d] border-[rgba(255,255,255,0.08)]",
 };
 
 const STATUS_LABEL: Record<ProjectStatus, string> = {
@@ -57,16 +57,16 @@ export default function ProjectsPage() {
   return (
     <div className="flex flex-1 min-h-0">
       {/* Left sidebar */}
-      <div className="flex w-[280px] shrink-0 flex-col border-r">
+      <div className="flex w-[280px] shrink-0 flex-col border-r border-[rgba(255,255,255,0.05)] bg-[#0f1011]">
         {/* Search */}
-        <div className="p-3 border-b">
+        <div className="p-3 border-b border-[rgba(255,255,255,0.05)]">
           <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-[#62666d]" />
             <Input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="搜索项目..."
-              className="pl-8 h-8 text-sm"
+              className="pl-8 h-8 text-sm bg-[rgba(255,255,255,0.05)] border-[rgba(255,255,255,0.08)] text-[#f7f8f8] placeholder:text-[#62666d]"
             />
           </div>
         </div>
@@ -78,7 +78,7 @@ export default function ProjectsPage() {
               <Loader2 className="size-5 animate-spin text-muted-foreground" />
             </div>
           ) : filteredProjects.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-muted-foreground px-4">
+            <div className="flex flex-col items-center justify-center py-12 text-[#8a8f98] px-4">
               <p className="text-sm">
                 {searchQuery ? "无匹配项目" : "暂无项目"}
               </p>
@@ -91,8 +91,8 @@ export default function ProjectsPage() {
                   type="button"
                   className={`w-full text-left rounded-md px-3 py-2.5 transition-colors ${
                     selectedId === project.id
-                      ? "bg-accent"
-                      : "hover:bg-accent/50"
+                      ? "bg-[rgba(255,255,255,0.08)] text-[#f7f8f8]"
+                      : "hover:bg-[rgba(255,255,255,0.05)] text-[#d0d6e0]"
                   }`}
                   onClick={() => setSelectedId(project.id)}
                 >
@@ -106,7 +106,7 @@ export default function ProjectsPage() {
                     >
                       {STATUS_LABEL[project.status] ?? project.status}
                     </Badge>
-                    <span className="text-[11px] text-muted-foreground">
+                    <span className="text-[11px] text-[#8a8f98]">
                       {SCHEDULE_LABEL[project.schedule_type]}
                     </span>
                   </div>
@@ -117,10 +117,10 @@ export default function ProjectsPage() {
         </div>
 
         {/* Create button */}
-        <div className="p-3 border-t">
+        <div className="p-3 border-t border-[rgba(255,255,255,0.05)]">
           <Button
             onClick={() => setCreateOpen(true)}
-            className="w-full"
+            className="w-full bg-[#5e6ad2] hover:bg-[#4f5abf] text-white"
             size="sm"
           >
             <Plus className="size-3.5 mr-1.5" />
@@ -134,8 +134,8 @@ export default function ProjectsPage() {
         {selectedId ? (
           <ProjectDetailInline projectId={selectedId} />
         ) : (
-          <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-2">
-            <FolderOpen className="size-10 text-muted-foreground/40" />
+          <div className="flex flex-col items-center justify-center h-full text-[#8a8f98] gap-2">
+            <FolderOpen className="size-10 text-[#62666d]" />
             <p className="text-sm">选择一个项目</p>
           </div>
         )}

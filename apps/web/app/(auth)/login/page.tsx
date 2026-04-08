@@ -5,9 +5,6 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { useAuthStore } from "@/features/auth";
 import { useWorkspaceStore } from "@/features/workspace";
 import { api } from "@/shared/api";
-import { createLogger } from "@/shared/logger";
-
-const log = createLogger("auth:login");
 import {
   Card,
   CardHeader,
@@ -58,11 +55,8 @@ function LoginPageContent() {
 
   // Already authenticated — redirect to dashboard
   useEffect(() => {
-    log.debug("auth state check", { isLoading, hasUser: !!user, cliCallback: searchParams.get("cli_callback") });
     if (!isLoading && user && !searchParams.get("cli_callback")) {
-      const dest = searchParams.get("next") || "/issues";
-      log.info("already authenticated, redirecting", { dest, userId: user.id });
-      router.replace(dest);
+      router.replace(searchParams.get("next") || "/issues");
     }
   }, [isLoading, user, router, searchParams]);
 
@@ -117,24 +111,22 @@ function LoginPageContent() {
   const handleSendCode = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!email) {
-      setError("请输入邮箱");
+      setError("Email is required");
       return;
     }
     setError("");
     setSubmitting(true);
-    log.info("handleSendCode: sending code", { email });
     try {
       await sendCode(email);
-      log.info("handleSendCode: code sent, transitioning to code step");
       setStep("code");
       setCode("");
       setCooldown(10);
     } catch (err) {
-      const msg = err instanceof Error
-        ? err.message
-        : "发送验证码失败，请确保服务器正在运行。";
-      log.error("handleSendCode: failed", { email, error: msg });
-      setError(msg);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to send code. Make sure the server is running."
+      );
     } finally {
       setSubmitting(false);
     }
@@ -145,36 +137,28 @@ function LoginPageContent() {
       if (value.length !== 6) return;
       setError("");
       setSubmitting(true);
-      log.info("handleVerifyCode: verifying", { email, codeLength: value.length });
       try {
         const cliCallback = searchParams.get("cli_callback");
         if (cliCallback) {
-          log.info("handleVerifyCode: CLI flow detected", { cliCallback });
           if (!validateCliCallback(cliCallback)) {
-            log.error("handleVerifyCode: invalid CLI callback URL", { cliCallback });
-            setError("无效的回调 URL");
+            setError("Invalid callback URL");
             setSubmitting(false);
             return;
           }
           const { token } = await api.verifyCode(email, value);
           const cliState = searchParams.get("cli_state") || "";
-          log.info("handleVerifyCode: CLI verify success, redirecting to callback");
           redirectToCliCallback(cliCallback, token, cliState);
           return;
         }
 
         await verifyCode(email, value);
-        log.info("handleVerifyCode: verify success, hydrating workspace");
         const wsList = await api.listWorkspaces();
-        log.info("handleVerifyCode: got workspaces", { count: wsList.length });
         await hydrateWorkspace(wsList);
-        const dest = searchParams.get("next") || "/issues";
-        log.info("handleVerifyCode: login complete, navigating", { dest });
-        router.push(dest);
+        router.push(searchParams.get("next") || "/issues");
       } catch (err) {
-        const msg = err instanceof Error ? err.message : "验证码无效或已过期";
-        log.error("handleVerifyCode: failed", { email, error: msg });
-        setError(msg);
+        setError(
+          err instanceof Error ? err.message : "Invalid or expired code"
+        );
         setCode("");
         setSubmitting(false);
       }
@@ -190,7 +174,7 @@ function LoginPageContent() {
       setCooldown(10);
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "重发验证码失败"
+        err instanceof Error ? err.message : "Failed to resend code"
       );
     }
   };
@@ -198,13 +182,13 @@ function LoginPageContent() {
   // CLI confirm step: user is already logged in, just authorize.
   if (step === "cli_confirm" && existingUser) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <Card className="w-full max-w-sm">
+      <div className="flex min-h-screen items-center justify-center bg-[#08090a]">
+        <Card className="w-full max-w-sm bg-[#0f1011] border-[rgba(255,255,255,0.08)] rounded-xl">
           <CardHeader className="text-center">
-            <CardTitle className="text-2xl">Authorize CLI</CardTitle>
-            <CardDescription>
-              Allow the CLI to access My Team as{" "}
-              <span className="font-medium text-foreground">
+            <CardTitle className="text-2xl text-[#f7f8f8]">Authorize CLI</CardTitle>
+            <CardDescription className="text-[#8a8f98]">
+              Allow the CLI to access Multica as{" "}
+              <span className="font-medium text-[#f7f8f8]">
                 {existingUser.email}
               </span>
               ?
@@ -214,14 +198,14 @@ function LoginPageContent() {
             <Button
               onClick={handleCliAuthorize}
               disabled={submitting}
-              className="w-full"
+              className="w-full bg-[#5e6ad2] hover:bg-[#828fff] text-white border-0"
               size="lg"
             >
-              {submitting ? "授权中..." : "授权"}
+              {submitting ? "Authorizing..." : "Authorize"}
             </Button>
             <Button
               variant="ghost"
-              className="w-full"
+              className="w-full text-[#8a8f98] hover:text-[#d0d6e0] hover:bg-[rgba(255,255,255,0.05)]"
               onClick={() => {
                 setExistingUser(null);
                 setStep("email");
@@ -237,13 +221,13 @@ function LoginPageContent() {
 
   if (step === "code") {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <Card className="w-full max-w-sm">
+      <div className="flex min-h-screen items-center justify-center bg-[#08090a]">
+        <Card className="w-full max-w-sm bg-[#0f1011] border-[rgba(255,255,255,0.08)] rounded-xl">
           <CardHeader className="text-center">
-            <CardTitle className="text-2xl">查看邮箱</CardTitle>
-            <CardDescription>
-              验证码已发送至{" "}
-              <span className="font-medium text-foreground">{email}</span>
+            <CardTitle className="text-2xl text-[#f7f8f8]">Check your email</CardTitle>
+            <CardDescription className="text-[#8a8f98]">
+              We sent a verification code to{" "}
+              <span className="font-medium text-[#f7f8f8]">{email}</span>
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col items-center gap-4">
@@ -268,28 +252,28 @@ function LoginPageContent() {
             {error && (
               <p className="text-sm text-destructive">{error}</p>
             )}
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <div className="flex items-center gap-2 text-sm text-[#8a8f98]">
               <button
                 type="button"
                 onClick={handleResend}
                 disabled={cooldown > 0}
-                className="text-primary underline-offset-4 hover:underline disabled:text-muted-foreground disabled:no-underline disabled:cursor-not-allowed"
+                className="text-[#7170ff] underline-offset-4 hover:underline disabled:text-[#8a8f98] disabled:no-underline disabled:cursor-not-allowed"
               >
-                {cooldown > 0 ? `${cooldown}秒后重发` : "重新发送"}
+                {cooldown > 0 ? `Resend in ${cooldown}s` : "Resend code"}
               </button>
             </div>
           </CardContent>
           <CardFooter>
             <Button
               variant="ghost"
-              className="w-full"
+              className="w-full text-[#7170ff] hover:text-[#828fff] hover:bg-[rgba(255,255,255,0.05)]"
               onClick={() => {
                 setStep("email");
                 setCode("");
                 setError("");
               }}
             >
-              返回
+              Back
             </Button>
           </CardFooter>
         </Card>
@@ -298,16 +282,16 @@ function LoginPageContent() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center">
-      <Card className="w-full max-w-sm">
+    <div className="flex min-h-screen items-center justify-center bg-[#08090a]">
+      <Card className="w-full max-w-sm bg-[#0f1011] border-[rgba(255,255,255,0.08)] rounded-xl">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl">My Team</CardTitle>
-          <CardDescription>让编程代理成为真正的队友</CardDescription>
+          <CardTitle className="text-2xl font-bold text-[#f7f8f8]">My Team</CardTitle>
+          <CardDescription className="text-[#8a8f98]">Turn coding agents into real teammates</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSendCode} className="space-y-4">
+          <form id="login-form" onSubmit={handleSendCode} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="email">邮箱</Label>
+              <Label htmlFor="email" className="text-[#d0d6e0]">Email</Label>
               <Input
                 id="email"
                 type="email"
@@ -315,22 +299,25 @@ function LoginPageContent() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                className="bg-[rgba(255,255,255,0.02)] border-[rgba(255,255,255,0.08)] text-[#f7f8f8] placeholder:text-[#8a8f98]"
               />
             </div>
             {error && (
               <p className="text-sm text-destructive">{error}</p>
             )}
-            <Button
-              type="submit"
-              disabled={submitting}
-              className="w-full"
-              size="lg"
-            >
-              {submitting ? "发送中..." : "继续"}
-            </Button>
           </form>
         </CardContent>
-        <CardFooter />
+        <CardFooter>
+          <Button
+            type="submit"
+            form="login-form"
+            disabled={submitting}
+            className="w-full bg-[#5e6ad2] hover:bg-[#828fff] text-white border-0"
+            size="lg"
+          >
+            {submitting ? "Sending code..." : "Continue"}
+          </Button>
+        </CardFooter>
       </Card>
     </div>
   );

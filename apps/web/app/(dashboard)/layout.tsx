@@ -32,7 +32,7 @@ export default function DashboardLayout({
 
   if (isLoading) {
     return (
-      <div className="flex h-screen items-center justify-center">
+      <div className="flex h-screen items-center justify-center bg-[#08090a]">
         <MulticaIcon className="size-6" />
       </div>
     );
@@ -41,9 +41,9 @@ export default function DashboardLayout({
   if (!user) return null;
 
   return (
-    <SidebarProvider className="h-svh">
+    <SidebarProvider className="h-svh bg-[#08090a]">
       <AppSidebar />
-      <SidebarInset className="overflow-hidden">
+      <SidebarInset className="overflow-hidden bg-[#08090a]">
         {workspace ? (
           children
         ) : (

@@ -62,9 +62,9 @@ export function WorkspaceTab() {
         context,
       });
       updateWorkspace(updated);
-      toast.success("工作区设置已保存");
+      toast.success("Workspace settings saved");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "保存工作区设置失败");
+      toast.error(e instanceof Error ? e.message : "Failed to save workspace settings");
     } finally {
       setSaving(false);
     }
@@ -73,7 +73,7 @@ export function WorkspaceTab() {
   const handleLeaveWorkspace = () => {
     if (!workspace) return;
     setConfirmAction({
-      title: "离开工作区",
+      title: "Leave workspace",
       description: `Leave ${workspace.name}? You will lose access until re-invited.`,
       variant: "destructive",
       onConfirm: async () => {
@@ -81,7 +81,7 @@ export function WorkspaceTab() {
         try {
           await leaveWorkspace(workspace.id);
         } catch (e) {
-          toast.error(e instanceof Error ? e.message : "离开工作区失败");
+          toast.error(e instanceof Error ? e.message : "Failed to leave workspace");
         } finally {
           setActionId(null);
         }
@@ -92,7 +92,7 @@ export function WorkspaceTab() {
   const handleDeleteWorkspace = () => {
     if (!workspace) return;
     setConfirmAction({
-      title: "删除工作区",
+      title: "Delete workspace",
       description: `Delete ${workspace.name}? This cannot be undone. All issues, agents, and data will be permanently removed.`,
       variant: "destructive",
       onConfirm: async () => {
@@ -100,7 +100,7 @@ export function WorkspaceTab() {
         try {
           await deleteWorkspace(workspace.id);
         } catch (e) {
-          toast.error(e instanceof Error ? e.message : "删除工作区失败");
+          toast.error(e instanceof Error ? e.message : "Failed to delete workspace");
         } finally {
           setActionId(null);
         }
@@ -161,9 +161,10 @@ export function WorkspaceTab() {
                 size="sm"
                 onClick={handleSave}
                 disabled={saving || !name.trim() || !canManageWorkspace}
+                className="bg-brand text-brand-foreground hover:opacity-90"
               >
                 <Save className="h-3 w-3" />
-                {saving ? "保存中..." : "保存"}
+                {saving ? "Saving..." : "Save"}
               </Button>
             </div>
             {!canManageWorkspace && (
@@ -197,7 +198,7 @@ export function WorkspaceTab() {
                 onClick={handleLeaveWorkspace}
                 disabled={actionId === "leave"}
               >
-                {actionId === "leave" ? "离开中..." : "离开工作区"}
+                {actionId === "leave" ? "Leaving..." : "Leave workspace"}
               </Button>
             </div>
 
@@ -215,7 +216,7 @@ export function WorkspaceTab() {
                   onClick={handleDeleteWorkspace}
                   disabled={actionId === "delete-workspace"}
                 >
-                  {actionId === "delete-workspace" ? "删除中..." : "删除工作区"}
+                  {actionId === "delete-workspace" ? "Deleting..." : "Delete workspace"}
                 </Button>
               </div>
             )}
@@ -238,7 +239,7 @@ export function WorkspaceTab() {
                 setConfirmAction(null);
               }}
             >
-              确认
+              Confirm
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
