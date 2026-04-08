@@ -1,1 +1,5 @@
-export { RuntimesPage as default } from "@/features/runtimes";
+import { redirect } from "next/navigation";
+
+export default function Page() {
+  redirect("/account?tab=runtimes");
+}

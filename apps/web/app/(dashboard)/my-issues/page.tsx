@@ -1,7 +1,5 @@
-"use client";
-
-import { MyIssuesPage } from "@/features/my-issues";
+import { redirect } from "next/navigation";
 
 export default function Page() {
-  return <MyIssuesPage />;
+  redirect("/projects");
 }

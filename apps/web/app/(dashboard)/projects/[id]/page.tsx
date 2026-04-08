@@ -1,10 +1,32 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { toast } from "sonner";
+import {
+  ArrowLeft,
+  Loader2,
+  Play,
+  GitFork,
+  Check,
+  X as XIcon,
+  StopCircle,
+  ListTodo,
+} from "lucide-react";
 import { useProjectStore } from "@/features/projects";
 import { useWorkspaceStore } from "@/features/workspace";
 import { useWorkflowStore } from "@/features/workflow/store";
+import { useIssueStore } from "@/features/issues/store";
+import { useIssueViewStore, initFilterWorkspaceSync } from "@/features/issues/stores/view-store";
+import { useIssuesScopeStore } from "@/features/issues/stores/issues-scope-store";
+import { ViewStoreProvider } from "@/features/issues/stores/view-store-context";
+import { filterIssues } from "@/features/issues/utils/filter";
+import { BOARD_STATUSES } from "@/features/issues/config";
+import { useIssueSelectionStore } from "@/features/issues/stores/selection-store";
+import { ListView } from "@/features/issues/components/list-view";
+import { BoardView } from "@/features/issues/components/board-view";
+import { IssuesHeader } from "@/features/issues/components/issues-header";
+import { BatchActionToolbar } from "@/features/issues/components/batch-action-toolbar";
 import { PlanEditor } from "@/features/projects/components/plan-editor";
 import { VersionTree } from "@/features/projects/components/version-tree";
 import { ExecutionStepCard } from "@/features/projects/components/execution-step-card";
@@ -22,21 +44,12 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { api } from "@/shared/api";
-import { toast } from "sonner";
-import {
-  ArrowLeft,
-  Loader2,
-  Play,
-  GitFork,
-  Check,
-  X as XIcon,
-  StopCircle,
-} from "lucide-react";
 import type {
   ProjectStatus,
   ProjectRun,
   PlanStep,
   Agent,
+  IssueStatus,
 } from "@/shared/types";
 import type { WorkflowStep } from "@/shared/types/workflow";
 import type { Message } from "@/shared/types/messaging";
@@ -72,10 +85,17 @@ interface PlanEditorStep extends PlanStep {
   agent_id?: string;
 }
 
-export default function ProjectDetailPage() {
+/* ---------- Props for inline usage from projects list ---------- */
+
+interface ProjectDetailProps {
+  projectId?: string;
+}
+
+export default function ProjectDetailPage({ projectId }: ProjectDetailProps) {
   const params = useParams();
   const router = useRouter();
-  const id = params.id as string;
+  const id = projectId ?? (params?.id as string);
+  const isInline = !!projectId;
 
   const {
     currentProject,
@@ -99,7 +119,7 @@ export default function ProjectDetailPage() {
   const [rejectReason, setRejectReason] = useState("");
   const [planSteps, setPlanSteps] = useState<PlanEditorStep[]>([]);
 
-  // Channel messages for tab 3
+  // Channel messages for channel tab
   const [channelMessages, setChannelMessages] = useState<Message[]>([]);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -112,8 +132,82 @@ export default function ProjectDetailPage() {
   const agents = useWorkspaceStore((s) => s.agents) as Agent[];
   const { retryStep, replaceStepAgent } = useWorkflowStore();
 
+  // Issues state for tasks/board tabs
+  const allIssues = useIssueStore((s) => s.issues);
+  const scope = useIssuesScopeStore((s) => s.scope);
+  const viewMode = useIssueViewStore((s) => s.viewMode);
+  const statusFilters = useIssueViewStore((s) => s.statusFilters);
+  const priorityFilters = useIssueViewStore((s) => s.priorityFilters);
+  const assigneeFilters = useIssueViewStore((s) => s.assigneeFilters);
+  const includeNoAssignee = useIssueViewStore((s) => s.includeNoAssignee);
+  const creatorFilters = useIssueViewStore((s) => s.creatorFilters);
+
+  useEffect(() => {
+    initFilterWorkspaceSync();
+  }, []);
+
+  const scopedIssues = useMemo(() => {
+    if (scope === "members")
+      return allIssues.filter((i) => i.assignee_type === "member");
+    if (scope === "agents")
+      return allIssues.filter((i) => i.assignee_type === "agent");
+    return allIssues;
+  }, [allIssues, scope]);
+
+  const filteredIssues = useMemo(
+    () =>
+      filterIssues(scopedIssues, {
+        statusFilters,
+        priorityFilters,
+        assigneeFilters,
+        includeNoAssignee,
+        creatorFilters,
+      }),
+    [scopedIssues, statusFilters, priorityFilters, assigneeFilters, includeNoAssignee, creatorFilters]
+  );
+
+  const visibleStatuses = useMemo(() => {
+    if (statusFilters.length > 0)
+      return BOARD_STATUSES.filter((s) => statusFilters.includes(s));
+    return BOARD_STATUSES;
+  }, [statusFilters]);
+
+  const hiddenStatuses = useMemo(
+    () => BOARD_STATUSES.filter((s) => !visibleStatuses.includes(s)),
+    [visibleStatuses]
+  );
+
+  const handleMoveIssue = useCallback(
+    (issueId: string, newStatus: IssueStatus, newPosition?: number) => {
+      const viewState = useIssueViewStore.getState();
+      if (viewState.sortBy !== "position") {
+        viewState.setSortBy("position");
+        viewState.setSortDirection("asc");
+      }
+
+      const updates: Partial<{ status: IssueStatus; position: number }> = {
+        status: newStatus,
+      };
+      if (newPosition !== undefined) updates.position = newPosition;
+
+      useIssueStore.getState().updateIssue(issueId, updates);
+
+      api.updateIssue(issueId, updates).catch(() => {
+        toast.error("Failed to move issue");
+        api
+          .listIssues({ limit: 200 })
+          .then((res) => {
+            useIssueStore.getState().setIssues(res.issues);
+          })
+          .catch(console.error);
+      });
+    },
+    []
+  );
+
   useEffect(() => {
     if (!id) return;
+    setLoading(true);
     const load = async () => {
       try {
         await Promise.all([
@@ -166,10 +260,9 @@ export default function ProjectDetailPage() {
   const fetchWorkflowSteps = useCallback(async () => {
     if (!currentProject?.plan) return;
     try {
-      // Workflows are created from plans; use plan_id to find the workflow
       const res = await api.listWorkflows(200);
       const wf = (res.workflows as any[]).find(
-        (w: any) => w.plan_id === currentProject.plan!.id,
+        (w: any) => w.plan_id === currentProject.plan!.id
       );
       if (wf?.id) {
         const stepsRes = await api.getWorkflowSteps(wf.id);
@@ -191,22 +284,30 @@ export default function ProjectDetailPage() {
 
     async function pollExecution() {
       try {
-        await Promise.all([fetchRuns(id), fetchProject(id), fetchWorkflowSteps()]);
+        await Promise.all([
+          fetchRuns(id),
+          fetchProject(id),
+          fetchWorkflowSteps(),
+        ]);
       } catch {
         // silently fail
       }
     }
 
-    // Initial fetch
     fetchWorkflowSteps();
 
     execPollRef.current = setInterval(pollExecution, 3000);
     return () => {
       if (execPollRef.current) clearInterval(execPollRef.current);
     };
-  }, [currentProject?.active_run?.status, id, fetchRuns, fetchProject, fetchWorkflowSteps]);
+  }, [
+    currentProject?.active_run?.status,
+    id,
+    fetchRuns,
+    fetchProject,
+    fetchWorkflowSteps,
+  ]);
 
-  // Also fetch steps once on initial load if there's an active run
   useEffect(() => {
     if (currentProject?.active_run) {
       fetchWorkflowSteps();
@@ -221,7 +322,9 @@ export default function ProjectDetailPage() {
 
   async function handleFork() {
     if (!forkBranch.trim()) return;
-    await useProjectStore.getState().forkProject(id, forkBranch.trim(), forkReason.trim() || undefined);
+    await useProjectStore
+      .getState()
+      .forkProject(id, forkBranch.trim(), forkReason.trim() || undefined);
     setForkOpen(false);
     setForkBranch("");
     setForkReason("");
@@ -253,7 +356,6 @@ export default function ProjectDetailPage() {
   }
 
   function handleRetryStep(stepId: string) {
-    // Find the workflow for this project
     const wfId = workflowSteps[0]?.workflow_id;
     if (!wfId) return;
     retryStep(wfId, stepId);
@@ -268,7 +370,10 @@ export default function ProjectDetailPage() {
   async function handleSendChannelMessage(content: string) {
     if (!currentProject?.channel_id) return;
     try {
-      const msg = await api.sendMessage({ channel_id: currentProject.channel_id, content });
+      const msg = await api.sendMessage({
+        channel_id: currentProject.channel_id,
+        content,
+      });
       setChannelMessages((prev) => [...prev, msg]);
     } catch {
       toast.error("发送消息失败");
@@ -296,24 +401,41 @@ export default function ProjectDetailPage() {
   const activeRun = currentProject.active_run;
 
   return (
-    <div className="flex-1 overflow-auto p-6">
+    <div className="flex flex-1 min-h-0 flex-col overflow-auto p-6">
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
-        <Button variant="ghost" size="icon" onClick={() => router.push("/projects")}>
-          <ArrowLeft className="size-4" />
-        </Button>
+        {!isInline && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => router.push("/projects")}
+          >
+            <ArrowLeft className="size-4" />
+          </Button>
+        )}
         <div className="flex-1 min-w-0">
           {editingTitle ? (
             <div className="flex items-center gap-2">
               <Input
                 value={titleValue}
                 onChange={(e) => setTitleValue(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") handleTitleSave(); if (e.key === "Escape") setEditingTitle(false); }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleTitleSave();
+                  if (e.key === "Escape") setEditingTitle(false);
+                }}
                 className="text-2xl font-semibold h-auto py-0"
                 autoFocus
               />
-              <Button size="sm" onClick={handleTitleSave}>保存</Button>
-              <Button size="sm" variant="outline" onClick={() => setEditingTitle(false)}>取消</Button>
+              <Button size="sm" onClick={handleTitleSave}>
+                保存
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setEditingTitle(false)}
+              >
+                取消
+              </Button>
             </div>
           ) : (
             <h1
@@ -324,14 +446,23 @@ export default function ProjectDetailPage() {
             </h1>
           )}
           <div className="flex items-center gap-2 mt-1">
-            <Badge className={STATUS_BADGE[currentProject.status]} variant="outline">
+            <Badge
+              className={STATUS_BADGE[currentProject.status]}
+              variant="outline"
+            >
               {STATUS_LABEL[currentProject.status]}
             </Badge>
             <span className="text-sm text-muted-foreground">
-              {currentProject.schedule_type === "one_time" ? "一次性" : currentProject.schedule_type === "scheduled" ? "定时" : "周期性"}
+              {currentProject.schedule_type === "one_time"
+                ? "一次性"
+                : currentProject.schedule_type === "scheduled"
+                  ? "定时"
+                  : "周期性"}
             </span>
             {currentProject.cron_expr && (
-              <span className="text-sm text-muted-foreground font-mono">{currentProject.cron_expr}</span>
+              <span className="text-sm text-muted-foreground font-mono">
+                {currentProject.cron_expr}
+              </span>
             )}
           </div>
         </div>
@@ -347,20 +478,16 @@ export default function ProjectDetailPage() {
       {versions.length > 1 && (
         <div className="mb-4 border rounded-lg p-3">
           <h3 className="text-sm font-medium mb-2">版本</h3>
-          <VersionTree
-            versions={versions}
-            onSelect={() => {
-              // Version switching would reload project with specific version
-              // For now just display
-            }}
-          />
+          <VersionTree versions={versions} onSelect={() => {}} />
         </div>
       )}
 
-      {/* Tabs */}
-      <Tabs defaultValue="plan" className="space-y-4">
+      {/* Tabs - 5 tabs */}
+      <Tabs defaultValue="plan" className="flex flex-col flex-1 min-h-0">
         <TabsList>
           <TabsTrigger value="plan">计划</TabsTrigger>
+          <TabsTrigger value="tasks">任务</TabsTrigger>
+          <TabsTrigger value="board">看板</TabsTrigger>
           <TabsTrigger value="execution">执行</TabsTrigger>
           <TabsTrigger value="channel">频道</TabsTrigger>
         </TabsList>
@@ -390,13 +517,22 @@ export default function ProjectDetailPage() {
           {/* Approval section */}
           <div className="border rounded-lg p-4">
             <h3 className="text-sm font-medium mb-3">审批</h3>
-            {approvalStatus === "draft" || approvalStatus === "pending_approval" || !approvalStatus ? (
+            {approvalStatus === "draft" ||
+            approvalStatus === "pending_approval" ||
+            !approvalStatus ? (
               <div className="flex items-center gap-3">
-                <Button onClick={handleApprove} className="bg-green-600 hover:bg-green-700 text-white">
+                <Button
+                  onClick={handleApprove}
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                >
                   <Check className="size-4 mr-1" />
                   批准计划
                 </Button>
-                <Button variant="outline" onClick={() => setRejectOpen(true)} className="text-destructive border-destructive hover:bg-destructive/10">
+                <Button
+                  variant="outline"
+                  onClick={() => setRejectOpen(true)}
+                  className="text-destructive border-destructive hover:bg-destructive/10"
+                >
                   <XIcon className="size-4 mr-1" />
                   拒绝计划
                 </Button>
@@ -429,32 +565,72 @@ export default function ProjectDetailPage() {
             ) : null}
 
             {/* Start execution button */}
-            {approvalStatus === "approved" && currentProject.status === "not_started" && (
-              <div className="mt-4">
-                <Button onClick={handleStartExecution} disabled={startingExecution}>
-                  {startingExecution ? (
-                    <Loader2 className="size-4 mr-1 animate-spin" />
-                  ) : (
-                    <Play className="size-4 mr-1" />
-                  )}
-                  开始执行
-                </Button>
-              </div>
-            )}
+            {approvalStatus === "approved" &&
+              currentProject.status === "not_started" && (
+                <div className="mt-4">
+                  <Button
+                    onClick={handleStartExecution}
+                    disabled={startingExecution}
+                  >
+                    {startingExecution ? (
+                      <Loader2 className="size-4 mr-1 animate-spin" />
+                    ) : (
+                      <Play className="size-4 mr-1" />
+                    )}
+                    开始执行
+                  </Button>
+                </div>
+              )}
           </div>
         </TabsContent>
 
-        {/* Tab 2: Execution */}
+        {/* Tab 2: Tasks (List View) */}
+        <TabsContent value="tasks" className="flex flex-col flex-1 min-h-0">
+          <ViewStoreProvider store={useIssueViewStore}>
+            <IssuesHeader scopedIssues={scopedIssues} />
+            {scopedIssues.length === 0 ? (
+              <div className="flex flex-1 min-h-0 flex-col items-center justify-center gap-2 text-muted-foreground">
+                <ListTodo className="h-10 w-10 text-muted-foreground/40" />
+                <p className="text-sm">No issues yet</p>
+                <p className="text-xs">Create an issue to get started.</p>
+              </div>
+            ) : (
+              <ListView
+                issues={filteredIssues}
+                visibleStatuses={visibleStatuses}
+              />
+            )}
+            <BatchActionToolbar />
+          </ViewStoreProvider>
+        </TabsContent>
+
+        {/* Tab 3: Board (Kanban View) */}
+        <TabsContent value="board" className="flex flex-col flex-1 min-h-0">
+          <ViewStoreProvider store={useIssueViewStore}>
+            <IssuesHeader scopedIssues={scopedIssues} />
+            {scopedIssues.length === 0 ? (
+              <div className="flex flex-1 min-h-0 flex-col items-center justify-center gap-2 text-muted-foreground">
+                <ListTodo className="h-10 w-10 text-muted-foreground/40" />
+                <p className="text-sm">No issues yet</p>
+                <p className="text-xs">Create an issue to get started.</p>
+              </div>
+            ) : (
+              <BoardView
+                issues={filteredIssues}
+                allIssues={scopedIssues}
+                visibleStatuses={visibleStatuses}
+                hiddenStatuses={hiddenStatuses}
+                onMoveIssue={handleMoveIssue}
+              />
+            )}
+          </ViewStoreProvider>
+        </TabsContent>
+
+        {/* Tab 4: Execution */}
         <TabsContent value="execution" className="space-y-4">
           {activeRun ? (
             <div className="space-y-4">
-              {/* Run summary bar */}
-              <RunSummaryBar
-                run={activeRun}
-                steps={workflowSteps}
-              />
-
-              {/* Step cards */}
+              <RunSummaryBar run={activeRun} steps={workflowSteps} />
               <div className="space-y-3">
                 <h3 className="text-sm font-medium">步骤</h3>
                 {workflowSteps.length > 0 ? (
@@ -476,11 +652,14 @@ export default function ProjectDetailPage() {
                   </div>
                 )}
               </div>
-
               {activeRun.failure_reason && (
                 <div className="border border-destructive/30 rounded-lg p-3 bg-destructive/5">
-                  <div className="text-sm font-medium text-destructive">失败原因</div>
-                  <div className="text-sm text-muted-foreground mt-1">{activeRun.failure_reason}</div>
+                  <div className="text-sm font-medium text-destructive">
+                    失败原因
+                  </div>
+                  <div className="text-sm text-muted-foreground mt-1">
+                    {activeRun.failure_reason}
+                  </div>
                 </div>
               )}
             </div>
@@ -510,8 +689,14 @@ export default function ProjectDetailPage() {
               <h3 className="text-sm font-medium mb-3">运行历史</h3>
               <div className="space-y-2">
                 {runs.map((run: ProjectRun) => (
-                  <div key={run.id} className="flex items-center gap-3 p-3 border rounded-lg">
-                    <Badge className={RUN_STATUS_BADGE[run.status] ?? ""} variant="outline">
+                  <div
+                    key={run.id}
+                    className="flex items-center gap-3 p-3 border rounded-lg"
+                  >
+                    <Badge
+                      className={RUN_STATUS_BADGE[run.status] ?? ""}
+                      variant="outline"
+                    >
                       {run.status}
                     </Badge>
                     <div className="flex-1 min-w-0 text-sm">
@@ -522,7 +707,8 @@ export default function ProjectDetailPage() {
                       )}
                       {run.end_at && run.start_at && (
                         <span className="text-muted-foreground">
-                          {" "}{"\u2192"} {new Date(run.end_at).toLocaleString()}
+                          {" \u2192 "}
+                          {new Date(run.end_at).toLocaleString()}
                         </span>
                       )}
                     </div>
@@ -538,10 +724,13 @@ export default function ProjectDetailPage() {
           )}
         </TabsContent>
 
-        {/* Tab 3: Channel */}
+        {/* Tab 5: Channel */}
         <TabsContent value="channel">
           {currentProject.channel_id ? (
-            <div className="flex flex-col border rounded-lg" style={{ height: "500px" }}>
+            <div
+              className="flex flex-col border rounded-lg"
+              style={{ height: "500px" }}
+            >
               <div className="p-3 border-b">
                 <h3 className="font-medium text-sm">项目频道</h3>
               </div>
@@ -550,7 +739,8 @@ export default function ProjectDetailPage() {
                   <div key={msg.id} className="flex justify-start">
                     <div className="max-w-[70%] px-4 py-2 rounded-lg text-sm bg-muted">
                       <div className="text-xs opacity-70 mb-1">
-                        {msg.sender_id?.slice(0, 12)} · {new Date(msg.created_at).toLocaleTimeString()}
+                        {msg.sender_id?.slice(0, 12)} ·{" "}
+                        {new Date(msg.created_at).toLocaleTimeString()}
                       </div>
                       <div>{msg.content}</div>
                     </div>
@@ -562,7 +752,10 @@ export default function ProjectDetailPage() {
                   </div>
                 )}
               </div>
-              <MessageInput onSend={handleSendChannelMessage} placeholder="发送消息到项目频道..." />
+              <MessageInput
+                onSend={handleSendChannelMessage}
+                placeholder="发送消息到项目频道..."
+              />
             </div>
           ) : (
             <div className="text-center py-12 text-muted-foreground">
@@ -580,7 +773,9 @@ export default function ProjectDetailPage() {
           </DialogHeader>
           <div className="space-y-3">
             <div>
-              <label className="text-sm text-muted-foreground">分支名称 *</label>
+              <label className="text-sm text-muted-foreground">
+                分支名称 *
+              </label>
               <Input
                 value={forkBranch}
                 onChange={(e) => setForkBranch(e.target.value)}
@@ -599,7 +794,9 @@ export default function ProjectDetailPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setForkOpen(false)}>取消</Button>
+            <Button variant="outline" onClick={() => setForkOpen(false)}>
+              取消
+            </Button>
             <Button onClick={handleFork} disabled={!forkBranch.trim()}>
               <GitFork className="size-4 mr-1" />
               分叉
@@ -615,7 +812,9 @@ export default function ProjectDetailPage() {
             <DialogTitle>拒绝计划</DialogTitle>
           </DialogHeader>
           <div>
-            <label className="text-sm text-muted-foreground">拒绝原因 *</label>
+            <label className="text-sm text-muted-foreground">
+              拒绝原因 *
+            </label>
             <Input
               value={rejectReason}
               onChange={(e) => setRejectReason(e.target.value)}
@@ -624,8 +823,14 @@ export default function ProjectDetailPage() {
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setRejectOpen(false)}>取消</Button>
-            <Button variant="destructive" onClick={handleReject} disabled={!rejectReason.trim()}>
+            <Button variant="outline" onClick={() => setRejectOpen(false)}>
+              取消
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleReject}
+              disabled={!rejectReason.trim()}
+            >
               拒绝
             </Button>
           </DialogFooter>
@@ -655,7 +860,8 @@ function RunSummaryBar({
 }) {
   const completedCount = steps.filter((s) => s.status === "completed").length;
   const totalCount = steps.length;
-  const progressPct = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+  const progressPct =
+    totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
 
   const startTime = run.start_at ? new Date(run.start_at).getTime() : null;
   const endTime = run.end_at ? new Date(run.end_at).getTime() : Date.now();
@@ -677,7 +883,10 @@ function RunSummaryBar({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <h3 className="text-sm font-medium">当前运行</h3>
-          <Badge className={RUN_STATUS_BADGE[run.status] ?? ""} variant="outline">
+          <Badge
+            className={RUN_STATUS_BADGE[run.status] ?? ""}
+            variant="outline"
+          >
             {RUN_STATUS_LABEL[run.status] ?? run.status}
           </Badge>
           {durationStr && (

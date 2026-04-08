@@ -1,1 +1,5 @@
-export { SkillsPage as default } from "@/features/skills";
+import { redirect } from "next/navigation";
+
+export default function Page() {
+  redirect("/account?tab=skills");
+}
