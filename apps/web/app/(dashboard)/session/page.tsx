@@ -322,23 +322,28 @@ export default function SessionPage() {
 
   // Send handlers
   const handleSendDm = useCallback(
-    async (content: string) => {
+    async (content: string, fileInfo?: { file_id: string; file_name: string; file_size: number; file_content_type: string }) => {
       const conv = conversations.find((c) => c.peer_id === selectedId);
       if (!conv) return;
       await sendDmMessage({
         recipient_id: conv.peer_id,
         recipient_type: conv.peer_type,
         content,
+        ...(fileInfo ? { file_id: fileInfo.file_id, file_name: fileInfo.file_name } : {}),
       });
     },
     [conversations, selectedId, sendDmMessage],
   );
 
   const handleSendChannel = useCallback(
-    async (content: string) => {
+    async (content: string, fileInfo?: { file_id: string; file_name: string; file_size: number; file_content_type: string }) => {
       if (!selectedId) return;
       try {
-        const msg = await api.sendMessage({ channel_id: selectedId, content });
+        const msg = await api.sendMessage({
+          channel_id: selectedId,
+          content,
+          ...(fileInfo ? { file_id: fileInfo.file_id, file_name: fileInfo.file_name } : {}),
+        });
         setChannelMessages((prev) => [...prev, msg]);
       } catch {
         toast.error("Failed to send message");

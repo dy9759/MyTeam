@@ -590,7 +590,7 @@ export class ApiClient {
   }
 
   // Messages
-  async sendMessage(data: { channel_id?: string; recipient_id?: string; recipient_type?: string; session_id?: string; content: string; content_type?: string }) {
+  async sendMessage(data: { channel_id?: string; recipient_id?: string; recipient_type?: string; session_id?: string; content: string; content_type?: string; file_id?: string; file_name?: string }) {
     return this.fetch<any>('/api/messages', { method: 'POST', body: JSON.stringify(data) })
   }
 

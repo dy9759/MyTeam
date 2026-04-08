@@ -138,44 +138,49 @@ export default function FilesPage() {
 
   const [allFiles, setAllFiles] = useState<FileIndex[]>([]);
   const [allLoading, setAllLoading] = useState(false);
+  const [allFetched, setAllFetched] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectFilesMap, setProjectFilesMap] = useState<
     Record<string, FileIndex[]>
   >({});
   const [projectLoading, setProjectLoading] = useState(false);
+  const [projectFetched, setProjectFetched] = useState(false);
 
   // Fetch my files on mount
   useEffect(() => {
     fetchMyFiles();
   }, [fetchMyFiles]);
 
-  // Fetch all files when switching to agent tab
+  // Fetch all files when switching to agent tab (once)
   useEffect(() => {
-    if (activeTab === "agent" && allFiles.length === 0 && !allLoading) {
+    if (activeTab === "agent" && !allFetched && !allLoading) {
       setAllLoading(true);
       api
         .listMyFiles()
         .then((files) => {
-          setAllFiles(files);
+          const arr = Array.isArray(files) ? files : [];
+          setAllFiles(arr);
         })
         .catch(() => {})
-        .finally(() => setAllLoading(false));
+        .finally(() => { setAllLoading(false); setAllFetched(true); });
     }
-  }, [activeTab, allFiles.length, allLoading]);
+  }, [activeTab, allFetched, allLoading]);
 
-  // Fetch project files when switching to project tab
+  // Fetch project files when switching to project tab (once)
   useEffect(() => {
-    if (activeTab === "project" && projects.length === 0 && !projectLoading) {
+    if (activeTab === "project" && !projectFetched && !projectLoading) {
       setProjectLoading(true);
       api
         .listProjects()
-        .then(async (projs) => {
+        .then(async (data) => {
+          const projs = Array.isArray(data) ? data : [];
           setProjects(projs);
           const map: Record<string, FileIndex[]> = {};
           for (const p of projs) {
             try {
               const files = await api.listProjectFiles(p.id);
-              if (files.length > 0) map[p.id] = files;
+              const arr = Array.isArray(files) ? files : [];
+              if (arr.length > 0) map[p.id] = arr;
             } catch {
               // skip
             }
@@ -183,9 +188,9 @@ export default function FilesPage() {
           setProjectFilesMap(map);
         })
         .catch(() => {})
-        .finally(() => setProjectLoading(false));
+        .finally(() => { setProjectLoading(false); setProjectFetched(true); });
     }
-  }, [activeTab, projects.length, projectLoading]);
+  }, [activeTab, projectFetched, projectLoading]);
 
   // Partition files
   const myAgentIds = new Set(

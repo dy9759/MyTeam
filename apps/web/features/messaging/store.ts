@@ -14,7 +14,7 @@ interface MessagingState {
   ownerAgentConversations: Conversation[];
   fetch: () => Promise<void>;
   fetchMessages: (params: { channel_id?: string; recipient_id?: string; session_id?: string }) => Promise<void>;
-  sendMessage: (params: { channel_id?: string; recipient_id?: string; recipient_type?: string; session_id?: string; content: string }) => Promise<void>;
+  sendMessage: (params: { channel_id?: string; recipient_id?: string; recipient_type?: string; session_id?: string; content: string; file_id?: string; file_name?: string }) => Promise<void>;
   addMessage: (message: Message) => void;
   fetchThreads: (channelId: string) => Promise<void>;
   fetchThreadMessages: (threadId: string) => Promise<void>;
