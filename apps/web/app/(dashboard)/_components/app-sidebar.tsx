@@ -72,7 +72,7 @@ export function AppSidebar() {
   };
 
   return (
-      <Sidebar variant="inset" className="bg-[#0f1011] border-r border-[rgba(255,255,255,0.05)]">
+      <Sidebar variant="inset" className="bg-card border-r border-border">
         {/* Workspace Switcher */}
         <SidebarHeader className="py-3">
           <div className="flex items-center gap-4">
@@ -91,7 +91,7 @@ export function AppSidebar() {
                     }
                   />
                 <DropdownMenuContent
-                  className="w-52 bg-[#191a1b] border-[rgba(255,255,255,0.08)]"
+                  className="w-52 bg-popover border-border"
                   align="start"
                   side="bottom"
                   sideOffset={4}
