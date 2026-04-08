@@ -52,7 +52,7 @@ export function TokensTab() {
       const list = await api.listPersonalAccessTokens();
       setTokens(list);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to load tokens");
+      toast.error(e instanceof Error ? e.message : "加载令牌失败");
     } finally {
       setTokensLoading(false);
     }
@@ -81,9 +81,9 @@ export function TokensTab() {
     try {
       await api.revokePersonalAccessToken(id);
       await loadTokens();
-      toast.success("Token revoked");
+      toast.success("令牌已撤销");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to revoke token");
+      toast.error(e instanceof Error ? e.message : "撤销令牌失败");
     } finally {
       setTokenRevoking(null);
     }
@@ -126,7 +126,7 @@ export function TokensTab() {
                 </SelectContent>
               </Select>
               <Button onClick={handleCreateToken} disabled={tokenCreating || !tokenName.trim()}>
-                {tokenCreating ? "Creating..." : "Create"}
+                {tokenCreating ? "创建中..." : "创建"}
               </Button>
             </div>
           </CardContent>
@@ -198,7 +198,7 @@ export function TokensTab() {
                 setRevokeConfirmId(null);
               }}
             >
-              Revoke
+              撤销
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

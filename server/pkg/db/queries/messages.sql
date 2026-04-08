@@ -32,3 +32,15 @@ WHERE recipient_id = $1 AND recipient_type = $2 AND status = 'sent';
 -- name: ListMessagesByType :many
 SELECT * FROM message WHERE channel_id = $1 AND type = $2
 ORDER BY created_at ASC LIMIT $3 OFFSET $4;
+
+-- name: ListMessagesByThread :many
+SELECT * FROM message
+WHERE thread_id = $1
+ORDER BY created_at ASC
+LIMIT $2 OFFSET $3;
+
+-- name: ListMessagesForOwnerAgents :many
+SELECT * FROM message
+WHERE workspace_id = $1 AND sender_id = ANY(@owner_agent_ids::uuid[])
+ORDER BY created_at DESC
+LIMIT $2 OFFSET $3;

@@ -61,7 +61,7 @@ const statusConfig: Record<
     color: "text-muted-foreground",
   },
   running: {
-    label: "Updating...",
+    label: "更新中...",
     icon: Loader2,
     color: "text-info",
   },
@@ -71,7 +71,7 @@ const statusConfig: Record<
     color: "text-success",
   },
   failed: { label: "Update failed", icon: XCircle, color: "text-destructive" },
-  timeout: { label: "Timeout", icon: XCircle, color: "text-warning" },
+  timeout: { label: "超时", icon: XCircle, color: "text-warning" },
 };
 
 interface UpdateSectionProps {

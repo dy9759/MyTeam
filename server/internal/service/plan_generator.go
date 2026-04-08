@@ -20,6 +20,7 @@ type PlanStep struct {
 	EstimatedMinutes int      `json:"estimated_minutes"`
 	DependsOn        []int    `json:"depends_on"`
 	Parallelizable   bool     `json:"parallelizable"`
+	AssignedAgentID  string   `json:"assigned_agent_id,omitempty"`
 }
 
 type GeneratedPlan struct {
@@ -27,6 +28,16 @@ type GeneratedPlan struct {
 	Description string     `json:"description"`
 	Steps       []PlanStep `json:"steps"`
 	Constraints string     `json:"constraints"`
+	TaskBrief   string     `json:"task_brief,omitempty"`
+}
+
+// AgentIdentity holds info about an agent for plan generation.
+type AgentIdentity struct {
+	ID           string   `json:"id"`
+	Name         string   `json:"name"`
+	Capabilities []string `json:"capabilities"`
+	Skills       []string `json:"skills"`
+	Tools        []string `json:"tools"`
 }
 
 type PlanGeneratorService struct {
@@ -145,4 +156,147 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n] + "..."
+}
+
+// GeneratePlanWithContext generates a plan using conversation context and agent identities.
+func (s *PlanGeneratorService) GeneratePlanWithContext(
+	ctx context.Context,
+	chatContext string,
+	agents []AgentIdentity,
+	workspaceID string,
+) (*GeneratedPlan, error) {
+	// Build agent descriptions for the prompt.
+	var agentDescriptions strings.Builder
+	for _, a := range agents {
+		fmt.Fprintf(&agentDescriptions, "- Agent %q (ID: %s)\n", a.Name, a.ID)
+		if len(a.Capabilities) > 0 {
+			fmt.Fprintf(&agentDescriptions, "  Capabilities: %s\n", strings.Join(a.Capabilities, ", "))
+		}
+		if len(a.Skills) > 0 {
+			fmt.Fprintf(&agentDescriptions, "  Skills: %s\n", strings.Join(a.Skills, ", "))
+		}
+		if len(a.Tools) > 0 {
+			fmt.Fprintf(&agentDescriptions, "  Tools: %s\n", strings.Join(a.Tools, ", "))
+		}
+	}
+
+	prompt := fmt.Sprintf(`You are a project planner. Based on the following conversation context and available agents, create a structured project plan.
+
+## Conversation Context
+%s
+
+## Available Agents
+%s
+
+Create a plan that:
+1. Breaks the work into clear steps
+2. Assigns each step to the most appropriate agent based on their capabilities and skills
+3. Defines dependencies between steps
+4. Identifies which steps can run in parallel
+5. Generates a task brief summarizing the objective
+
+Respond with JSON only:
+{
+  "title": "short project title",
+  "description": "what needs to be done",
+  "steps": [
+    {
+      "order": 1,
+      "description": "step description",
+      "required_skills": ["skill1"],
+      "estimated_minutes": 30,
+      "depends_on": [],
+      "assigned_agent_id": "agent-uuid",
+      "parallelizable": false
+    }
+  ],
+  "constraints": "any constraints or risks",
+  "task_brief": "structured task brief with objective, scope, and success criteria"
+}`, truncate(chatContext, 8000), agentDescriptions.String())
+
+	apiKey := getEnv("ANTHROPIC_API_KEY", getEnv("LLM_API_KEY", ""))
+	if apiKey == "" {
+		// Fallback: simple plan without LLM
+		var assignedAgent string
+		if len(agents) > 0 {
+			assignedAgent = agents[0].ID
+		}
+		return &GeneratedPlan{
+			Title:       truncate(chatContext, 60),
+			Description: chatContext,
+			Steps: []PlanStep{
+				{
+					Order:           1,
+					Description:     chatContext,
+					RequiredSkills:  []string{},
+					Parallelizable:  false,
+					AssignedAgentID: assignedAgent,
+				},
+			},
+			TaskBrief: fmt.Sprintf("## Objective\n%s\n\n## Scope\nDerived from conversation context.\n", truncate(chatContext, 200)),
+		}, nil
+	}
+
+	endpoint := getEnv("LLM_ENDPOINT", "https://api.anthropic.com/v1/messages")
+	model := getEnv("LLM_MODEL", "claude-sonnet-4-20250514")
+
+	body, _ := json.Marshal(map[string]any{
+		"model":      model,
+		"max_tokens": 4096,
+		"system":     "You are a project planning assistant. Always respond with valid JSON. Assign agents to steps based on their capabilities.",
+		"messages":   []map[string]string{{"role": "user", "content": prompt}},
+	})
+
+	req, _ := http.NewRequestWithContext(ctx, "POST", endpoint, strings.NewReader(string(body)))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-api-key", apiKey)
+	req.Header.Set("anthropic-version", "2023-06-01")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		slog.Warn("LLM call failed for plan with context", "error", err)
+		return s.fallbackPlanWithContext(chatContext, agents), nil
+	}
+	defer resp.Body.Close()
+
+	var llmResp struct {
+		Content []struct {
+			Text string `json:"text"`
+		} `json:"content"`
+	}
+	json.NewDecoder(resp.Body).Decode(&llmResp)
+
+	if len(llmResp.Content) == 0 {
+		return s.fallbackPlanWithContext(chatContext, agents), nil
+	}
+
+	var plan GeneratedPlan
+	if err := json.Unmarshal([]byte(llmResp.Content[0].Text), &plan); err != nil {
+		slog.Warn("failed to parse LLM plan with context", "error", err)
+		return s.fallbackPlanWithContext(chatContext, agents), nil
+	}
+
+	return &plan, nil
+}
+
+// fallbackPlanWithContext creates a simple single-step plan when LLM is unavailable.
+func (s *PlanGeneratorService) fallbackPlanWithContext(chatContext string, agents []AgentIdentity) *GeneratedPlan {
+	var assignedAgent string
+	if len(agents) > 0 {
+		assignedAgent = agents[0].ID
+	}
+	return &GeneratedPlan{
+		Title:       truncate(chatContext, 60),
+		Description: chatContext,
+		Steps: []PlanStep{
+			{
+				Order:           1,
+				Description:     chatContext,
+				RequiredSkills:  []string{},
+				Parallelizable:  false,
+				AssignedAgentID: assignedAgent,
+			},
+		},
+		TaskBrief: fmt.Sprintf("## Objective\n%s\n", truncate(chatContext, 200)),
+	}
 }

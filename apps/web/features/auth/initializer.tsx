@@ -17,13 +17,16 @@ export function AuthInitializer({ children }: { children: ReactNode }) {
   useEffect(() => {
     const token = localStorage.getItem("multica_token");
     if (!token) {
+      logger.info("no stored token, skipping auth init");
       clearLoggedInCookie();
       useAuthStore.setState({ isLoading: false });
       return;
     }
 
+    logger.info("found stored token, restoring session...");
     api.setToken(token);
     const wsId = localStorage.getItem("multica_workspace_id");
+    logger.debug("stored workspace id", { wsId });
 
     // Fire getMe and listWorkspaces in parallel
     const mePromise = api.getMe();
@@ -31,12 +34,13 @@ export function AuthInitializer({ children }: { children: ReactNode }) {
 
     Promise.all([mePromise, wsPromise])
       .then(([user, wsList]) => {
+        logger.info("session restored", { userId: user.id, email: user.email, workspaces: wsList.length });
         setLoggedInCookie();
         useAuthStore.setState({ user, isLoading: false });
         useWorkspaceStore.getState().hydrateWorkspace(wsList, wsId);
       })
       .catch((err) => {
-        logger.error("auth init failed", err);
+        logger.error("auth init failed — token expired or backend unreachable", err);
         api.setToken(null);
         api.setWorkspaceId(null);
         localStorage.removeItem("multica_token");

@@ -14,7 +14,7 @@ import (
 const createSystemAgent = `-- name: CreateSystemAgent :one
 INSERT INTO agent (workspace_id, name, description, status, is_system, owner_id, visibility)
 VALUES ($1, 'System Agent', 'Workspace system agent - manages defaults and automation', 'idle', TRUE, $2, 'workspace')
-RETURNING id, workspace_id, name, avatar_url, runtime_mode, runtime_config, visibility, status, max_concurrent_tasks, owner_id, created_at, updated_at, description, tools, triggers, runtime_id, instructions, archived_at, archived_by, capabilities, auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags, agent_metadata, trigger_on_channel_mention, is_system, system_config
+RETURNING id, workspace_id, name, avatar_url, runtime_mode, runtime_config, visibility, status, max_concurrent_tasks, owner_id, created_at, updated_at, description, tools, triggers, runtime_id, instructions, archived_at, archived_by, capabilities, auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags, agent_metadata, trigger_on_channel_mention, is_system, system_config, agent_type, online_status, workload_status, identity_card, accessible_files_scope, allowed_channels_scope, last_active_at
 `
 
 type CreateSystemAgentParams struct {
@@ -56,12 +56,19 @@ func (q *Queries) CreateSystemAgent(ctx context.Context, arg CreateSystemAgentPa
 		&i.TriggerOnChannelMention,
 		&i.IsSystem,
 		&i.SystemConfig,
+		&i.AgentType,
+		&i.OnlineStatus,
+		&i.WorkloadStatus,
+		&i.IdentityCard,
+		&i.AccessibleFilesScope,
+		&i.AllowedChannelsScope,
+		&i.LastActiveAt,
 	)
 	return i, err
 }
 
 const getAgentByName = `-- name: GetAgentByName :one
-SELECT id, workspace_id, name, avatar_url, runtime_mode, runtime_config, visibility, status, max_concurrent_tasks, owner_id, created_at, updated_at, description, tools, triggers, runtime_id, instructions, archived_at, archived_by, capabilities, auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags, agent_metadata, trigger_on_channel_mention, is_system, system_config FROM agent WHERE workspace_id = $1 AND name = $2 AND archived_at IS NULL
+SELECT id, workspace_id, name, avatar_url, runtime_mode, runtime_config, visibility, status, max_concurrent_tasks, owner_id, created_at, updated_at, description, tools, triggers, runtime_id, instructions, archived_at, archived_by, capabilities, auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags, agent_metadata, trigger_on_channel_mention, is_system, system_config, agent_type, online_status, workload_status, identity_card, accessible_files_scope, allowed_channels_scope, last_active_at FROM agent WHERE workspace_id = $1 AND name = $2 AND archived_at IS NULL
 `
 
 type GetAgentByNameParams struct {
@@ -103,6 +110,13 @@ func (q *Queries) GetAgentByName(ctx context.Context, arg GetAgentByNameParams) 
 		&i.TriggerOnChannelMention,
 		&i.IsSystem,
 		&i.SystemConfig,
+		&i.AgentType,
+		&i.OnlineStatus,
+		&i.WorkloadStatus,
+		&i.IdentityCard,
+		&i.AccessibleFilesScope,
+		&i.AllowedChannelsScope,
+		&i.LastActiveAt,
 	)
 	return i, err
 }
@@ -184,7 +198,7 @@ func (q *Queries) GetAutoReplyAgents(ctx context.Context, workspaceID pgtype.UUI
 }
 
 const getSystemAgent = `-- name: GetSystemAgent :one
-SELECT id, workspace_id, name, avatar_url, runtime_mode, runtime_config, visibility, status, max_concurrent_tasks, owner_id, created_at, updated_at, description, tools, triggers, runtime_id, instructions, archived_at, archived_by, capabilities, auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags, agent_metadata, trigger_on_channel_mention, is_system, system_config FROM agent WHERE workspace_id = $1 AND is_system = TRUE LIMIT 1
+SELECT id, workspace_id, name, avatar_url, runtime_mode, runtime_config, visibility, status, max_concurrent_tasks, owner_id, created_at, updated_at, description, tools, triggers, runtime_id, instructions, archived_at, archived_by, capabilities, auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags, agent_metadata, trigger_on_channel_mention, is_system, system_config, agent_type, online_status, workload_status, identity_card, accessible_files_scope, allowed_channels_scope, last_active_at FROM agent WHERE workspace_id = $1 AND is_system = TRUE LIMIT 1
 `
 
 func (q *Queries) GetSystemAgent(ctx context.Context, workspaceID pgtype.UUID) (Agent, error) {
@@ -221,12 +235,19 @@ func (q *Queries) GetSystemAgent(ctx context.Context, workspaceID pgtype.UUID) (
 		&i.TriggerOnChannelMention,
 		&i.IsSystem,
 		&i.SystemConfig,
+		&i.AgentType,
+		&i.OnlineStatus,
+		&i.WorkloadStatus,
+		&i.IdentityCard,
+		&i.AccessibleFilesScope,
+		&i.AllowedChannelsScope,
+		&i.LastActiveAt,
 	)
 	return i, err
 }
 
 const listAgentsWithCapability = `-- name: ListAgentsWithCapability :many
-SELECT id, workspace_id, name, avatar_url, runtime_mode, runtime_config, visibility, status, max_concurrent_tasks, owner_id, created_at, updated_at, description, tools, triggers, runtime_id, instructions, archived_at, archived_by, capabilities, auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags, agent_metadata, trigger_on_channel_mention, is_system, system_config FROM agent
+SELECT id, workspace_id, name, avatar_url, runtime_mode, runtime_config, visibility, status, max_concurrent_tasks, owner_id, created_at, updated_at, description, tools, triggers, runtime_id, instructions, archived_at, archived_by, capabilities, auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags, agent_metadata, trigger_on_channel_mention, is_system, system_config, agent_type, online_status, workload_status, identity_card, accessible_files_scope, allowed_channels_scope, last_active_at FROM agent
 WHERE workspace_id = $1
   AND $2 = ANY(capabilities)
   AND archived_at IS NULL
@@ -277,6 +298,13 @@ func (q *Queries) ListAgentsWithCapability(ctx context.Context, arg ListAgentsWi
 			&i.TriggerOnChannelMention,
 			&i.IsSystem,
 			&i.SystemConfig,
+			&i.AgentType,
+			&i.OnlineStatus,
+			&i.WorkloadStatus,
+			&i.IdentityCard,
+			&i.AccessibleFilesScope,
+			&i.AllowedChannelsScope,
+			&i.LastActiveAt,
 		); err != nil {
 			return nil, err
 		}

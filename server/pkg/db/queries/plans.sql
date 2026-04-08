@@ -14,3 +14,12 @@ UPDATE plan SET steps = $2, updated_at = NOW() WHERE id = $1;
 
 -- name: DeletePlan :exec
 DELETE FROM plan WHERE id = $1;
+
+-- name: GetPlanByProject :one
+SELECT * FROM plan WHERE project_id = @project_id ORDER BY created_at DESC LIMIT 1;
+
+-- name: UpdatePlanApproval :exec
+UPDATE plan SET approval_status = @approval_status, approved_by = @approved_by, approved_at = NOW(), updated_at = NOW() WHERE id = @id;
+
+-- name: UpdatePlanProject :exec
+UPDATE plan SET project_id = @project_id, version_id = @version_id, updated_at = NOW() WHERE id = @id;

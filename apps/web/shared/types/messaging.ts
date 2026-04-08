@@ -7,16 +7,28 @@ export interface Message {
   recipient_id?: string;
   recipient_type?: "member" | "agent";
   session_id?: string;
+  thread_id?: string;
   content: string;
   content_type: "text" | "json" | "file";
   file_id?: string;
   file_name?: string;
   file_size?: number;
   file_content_type?: string;
+  is_impersonated?: boolean;
   metadata?: Record<string, unknown>;
   status: "sent" | "delivered" | "read";
+  reply_count?: number;
   created_at: string;
   updated_at: string;
+}
+
+export interface Thread {
+  id: string;
+  channel_id: string;
+  title?: string;
+  reply_count: number;
+  last_reply_at?: string;
+  created_at: string;
 }
 
 export interface Channel {

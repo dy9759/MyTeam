@@ -128,9 +128,9 @@ function useIssueCounts(allIssues: Issue[]) {
 // ---------------------------------------------------------------------------
 
 const SCOPES: { value: IssuesScope; label: string; description: string }[] = [
-  { value: "all", label: "All", description: "All issues in this workspace" },
-  { value: "members", label: "Members", description: "Issues assigned to team members" },
-  { value: "agents", label: "Agents", description: "Issues assigned to AI agents" },
+  { value: "all", label: "全部", description: "此工作区的所有任务" },
+  { value: "members", label: "成员", description: "分配给团队成员的任务" },
+  { value: "agents", label: "代理", description: "分配给AI代理的任务" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -530,7 +530,7 @@ export function IssuesHeader({ scopedIssues }: { scopedIssues: Issue[] }) {
                   onClick={() =>
                     act.setSortDirection(sortDirection === "asc" ? "desc" : "asc")
                   }
-                  title={sortDirection === "asc" ? "Ascending" : "Descending"}
+                  title={sortDirection === "asc" ? "升序" : "降序"}
                 >
                   {sortDirection === "asc" ? (
                     <ArrowUp className="size-3.5" />
@@ -583,7 +583,7 @@ export function IssuesHeader({ scopedIssues }: { scopedIssues: Issue[] }) {
               }
             />
             <TooltipContent side="bottom">
-              {viewMode === "board" ? "Board view" : "List view"}
+              {viewMode === "board" ? "看板视图" : "列表视图"}
             </TooltipContent>
           </Tooltip>
           <DropdownMenuContent align="end" className="w-auto">

@@ -104,7 +104,7 @@ export function BoardColumn({
         </SortableContext>
         {issues.length === 0 && (
           <p className="py-8 text-center text-xs text-muted-foreground">
-            No issues
+            暂无任务
           </p>
         )}
       </div>

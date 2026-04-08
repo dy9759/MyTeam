@@ -17,6 +17,7 @@ interface ChannelState {
   joinChannel: (id: string) => Promise<void>;
   leaveChannel: (id: string) => Promise<void>;
   setCurrentChannel: (channel: Channel | null) => void;
+  upgradeToChannel: (channelId: string, name: string) => Promise<void>;
 }
 
 export const useChannelStore = create<ChannelState>((set) => ({
@@ -84,4 +85,17 @@ export const useChannelStore = create<ChannelState>((set) => ({
   },
 
   setCurrentChannel: (channel) => set({ currentChannel: channel }),
+
+  upgradeToChannel: async (channelId, name) => {
+    try {
+      const channel = await api.upgradeToChannel(channelId, name);
+      set((s) => ({
+        channels: s.channels.map((c) => (c.id === channelId ? channel : c)),
+        currentChannel: s.currentChannel?.id === channelId ? channel : s.currentChannel,
+      }));
+      toast.success("Upgraded to channel");
+    } catch {
+      toast.error("Failed to upgrade to channel");
+    }
+  },
 }));

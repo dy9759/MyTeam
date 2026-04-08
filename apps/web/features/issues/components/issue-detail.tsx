@@ -97,34 +97,34 @@ function formatActivity(
   const details = (entry.details ?? {}) as Record<string, string>;
   switch (entry.action) {
     case "created":
-      return "created this issue";
+      return "创建了此任务";
     case "status_changed":
       return `changed status from ${statusLabel(details.from ?? "?")} to ${statusLabel(details.to ?? "?")}`;
     case "priority_changed":
       return `changed priority from ${priorityLabel(details.from ?? "?")} to ${priorityLabel(details.to ?? "?")}`;
     case "assignee_changed": {
       const isSelfAssign = details.to_type === entry.actor_type && details.to_id === entry.actor_id;
-      if (isSelfAssign) return "self-assigned this issue";
+      if (isSelfAssign) return "自行认领了此任务";
       const toName = details.to_id && details.to_type && resolveActorName
         ? resolveActorName(details.to_type, details.to_id)
         : null;
       if (toName) return `assigned to ${toName}`;
-      if (details.from_id && !details.to_id) return "removed assignee";
-      return "changed assignee";
+      if (details.from_id && !details.to_id) return "移除了负责人";
+      return "更改了负责人";
     }
     case "due_date_changed": {
-      if (!details.to) return "removed due date";
+      if (!details.to) return "移除了截止日期";
       const formatted = new Date(details.to).toLocaleDateString("en-US", { month: "short", day: "numeric" });
       return `set due date to ${formatted}`;
     }
     case "title_changed":
       return `renamed this issue from "${details.from ?? "?"}" to "${details.to ?? "?"}"`;
     case "description_updated":
-      return "updated the description";
+      return "更新了描述";
     case "task_completed":
-      return "completed the task";
+      return "完成了任务";
     case "task_failed":
-      return "task failed";
+      return "任务失败";
     default:
       return entry.action ?? "";
   }
@@ -218,7 +218,7 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
       })
       .catch((e) => {
         console.error(e);
-        toast.error("Failed to load issue");
+        toast.error("加载任务失败");
       })
       .finally(() => setIssueLoading(false));
   }, [id, !!issue]);
@@ -281,7 +281,7 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
       useIssueStore.getState().updateIssue(id, updates);
       api.updateIssue(id, updates).catch(() => {
         useIssueStore.getState().updateIssue(id, prev);
-        toast.error("Failed to update issue");
+        toast.error("更新任务失败");
       });
     },
     [issue, id],
@@ -298,11 +298,11 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
     try {
       await api.deleteIssue(issue!.id);
       useIssueStore.getState().removeIssue(issue!.id);
-      toast.success("Issue deleted");
+      toast.success("任务已删除");
       if (onDelete) onDelete();
       else router.push("/issues");
     } catch {
-      toast.error("Failed to delete issue");
+      toast.error("删除任务失败");
       setDeleting(false);
     }
   };
@@ -564,7 +564,7 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
                 {/* Copy link */}
                 <DropdownMenuItem onClick={() => {
                   navigator.clipboard.writeText(window.location.href);
-                  toast.success("Link copied");
+                  toast.success("链接已复制");
                 }}>
                   <Link2 className="h-3.5 w-3.5" />
                   Copy link
@@ -620,7 +620,7 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
                     disabled={deleting}
                     className="bg-destructive text-white hover:bg-destructive/90"
                   >
-                    {deleting ? "Deleting..." : "Delete"}
+                    {deleting ? "删除中..." : "删除"}
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
@@ -633,7 +633,7 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
           <TitleEditor
             key={`title-${id}`}
             defaultValue={issue.title}
-            placeholder="Issue title"
+            placeholder="任务标题"
             className="w-full text-2xl font-bold leading-snug tracking-tight"
             onBlur={(value) => {
               const trimmed = value.trim();
@@ -645,7 +645,7 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
             ref={descEditorRef}
             key={id}
             defaultValue={issue.description || ""}
-            placeholder="Add description..."
+            placeholder="添加描述..."
             onUpdate={(md) => handleUpdateField({ description: md || undefined })}
             onUploadFile={handleDescriptionUpload}
             debounceMs={1500}
@@ -723,7 +723,7 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
                       <CommandList className="max-h-64">
                         <CommandEmpty>No results found</CommandEmpty>
                         {members.length > 0 && (
-                          <CommandGroup heading="Members">
+                          <CommandGroup heading="成员">
                             {members.filter((m, i, arr) => arr.findIndex((x) => x.user_id === m.user_id) === i).map((m) => {
                               const sub = subscribers.find((s) => s.user_type === "member" && s.user_id === m.user_id);
                               const isSubbed = !!sub;
@@ -743,7 +743,7 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
                           </CommandGroup>
                         )}
                         {agents.filter((a) => !a.archived_at).length > 0 && (
-                          <CommandGroup heading="Agents">
+                          <CommandGroup heading="代理">
                             {agents.filter((a) => !a.archived_at).map((a) => {
                               const sub = subscribers.find((s) => s.user_type === "agent" && s.user_id === a.id);
                               const isSubbed = !!sub;
@@ -961,7 +961,7 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
 
             {propertiesOpen && <div className="space-y-0.5 pl-2">
               {/* Status */}
-              <PropRow label="Status">
+              <PropRow label="状态">
                 <DropdownMenu>
                   <DropdownMenuTrigger className="flex items-center gap-1.5 cursor-pointer rounded px-1 -mx-1 hover:bg-accent/30 transition-colors overflow-hidden">
                     <StatusIcon status={issue.status} className="h-3.5 w-3.5 shrink-0" />
@@ -980,7 +980,7 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
               </PropRow>
 
               {/* Priority */}
-              <PropRow label="Priority">
+              <PropRow label="优先级">
                 <DropdownMenu>
                   <DropdownMenuTrigger className="flex items-center gap-1.5 cursor-pointer rounded px-1 -mx-1 hover:bg-accent/30 transition-colors overflow-hidden">
                     <PriorityIcon priority={issue.priority} className="shrink-0" />
@@ -1001,7 +1001,7 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
               </PropRow>
 
               {/* Assignee */}
-              <PropRow label="Assignee">
+              <PropRow label="负责人">
                 <AssigneePicker
                   assigneeType={issue.assignee_type}
                   assigneeId={issue.assignee_id}
@@ -1011,7 +1011,7 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
               </PropRow>
 
               {/* Due date */}
-              <PropRow label="Due date">
+              <PropRow label="截止日期">
                 <DueDatePicker
                   dueDate={issue.due_date}
                   onUpdate={handleUpdateField}
@@ -1039,7 +1039,7 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
                 />
                 <span className="truncate">{getActorName(issue.creator_type, issue.creator_id)}</span>
               </PropRow>
-              <PropRow label="Created">
+              <PropRow label="我创建的">
                 <span className="text-muted-foreground">{shortDate(issue.created_at)}</span>
               </PropRow>
               <PropRow label="Updated">

@@ -14,7 +14,7 @@ import (
 var loginCmd = &cobra.Command{
 	Use:   "login",
 	Short: "Authenticate and set up workspaces",
-	Long:  "Log in to Multica, then automatically discover and watch all your workspaces.",
+	Long:  "Log in to My Team, then automatically discover and watch all your workspaces.",
 	RunE:  runLogin,
 }
 

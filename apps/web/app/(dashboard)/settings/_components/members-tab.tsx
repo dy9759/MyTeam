@@ -41,9 +41,9 @@ import { useWorkspaceStore } from "@/features/workspace";
 import { api } from "@/shared/api";
 
 const roleConfig: Record<MemberRole, { label: string; icon: typeof Crown; description: string }> = {
-  owner: { label: "Owner", icon: Crown, description: "Full access, manage all settings" },
-  admin: { label: "Admin", icon: Shield, description: "Manage members and settings" },
-  member: { label: "Member", icon: User, description: "Create and work on issues" },
+  owner: { label: "所有者", icon: Crown, description: "完全访问权限，管理所有设置" },
+  admin: { label: "管理员", icon: Shield, description: "管理成员和设置" },
+  member: { label: "成员", icon: User, description: "创建和处理任务" },
 };
 
 function MemberRow({
@@ -90,7 +90,7 @@ function MemberRow({
               <DropdownMenuSub>
                 <DropdownMenuSubTrigger>
                   <Shield className="h-3.5 w-3.5" />
-                  Change role
+                  更改角色
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent className="w-auto">
                   {(Object.entries(roleConfig) as [MemberRole, (typeof roleConfig)[MemberRole]][]).map(
@@ -123,7 +123,7 @@ function MemberRow({
             {canRemove && (
               <DropdownMenuItem variant="destructive" onClick={onRemove}>
                 <UserMinus className="h-3.5 w-3.5" />
-                Remove from workspace
+                从工作区移除
               </DropdownMenuItem>
             )}
           </DropdownMenuContent>
@@ -169,9 +169,9 @@ export function MembersTab() {
       setInviteEmail("");
       setInviteRole("member");
       await refreshMembers();
-      toast.success("Member added");
+      toast.success("已添加成员");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to add member");
+      toast.error(e instanceof Error ? e.message : "添加成员失败");
     } finally {
       setInviteLoading(false);
     }
@@ -183,9 +183,9 @@ export function MembersTab() {
     try {
       await api.updateMember(workspace.id, memberId, { role });
       await refreshMembers();
-      toast.success("Role updated");
+      toast.success("角色已更新");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to update member");
+      toast.error(e instanceof Error ? e.message : "更新成员失败");
     } finally {
       setMemberActionId(null);
     }
@@ -202,9 +202,9 @@ export function MembersTab() {
         try {
           await api.deleteMember(workspace.id, member.id);
           await refreshMembers();
-          toast.success("Member removed");
+          toast.success("成员已移除");
         } catch (e) {
-          toast.error(e instanceof Error ? e.message : "Failed to remove member");
+          toast.error(e instanceof Error ? e.message : "移除成员失败");
         } finally {
           setMemberActionId(null);
         }
@@ -248,7 +248,7 @@ export function MembersTab() {
                   onClick={handleAddMember}
                   disabled={inviteLoading || !inviteEmail.trim()}
                 >
-                  {inviteLoading ? "Adding..." : "Add"}
+                  {inviteLoading ? "添加中..." : "添加"}
                 </Button>
               </div>
             </CardContent>
@@ -291,7 +291,7 @@ export function MembersTab() {
                 setConfirmAction(null);
               }}
             >
-              Confirm
+              确认
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

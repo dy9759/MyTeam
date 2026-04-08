@@ -37,10 +37,10 @@ export function WorkflowEditor({ steps, onUpdateStep, onAddStep, onRemoveStep, r
         <div className="flex gap-2 mb-4 p-3 border rounded-lg bg-muted/30">
           <button onClick={onAddStep}
             className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md">
-            + Add Step
+            + 添加步骤
           </button>
           <span className="text-sm text-muted-foreground self-center">
-            Drag steps to reorder · Click to edit
+            拖拽步骤重新排序 · 点击编辑
           </span>
         </div>
       )}
@@ -58,7 +58,7 @@ export function WorkflowEditor({ steps, onUpdateStep, onAddStep, onRemoveStep, r
                 <div className="flex justify-center py-1">
                   <div className="w-0.5 h-6 bg-border" />
                   <span className="absolute text-xs text-muted-foreground -mt-1 ml-4">
-                    {deps.length > 0 ? `depends on step ${deps.join(", ")}` : "sequential"}
+                    {deps.length > 0 ? `依赖步骤 ${deps.join(", ")}` : "顺序执行"}
                   </span>
                 </div>
               )}
@@ -82,8 +82,8 @@ export function WorkflowEditor({ steps, onUpdateStep, onAddStep, onRemoveStep, r
                       <div className="font-medium">{step.description}</div>
                       <div className="flex gap-2 mt-1 text-xs text-muted-foreground">
                         {step.agent_id && <span>{step.agent_id.slice(0, 8)}</span>}
-                        {step.timeout_ms && <span>{step.timeout_ms / 1000}s timeout</span>}
-                        {step.retry_count > 1 && <span>{step.retry_count}x retries</span>}
+                        {step.timeout_ms && <span>{step.timeout_ms / 1000}秒超时</span>}
+                        {step.retry_count > 1 && <span>{step.retry_count}次重试</span>}
                       </div>
                     </div>
                   </div>
@@ -112,20 +112,20 @@ export function WorkflowEditor({ steps, onUpdateStep, onAddStep, onRemoveStep, r
                 {isSelected && !readOnly && (
                   <div className="mt-3 pt-3 border-t space-y-2" onClick={e => e.stopPropagation()}>
                     <div>
-                      <label className="text-xs text-muted-foreground">Description</label>
+                      <label className="text-xs text-muted-foreground">描述</label>
                       <input value={step.description}
                         onChange={e => onUpdateStep?.(step.id, { description: e.target.value })}
                         className="w-full mt-1 px-2 py-1 text-sm border rounded bg-background" />
                     </div>
                     <div className="flex gap-2">
                       <div className="flex-1">
-                        <label className="text-xs text-muted-foreground">Timeout (ms)</label>
+                        <label className="text-xs text-muted-foreground">超时（毫秒）</label>
                         <input type="number" value={step.timeout_ms}
                           onChange={e => onUpdateStep?.(step.id, { timeout_ms: parseInt(e.target.value) })}
                           className="w-full mt-1 px-2 py-1 text-sm border rounded bg-background" />
                       </div>
                       <div className="flex-1">
-                        <label className="text-xs text-muted-foreground">Retries</label>
+                        <label className="text-xs text-muted-foreground">重试</label>
                         <input type="number" value={step.retry_count}
                           onChange={e => onUpdateStep?.(step.id, { retry_count: parseInt(e.target.value) })}
                           className="w-full mt-1 px-2 py-1 text-sm border rounded bg-background" />
@@ -137,12 +137,12 @@ export function WorkflowEditor({ steps, onUpdateStep, onAddStep, onRemoveStep, r
                 {/* Result/error */}
                 {step.result && (
                   <div className="mt-2 text-xs bg-green-50 text-green-700 p-2 rounded">
-                    Result: {JSON.stringify(step.result).slice(0, 100)}
+                    结果：{JSON.stringify(step.result).slice(0, 100)}
                   </div>
                 )}
                 {step.error && (
                   <div className="mt-2 text-xs bg-red-50 text-red-700 p-2 rounded">
-                    Error: {step.error}
+                    错误：{step.error}
                   </div>
                 )}
               </div>
@@ -153,8 +153,8 @@ export function WorkflowEditor({ steps, onUpdateStep, onAddStep, onRemoveStep, r
 
       {sortedSteps.length === 0 && (
         <div className="text-center py-12 border-2 border-dashed rounded-xl text-muted-foreground">
-          <p className="mb-2">No steps yet</p>
-          {!readOnly && <button onClick={onAddStep} className="text-sm text-primary hover:underline">Add first step</button>}
+          <p className="mb-2">暂无步骤</p>
+          {!readOnly && <button onClick={onAddStep} className="text-sm text-primary hover:underline">添加第一个步骤</button>}
         </div>
       )}
     </div>

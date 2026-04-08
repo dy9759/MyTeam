@@ -33,9 +33,9 @@ export function RepositoriesTab() {
     try {
       const updated = await api.updateWorkspace(workspace.id, { repos });
       updateWorkspace(updated);
-      toast.success("Repositories saved");
+      toast.success("代码仓库已保存");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to save repositories");
+      toast.error(e instanceof Error ? e.message : "保存代码仓库失败");
     } finally {
       setSaving(false);
     }
@@ -103,7 +103,7 @@ export function RepositoriesTab() {
               <div className="flex items-center justify-between pt-1">
                 <Button variant="outline" size="sm" onClick={handleAddRepo}>
                   <Plus className="h-3 w-3" />
-                  Add repository
+                  添加仓库
                 </Button>
                 <Button
                   size="sm"
@@ -111,7 +111,7 @@ export function RepositoriesTab() {
                   disabled={saving}
                 >
                   <Save className="h-3 w-3" />
-                  {saving ? "Saving..." : "Save"}
+                  {saving ? "保存中..." : "保存"}
                 </Button>
               </div>
             )}

@@ -55,6 +55,7 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 	h.AutoReplyService = service.NewAutoReplyService(queries, hub)
 	h.PlanGenerator = service.NewPlanGeneratorService(queries)
 	h.Scheduler = service.NewSchedulerService(queries, hub)
+	h.Scheduler.Bus = bus
 
 	// Start auto-reply poll daemon
 	go h.AutoReplyService.StartPollDaemon(context.Background())
@@ -65,6 +66,21 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 
 	notifSvc := service.NewNotificationService(queries, hub)
 	notifSvc.SubscribeToEvents(bus)
+
+	// Execution engine services (Phase 3)
+	executionNotifier := service.NewExecutionNotifierService(queries, hub, bus)
+	executionNotifier.Start()
+
+	projectLifecycle := service.NewProjectLifecycleService(queries, hub, bus, h.Scheduler)
+	projectLifecycle.Start()
+
+	// File indexer service (Phase 4) - indexes files from messages and workflow outputs
+	fileIndexer := service.NewFileIndexerService(queries, bus)
+	fileIndexer.Start()
+
+	// Results reporter service (Phase 4) - reports run completions to channels and inboxes
+	resultsReporter := service.NewResultsReporterService(queries, hub, bus)
+	resultsReporter.Start()
 
 	r := chi.NewRouter()
 
@@ -341,11 +357,23 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 					r.Delete("/", h.DeleteWorkflow)
 					r.Get("/steps", h.ListWorkflowSteps)
 					r.Post("/start", h.StartWorkflow)
+					r.Post("/steps/{stepID}/retry", h.RetryWorkflowStep)
+					r.Patch("/steps/{stepID}/agent", h.ReplaceStepAgent)
 				})
 			})
 
 			// Triggers (AgentMesh integration)
 			r.Post("/api/triggers/check-mentions", h.CheckMentions)
+
+			// File index (Phase 4)
+			r.Get("/api/files", h.ListFiles)
+			r.Get("/api/files/mine", h.ListOwnerAndAgentFiles)
+
+			// Project files (Phase 4)
+			r.Get("/api/projects/{projectID}/files", h.GetFilesByProject)
+
+			// Metrics (Phase 5)
+			r.Get("/api/metrics", h.GetWorkspaceMetrics)
 
 			// Inbox
 			r.Route("/api/inbox", func(r chi.Router) {

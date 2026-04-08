@@ -44,7 +44,26 @@ export type WSEventType =
   | "reaction:added"
   | "reaction:removed"
   | "issue_reaction:added"
-  | "issue_reaction:removed";
+  | "issue_reaction:removed"
+  | "workflow:created"
+  | "workflow:started"
+  | "workflow:completed"
+  | "workflow:step:started"
+  | "workflow:step:completed"
+  | "workflow:step:failed"
+  | "project:created"
+  | "project:updated"
+  | "project:deleted"
+  | "project:status_changed"
+  | "plan:generated"
+  | "plan:approved"
+  | "plan:rejected"
+  | "run:started"
+  | "run:completed"
+  | "run:failed"
+  | "message:created"
+  | "channel:updated"
+  | "thread:created";
 
 export interface WSMessage<T = unknown> {
   type: WSEventType;

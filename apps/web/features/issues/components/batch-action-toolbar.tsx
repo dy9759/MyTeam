@@ -52,7 +52,7 @@ export function BatchActionToolbar() {
       }
       toast.success(`Updated ${count} issue${count > 1 ? "s" : ""}`);
     } catch {
-      toast.error("Failed to update issues");
+      toast.error("更新任务失败");
       api.listIssues({ limit: 200 }).then((res) => {
         useIssueStore.getState().setIssues(res.issues);
       }).catch(console.error);
@@ -71,7 +71,7 @@ export function BatchActionToolbar() {
       clear();
       toast.success(`Deleted ${count} issue${count > 1 ? "s" : ""}`);
     } catch {
-      toast.error("Failed to delete issues");
+      toast.error("删除任务失败");
       api.listIssues({ limit: 200 }).then((res) => {
         useIssueStore.getState().setIssues(res.issues);
       }).catch(console.error);
@@ -167,7 +167,7 @@ export function BatchActionToolbar() {
           open={assigneeOpen}
           onOpenChange={setAssigneeOpen}
           triggerRender={<Button variant="ghost" size="sm" disabled={loading} />}
-          trigger="Assignee"
+          trigger="负责人"
           align="center"
         />
 

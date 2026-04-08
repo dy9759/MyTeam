@@ -49,7 +49,7 @@ describe("LoginPage", () => {
   it("renders login form with email input and continue button", () => {
     render(<LoginPage />);
 
-    expect(screen.getByText("Multica")).toBeInTheDocument();
+    expect(screen.getByText("My Team")).toBeInTheDocument();
     expect(screen.getByText("Turn coding agents into real teammates")).toBeInTheDocument();
     expect(screen.getByLabelText("Email")).toBeInTheDocument();
     expect(

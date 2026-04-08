@@ -52,3 +52,8 @@ WHERE workspace_id = $1 AND recipient_type = 'member' AND recipient_id = $2 AND 
 UPDATE inbox_item i SET archived = true
 WHERE i.workspace_id = $1 AND i.recipient_type = 'member' AND i.recipient_id = $2 AND i.archived = false
   AND i.issue_id IN (SELECT id FROM issue WHERE status IN ('done', 'cancelled'));
+
+-- name: CreateEscalationInboxItem :one
+INSERT INTO inbox_item (workspace_id, recipient_id, recipient_type, type, severity, title, body, action_required, action_type, deadline, related_project_id, related_run_id, actor_type, actor_id)
+VALUES (@workspace_id, @recipient_id, @recipient_type, @type, @severity, @title, @body, @action_required, @action_type, @deadline, @related_project_id, @related_run_id, @actor_type, @actor_id)
+RETURNING *;

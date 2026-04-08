@@ -39,7 +39,7 @@ export function LandingHeader({
               variant === "dark" ? "text-white/92" : "text-[#0a0d12]",
             )}
           >
-            multica
+            my team
           </span>
         </Link>
 

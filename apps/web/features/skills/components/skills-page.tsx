@@ -40,7 +40,7 @@ import { FileTree } from "./file-tree";
 import { FileViewer } from "./file-viewer";
 
 // ---------------------------------------------------------------------------
-// Create Skill Dialog
+// 创建技能 Dialog
 // ---------------------------------------------------------------------------
 
 function CreateSkillDialog({
@@ -191,7 +191,7 @@ function CreateSkillDialog({
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
           {tab === "create" ? (
             <Button onClick={handleCreate} disabled={loading || !name.trim()}>
-              {loading ? "Creating..." : "Create"}
+              {loading ? "创建中..." : "创建"}
             </Button>
           ) : (
             <Button onClick={handleImport} disabled={loading || !importUrl.trim()}>
@@ -200,7 +200,7 @@ function CreateSkillDialog({
                   ? "Importing from ClawHub..."
                   : detectedSource === "skills.sh"
                     ? "Importing from Skills.sh..."
-                    : "Importing..."
+                    : "导入中..."
               ) : (
                 <>
                   <Download className="mr-1.5 h-3 w-3" />
@@ -442,14 +442,14 @@ function SkillDetail({
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="h-8 text-sm font-medium"
-              placeholder="Skill name"
+              placeholder="技能名称"
             />
             <Input
               type="text"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               className="h-8 text-sm"
-              placeholder="Description"
+              placeholder="描述"
             />
           </div>
         </div>
@@ -457,7 +457,7 @@ function SkillDetail({
           {isDirty && (
             <Button onClick={handleSave} disabled={saving || !name.trim()} size="xs">
               <Save className="h-3 w-3" />
-              {saving ? "Saving..." : "Save"}
+              {saving ? "保存中..." : "保存"}
             </Button>
           )}
           <Tooltip>
@@ -630,23 +630,23 @@ export default function SkillsPage() {
     const skill = await api.createSkill(data);
     upsertSkill(skill);
     setSelectedId(skill.id);
-    toast.success("Skill created");
+    toast.success("技能已创建");
   };
 
   const handleImport = async (url: string) => {
     const skill = await api.importSkill({ url });
     upsertSkill(skill);
     setSelectedId(skill.id);
-    toast.success("Skill imported");
+    toast.success("技能已导入");
   };
 
   const handleUpdate = async (id: string, data: UpdateSkillRequest) => {
     try {
       const updated = await api.updateSkill(id, data);
       upsertSkill(updated);
-      toast.success("Skill saved");
+      toast.success("技能已保存");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to save skill");
+      toast.error(e instanceof Error ? e.message : "保存技能失败");
       throw e;
     }
   };
@@ -659,9 +659,9 @@ export default function SkillsPage() {
         setSelectedId(remaining[0]?.id ?? "");
       }
       removeSkill(id);
-      toast.success("Skill deleted");
+      toast.success("技能已删除");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to delete skill");
+      toast.error(e instanceof Error ? e.message : "删除技能失败");
     }
   };
 
@@ -722,7 +722,7 @@ export default function SkillsPage() {
         {/* Left column — skill list */}
         <div className="overflow-y-auto h-full border-r">
           <div className="flex h-12 items-center justify-between border-b px-4">
-            <h1 className="text-sm font-semibold">Skills</h1>
+            <h1 className="text-sm font-semibold">技能</h1>
             <Tooltip>
               <TooltipTrigger
                 render={
@@ -741,9 +741,9 @@ export default function SkillsPage() {
           {skills.length === 0 ? (
             <div className="flex flex-col items-center justify-center px-4 py-12">
               <Sparkles className="h-8 w-8 text-muted-foreground/40" />
-              <p className="mt-3 text-sm text-muted-foreground">No skills yet</p>
+              <p className="mt-3 text-sm text-muted-foreground">暂无技能</p>
               <p className="mt-1 text-xs text-muted-foreground text-center">
-                Skills define reusable instructions for agents.
+                技能定义了代理的可复用指令。
               </p>
               <Button
                 onClick={() => setShowCreate(true)}
@@ -751,7 +751,7 @@ export default function SkillsPage() {
                 className="mt-3"
               >
                 <Plus className="h-3 w-3" />
-                Create Skill
+                创建技能
               </Button>
             </div>
           ) : (
@@ -784,14 +784,14 @@ export default function SkillsPage() {
           ) : (
             <div className="flex h-full flex-col items-center justify-center text-muted-foreground">
               <Sparkles className="h-10 w-10 text-muted-foreground/30" />
-              <p className="mt-3 text-sm">Select a skill to view details</p>
+              <p className="mt-3 text-sm">选择一个技能查看详情</p>
               <Button
                 onClick={() => setShowCreate(true)}
                 size="xs"
                 className="mt-3"
               >
                 <Plus className="h-3 w-3" />
-                Create Skill
+                创建技能
               </Button>
             </div>
           )}

@@ -14,14 +14,14 @@ var (
 
 var rootCmd = &cobra.Command{
 	Use:   "multica",
-	Short: "Multica CLI — local agent runtime and management tool",
-	Long:  "multica manages local agent runtimes and provides control commands for the Multica platform.",
+	Short: "My Team CLI — local agent runtime and management tool",
+	Long:  "multica manages local agent runtimes and provides control commands for the My Team platform.",
 	SilenceUsage:  true,
 	SilenceErrors: true,
 }
 
 func init() {
-	rootCmd.PersistentFlags().String("server-url", "", "Multica server URL (env: MULTICA_SERVER_URL)")
+	rootCmd.PersistentFlags().String("server-url", "", "My Team server URL (env: MULTICA_SERVER_URL)")
 	rootCmd.PersistentFlags().String("workspace-id", "", "Workspace ID (env: MULTICA_WORKSPACE_ID)")
 	rootCmd.PersistentFlags().String("profile", "", "Configuration profile name (e.g. dev) — isolates config, daemon state, and workspaces")
 

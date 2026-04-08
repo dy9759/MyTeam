@@ -23,6 +23,10 @@ export type {
   RuntimePingStatus,
   RuntimeUpdate,
   RuntimeUpdateStatus,
+  AgentType,
+  AgentOnlineStatus,
+  AgentWorkloadStatus,
+  IdentityCard,
 } from "./agent";
 export type { Workspace, WorkspaceRepo, Member, MemberRole, User, MemberWithUser } from "./workspace";
 export type { InboxItem, InboxSeverity, InboxItemType } from "./inbox";
@@ -39,10 +43,23 @@ export type {
   Session,
   SessionParticipant,
   Conversation,
+  Thread,
 } from "./messaging";
 export type {
   PlanStep,
   Plan,
   WorkflowStep,
+  WorkflowStepStatus,
   Workflow,
 } from "./workflow";
+export type {
+  Project,
+  ProjectStatus,
+  ProjectScheduleType,
+  SourceConversation,
+  ProjectVersion,
+  ProjectRun,
+  RunStatus,
+  CreateProjectFromChatRequest,
+} from "./project";
+export type { FileIndex, FileSnapshot, WorkspaceMetrics } from "./file";

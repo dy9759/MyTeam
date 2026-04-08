@@ -7,6 +7,8 @@ import { useIssueStore } from "@/features/issues";
 import { useInboxStore } from "@/features/inbox";
 import { useWorkspaceStore } from "@/features/workspace";
 import { useAuthStore } from "@/features/auth";
+import { useWorkflowStore } from "@/features/workflow/store";
+import { useProjectStore } from "@/features/projects";
 import { createLogger } from "@/shared/logger";
 import { api } from "@/shared/api";
 import type {
@@ -146,6 +148,52 @@ export function useRealtimeSync(ws: WSClient | null) {
       }
     });
 
+    // --- Workflow / Project execution events ---
+
+    const unsubStepStarted = ws.on("workflow:step:started", (p) => {
+      const payload = p as { workflow_id?: string; step_id?: string; status?: string };
+      if (payload.workflow_id && payload.step_id) {
+        useWorkflowStore.getState().updateStepInWorkflow(payload.workflow_id, payload.step_id, { status: (payload.status ?? "running") as import("@/shared/types").WorkflowStepStatus });
+      }
+    });
+
+    const unsubStepCompleted = ws.on("workflow:step:completed", (p) => {
+      const payload = p as { workflow_id?: string; step_id?: string };
+      if (payload.workflow_id && payload.step_id) {
+        useWorkflowStore.getState().updateStepInWorkflow(payload.workflow_id, payload.step_id, { status: "completed" });
+        toast.success("步骤已完成");
+      }
+    });
+
+    const unsubStepFailed = ws.on("workflow:step:failed", (p) => {
+      const payload = p as { workflow_id?: string; step_id?: string; error?: string };
+      if (payload.workflow_id && payload.step_id) {
+        useWorkflowStore.getState().updateStepInWorkflow(payload.workflow_id, payload.step_id, { status: "failed", error: payload.error });
+        toast.error("步骤执行失败");
+      }
+    });
+
+    const unsubWorkflowCompleted = ws.on("workflow:completed", (p) => {
+      const payload = p as { workflow_id?: string };
+      if (payload.workflow_id) {
+        useWorkflowStore.getState().fetchWorkflows();
+        toast.success("工作流已完成");
+      }
+    });
+
+    const unsubProjectStatus = ws.on("project:status_changed", (p) => {
+      const payload = p as { project_id?: string; status?: string };
+      if (payload.project_id) {
+        // Re-fetch the project to get the latest state
+        const currentProject = useProjectStore.getState().currentProject;
+        if (currentProject?.id === payload.project_id) {
+          useProjectStore.getState().fetchProject(payload.project_id);
+        }
+        // Also refresh the project list
+        useProjectStore.getState().fetch();
+      }
+    });
+
     return () => {
       unsubAny();
       unsubIssueUpdated();
@@ -155,6 +203,11 @@ export function useRealtimeSync(ws: WSClient | null) {
       unsubWsDeleted();
       unsubMemberRemoved();
       unsubMemberAdded();
+      unsubStepStarted();
+      unsubStepCompleted();
+      unsubStepFailed();
+      unsubWorkflowCompleted();
+      unsubProjectStatus();
       timers.forEach(clearTimeout);
       timers.clear();
     };

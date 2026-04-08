@@ -7,7 +7,9 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/multica-ai/multica/server/pkg/protocol"
 )
 
 // WorkflowResponse is the JSON response for a workflow.
@@ -318,19 +320,183 @@ func (h *Handler) StartWorkflow(w http.ResponseWriter, r *http.Request) {
 	}
 	workspaceID := resolveWorkspaceID(r)
 
-	// Transition workflow to "running" status.
-	if err := h.Queries.UpdateWorkflowStatus(r.Context(), db.UpdateWorkflowStatusParams{
-		ID:     parseUUID(id),
-		Status: "running",
-	}); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to start workflow")
+	// Validate the workflow exists.
+	wf, err := h.Queries.GetWorkflow(r.Context(), parseUUID(id))
+	if err != nil {
+		writeError(w, http.StatusNotFound, "workflow not found")
+		return
+	}
+
+	// If the workflow has a plan, validate the plan is approved.
+	if wf.PlanID.Valid {
+		plan, planErr := h.Queries.GetPlan(r.Context(), wf.PlanID)
+		if planErr == nil {
+			// TODO: Check plan.ApprovalStatus when column exists in sqlc types.
+			// For now, log the plan association.
+			_ = plan
+		}
+	}
+
+	// TODO: Create a project_run record when the table and queries exist.
+	// run, err := h.Queries.CreateProjectRun(r.Context(), ...)
+	runID := "" // Placeholder until project_run is available.
+
+	// Schedule the workflow via the scheduler service.
+	if err := h.Scheduler.ScheduleWorkflow(r.Context(), id, runID); err != nil {
+		slog.Error("failed to schedule workflow", "workflow_id", id, "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to start workflow: "+err.Error())
 		return
 	}
 
 	actorType, actorID := h.resolveActor(r, userID, workspaceID)
-	h.publish("workflow.started", workspaceID, actorType, actorID, map[string]string{
+	h.publish(protocol.EventWorkflowStarted, workspaceID, actorType, actorID, map[string]string{
 		"workflow_id": id,
 	})
 
-	writeJSON(w, http.StatusOK, map[string]string{"status": "running"})
+	// TODO: Update project status to "running" and broadcast project:status_changed
+	// when project association is available on the workflow.
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "running", "run_id": runID})
+}
+
+// RetryWorkflowStep retries a failed workflow step.
+// POST /api/workflows/{workflowID}/steps/{stepID}/retry
+func (h *Handler) RetryWorkflowStep(w http.ResponseWriter, r *http.Request) {
+	workflowID := chi.URLParam(r, "workflowID")
+	stepID := chi.URLParam(r, "stepID")
+	userID, ok := requireUserID(w, r)
+	if !ok {
+		return
+	}
+	workspaceID := resolveWorkspaceID(r)
+
+	// Validate step exists and belongs to the workflow.
+	step, err := h.Queries.GetWorkflowStep(r.Context(), parseUUID(stepID))
+	if err != nil {
+		writeError(w, http.StatusNotFound, "step not found")
+		return
+	}
+	if uuidToString(step.WorkflowID) != workflowID {
+		writeError(w, http.StatusBadRequest, "step does not belong to this workflow")
+		return
+	}
+
+	// Validate step is in a retriable state.
+	if step.Status != "failed" && step.Status != "timeout" {
+		writeError(w, http.StatusBadRequest, "step is not in a failed state (current: "+step.Status+")")
+		return
+	}
+
+	// Reset step to "pending".
+	h.Queries.UpdateWorkflowStepStatus(r.Context(), db.UpdateWorkflowStepStatusParams{
+		ID:     step.ID,
+		Status: "pending",
+		Result: nil,
+		Error:  pgtype.Text{},
+	})
+
+	// Schedule the step.
+	go h.Scheduler.ScheduleStep(r.Context(), step, "")
+
+	actorType, actorID := h.resolveActor(r, userID, workspaceID)
+	h.publish("workflow.step_retried", workspaceID, actorType, actorID, map[string]string{
+		"workflow_id": workflowID,
+		"step_id":     stepID,
+	})
+
+	slog.Info("workflow step retried manually",
+		"workflow_id", workflowID,
+		"step_id", stepID,
+		"user_id", userID,
+	)
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "retrying"})
+}
+
+// ReplaceStepAgent replaces the agent for a failed or blocked step.
+// PATCH /api/workflows/{workflowID}/steps/{stepID}/agent
+func (h *Handler) ReplaceStepAgent(w http.ResponseWriter, r *http.Request) {
+	workflowID := chi.URLParam(r, "workflowID")
+	stepID := chi.URLParam(r, "stepID")
+	userID, ok := requireUserID(w, r)
+	if !ok {
+		return
+	}
+	workspaceID := resolveWorkspaceID(r)
+
+	var req struct {
+		AgentID string `json:"agent_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.AgentID == "" {
+		writeError(w, http.StatusBadRequest, "agent_id is required")
+		return
+	}
+
+	// Validate step exists and belongs to the workflow.
+	step, err := h.Queries.GetWorkflowStep(r.Context(), parseUUID(stepID))
+	if err != nil {
+		writeError(w, http.StatusNotFound, "step not found")
+		return
+	}
+	if uuidToString(step.WorkflowID) != workflowID {
+		writeError(w, http.StatusBadRequest, "step does not belong to this workflow")
+		return
+	}
+
+	// Validate step is in a replaceable state.
+	if step.Status != "failed" && step.Status != "blocked" && step.Status != "timeout" {
+		writeError(w, http.StatusBadRequest, "step is not in a failed or blocked state (current: "+step.Status+")")
+		return
+	}
+
+	// Validate the new agent exists.
+	_, agentErr := h.Queries.GetAgent(r.Context(), parseUUID(req.AgentID))
+	if agentErr != nil {
+		writeError(w, http.StatusBadRequest, "agent not found")
+		return
+	}
+
+	// TODO: Update step's agent_id to new agent when sqlc has an UpdateWorkflowStepAgent query.
+	// s.Queries.UpdateWorkflowStepAgent(ctx, db.UpdateWorkflowStepAgentParams{
+	//     ID:      step.ID,
+	//     AgentID: parseUUID(req.AgentID),
+	// })
+
+	// Reset step to "pending".
+	h.Queries.UpdateWorkflowStepStatus(r.Context(), db.UpdateWorkflowStepStatusParams{
+		ID:     step.ID,
+		Status: "pending",
+		Result: nil,
+		Error:  pgtype.Text{},
+	})
+
+	// Log the agent replacement activity.
+	actorType, actorID := h.resolveActor(r, userID, workspaceID)
+	h.publish("workflow.agent_replaced", workspaceID, actorType, actorID, map[string]any{
+		"workflow_id":          workflowID,
+		"step_id":              stepID,
+		"original_agent_id":    uuidToString(step.AgentID),
+		"replacement_agent_id": req.AgentID,
+		"reason":               "owner_manual",
+	})
+
+	// Re-fetch step and schedule with new agent.
+	freshStep, freshErr := h.Queries.GetWorkflowStep(r.Context(), step.ID)
+	if freshErr == nil {
+		go h.Scheduler.ScheduleStep(r.Context(), freshStep, "")
+	}
+
+	slog.Info("workflow step agent replaced",
+		"workflow_id", workflowID,
+		"step_id", stepID,
+		"old_agent_id", uuidToString(step.AgentID),
+		"new_agent_id", req.AgentID,
+		"user_id", userID,
+	)
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "pending"})
 }

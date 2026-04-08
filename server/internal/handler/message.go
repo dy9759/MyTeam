@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -17,18 +18,19 @@ var messageDedup = util.NewBoundedUUIDSet(2000)
 // POST /api/messages
 func (h *Handler) CreateMessage(w http.ResponseWriter, r *http.Request) {
 	type CreateRequest struct {
-		ChannelID     *string         `json:"channel_id,omitempty"`
-		RecipientID   *string         `json:"recipient_id,omitempty"`
-		RecipientType *string         `json:"recipient_type,omitempty"`
-		SessionID     *string         `json:"session_id,omitempty"`
-		Content       string          `json:"content"`
-		ContentType   string          `json:"content_type,omitempty"`
-		FileID        *string         `json:"file_id,omitempty"`
-		FileName      *string         `json:"file_name,omitempty"`
-		FileSize      *int64          `json:"file_size,omitempty"`
-		Metadata      json.RawMessage `json:"metadata,omitempty"`
-		ParentID      *string         `json:"parent_id,omitempty"`
-		Type          string          `json:"type,omitempty"`
+		ChannelID       *string         `json:"channel_id,omitempty"`
+		RecipientID     *string         `json:"recipient_id,omitempty"`
+		RecipientType   *string         `json:"recipient_type,omitempty"`
+		SessionID       *string         `json:"session_id,omitempty"`
+		Content         string          `json:"content"`
+		ContentType     string          `json:"content_type,omitempty"`
+		FileID          *string         `json:"file_id,omitempty"`
+		FileName        *string         `json:"file_name,omitempty"`
+		FileSize        *int64          `json:"file_size,omitempty"`
+		Metadata        json.RawMessage `json:"metadata,omitempty"`
+		ParentID        *string         `json:"parent_id,omitempty"`
+		ParentMessageID *string         `json:"parent_message_id,omitempty"`
+		Type            string          `json:"type,omitempty"`
 	}
 
 	var req CreateRequest
@@ -41,7 +43,7 @@ func (h *Handler) CreateMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	senderID, ok := requireUserID(w, r)
+	userID, ok := requireUserID(w, r)
 	if !ok {
 		return
 	}
@@ -57,10 +59,43 @@ func (h *Handler) CreateMessage(w http.ResponseWriter, r *http.Request) {
 		msgType = "text"
 	}
 
+	// Impersonation-aware sender resolution.
+	// Check for active impersonation session via X-Agent-ID header or DB lookup.
+	senderID := userID
+	senderType := "member"
+	isImpersonated := false
+
+	if agentIDHeader := r.Header.Get("X-Agent-ID"); agentIDHeader != "" {
+		// Check if there is an active impersonation session for this agent.
+		session, err := h.Queries.GetActiveImpersonation(r.Context(), parseUUID(agentIDHeader))
+		if err == nil && session.ID.Valid && uuidToString(session.OwnerID) == userID {
+			senderID = agentIDHeader
+			senderType = "agent"
+			isImpersonated = true
+			slog.Info("impersonated message send",
+				"owner_id", userID,
+				"agent_id", agentIDHeader,
+				"channel_id", req.ChannelID,
+			)
+		}
+	}
+
+	// Thread support: if parent_message_id is provided, find or create a thread.
+	var threadID pgtype.UUID
+	if req.ParentMessageID != nil && *req.ParentMessageID != "" {
+		threadID = h.resolveOrCreateThread(r.Context(), *req.ParentMessageID)
+	}
+
+	// Use parent_message_id as ParentID if the legacy ParentID is not set.
+	parentID := ptrToUUID(req.ParentID)
+	if !parentID.Valid && req.ParentMessageID != nil {
+		parentID = parseUUID(*req.ParentMessageID)
+	}
+
 	msg, err := h.Queries.CreateMessage(r.Context(), db.CreateMessageParams{
 		WorkspaceID:     parseUUID(workspaceID),
 		SenderID:        parseUUID(senderID),
-		SenderType:      "member",
+		SenderType:      senderType,
 		ChannelID:       ptrToUUID(req.ChannelID),
 		RecipientID:     ptrToUUID(req.RecipientID),
 		RecipientType:   ptrToText(req.RecipientType),
@@ -72,8 +107,11 @@ func (h *Handler) CreateMessage(w http.ResponseWriter, r *http.Request) {
 		FileSize:        ptrToInt8(req.FileSize),
 		FileContentType: pgtype.Text{},
 		Metadata:        req.Metadata,
-		ParentID:        ptrToUUID(req.ParentID),
+		ParentID:        parentID,
 		Type:            msgType,
+		// TODO: wire after sqlc generation — add these fields to CreateMessageParams:
+		// IsImpersonated: isImpersonated,
+		// ThreadID:       threadID,
 	})
 	if err != nil {
 		slog.Warn("create message failed", "error", err)
@@ -81,10 +119,25 @@ func (h *Handler) CreateMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// If we created/resolved a thread, increment its reply count.
+	if threadID.Valid {
+		h.incrementThreadReplyCount(r.Context(), threadID)
+	}
+
 	// Dedup check for WS broadcast
+	actorType := senderType
 	if messageDedup.Add(uuidToString(msg.ID)) {
-		h.publish("message:created", workspaceID, "member", senderID, map[string]any{
+		h.publish("message:created", workspaceID, actorType, senderID, map[string]any{
 			"message": messageToResponse(msg),
+		})
+	}
+
+	// Log impersonation activity if applicable.
+	if isImpersonated {
+		h.publish("activity:impersonation_send", workspaceID, "member", userID, map[string]any{
+			"agent_id":   senderID,
+			"message_id": uuidToString(msg.ID),
+			"channel_id": req.ChannelID,
 		})
 	}
 
@@ -98,6 +151,34 @@ func (h *Handler) CreateMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusCreated, messageToResponse(msg))
+}
+
+// resolveOrCreateThread looks up or creates a thread for a parent message.
+// Thread ID equals the root message ID per the data model.
+func (h *Handler) resolveOrCreateThread(ctx context.Context, parentMessageID string) pgtype.UUID {
+	parentUUID := parseUUID(parentMessageID)
+
+	// Check if thread already exists for this parent message.
+	_, err := h.getThread(ctx, parentMessageID)
+	if err == nil {
+		// Thread exists.
+		return parentUUID
+	}
+
+	// Thread does not exist — look up the parent message to get its channel_id.
+	parentMsg, err := h.Queries.GetMessage(ctx, parentUUID)
+	if err != nil {
+		slog.Warn("resolve thread: parent message not found", "parent_message_id", parentMessageID, "error", err)
+		return pgtype.UUID{}
+	}
+
+	// Create a new thread with id = parent_message_id.
+	if err := h.upsertThread(ctx, parentUUID, parentMsg.ChannelID); err != nil {
+		slog.Warn("resolve thread: failed to create thread", "parent_message_id", parentMessageID, "error", err)
+		return pgtype.UUID{}
+	}
+
+	return parentUUID
 }
 
 // GET /api/messages?channel_id=X or recipient_id=X or session_id=X

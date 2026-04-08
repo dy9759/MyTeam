@@ -1,5 +1,21 @@
 export type AgentStatus = "idle" | "working" | "blocked" | "error" | "offline";
 
+export type AgentType = "personal_agent" | "system_agent" | "page_system_agent";
+
+export type AgentOnlineStatus = "online" | "offline";
+
+export type AgentWorkloadStatus = "idle" | "busy" | "blocked" | "degraded" | "suspended";
+
+export interface IdentityCard {
+  capabilities: string[];
+  tools: string[];
+  skills: string[];
+  subagents: string[];
+  completed_projects: { project_id: string; title: string; completed_at: string }[];
+  description_auto: string;
+  description_manual: string;
+}
+
 export type AgentRuntimeMode = "local" | "cloud";
 
 export type AgentVisibility = "workspace" | "private";
@@ -66,6 +82,11 @@ export interface Agent {
   runtime_config: Record<string, unknown>;
   visibility: AgentVisibility;
   status: AgentStatus;
+  agent_type?: AgentType;
+  online_status?: AgentOnlineStatus;
+  workload_status?: AgentWorkloadStatus;
+  identity_card?: IdentityCard;
+  last_active_at?: string;
   max_concurrent_tasks: number;
   owner_id: string | null;
   skills: Skill[];

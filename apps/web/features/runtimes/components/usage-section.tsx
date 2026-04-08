@@ -116,10 +116,10 @@ export function UsageSection({ runtimeId }: { runtimeId: string }) {
 
       {/* Summary cards */}
       <div className="grid grid-cols-4 gap-3">
-        <TokenCard label="Input" value={formatTokens(totals.input)} />
-        <TokenCard label="Output" value={formatTokens(totals.output)} />
-        <TokenCard label="Cache Read" value={formatTokens(totals.cacheRead)} />
-        <TokenCard label="Cache Write" value={formatTokens(totals.cacheWrite)} />
+        <TokenCard label="输入" value={formatTokens(totals.input)} />
+        <TokenCard label="输出" value={formatTokens(totals.output)} />
+        <TokenCard label="缓存读取" value={formatTokens(totals.cacheRead)} />
+        <TokenCard label="缓存写入" value={formatTokens(totals.cacheWrite)} />
       </div>
 
       {totals.cost > 0 && (

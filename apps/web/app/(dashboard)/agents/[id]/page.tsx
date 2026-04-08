@@ -5,8 +5,8 @@ export default function AgentDetailPage({
 }) {
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-bold">Agent Detail</h1>
-      <p className="mt-2 text-muted-foreground">Agent status and task history</p>
+      <h1 className="text-2xl font-bold">代理详情</h1>
+      <p className="mt-2 text-muted-foreground">代理状态和任务历史</p>
     </div>
   );
 }

@@ -35,6 +35,15 @@ import type {
   TimelineEntry,
   TaskMessagePayload,
   Attachment,
+  IdentityCard,
+  Channel,
+  Thread,
+  Project,
+  ProjectVersion,
+  ProjectRun,
+  CreateProjectFromChatRequest,
+  FileIndex,
+  WorkspaceMetrics,
 } from "@/shared/types";
 import { type Logger, noopLogger } from "@/shared/logger";
 
@@ -653,4 +662,164 @@ export class ApiClient {
   async startWorkflow(id: string) { return this.fetch<any>(`/api/workflows/${id}/start`, { method: 'POST' }) }
   async updateWorkflowDAG(id: string, dag: any) { return this.fetch<any>(`/api/workflows/${id}/dag`, { method: 'PATCH', body: JSON.stringify({ dag }) }) }
   async deleteWorkflow(id: string) { return this.fetch<void>(`/api/workflows/${id}`, { method: 'DELETE' }) }
+
+  // Identity Card
+  async getIdentityCard(agentId: string): Promise<IdentityCard> {
+    return this.fetch(`/api/agents/${agentId}/identity-card`);
+  }
+
+  async updateIdentityCard(agentId: string, card: Partial<IdentityCard>): Promise<IdentityCard> {
+    return this.fetch(`/api/agents/${agentId}/identity-card`, {
+      method: "PATCH",
+      body: JSON.stringify(card),
+    });
+  }
+
+  async generateIdentityCard(agentId: string): Promise<IdentityCard> {
+    return this.fetch(`/api/agents/${agentId}/identity-card/generate`, {
+      method: "POST",
+    });
+  }
+
+  async updateAgentStatus(agentId: string, status: { online_status?: string; workload_status?: string }): Promise<void> {
+    return this.fetch(`/api/agents/${agentId}/status`, {
+      method: "PATCH",
+      body: JSON.stringify(status),
+    });
+  }
+
+  // Threads
+  async listThreads(channelId: string): Promise<Thread[]> {
+    return this.fetch(`/api/channels/${channelId}/threads`);
+  }
+
+  async getThread(threadId: string): Promise<Thread> {
+    return this.fetch(`/api/threads/${threadId}`);
+  }
+
+  async getThreadMessages(threadId: string, limit = 50, offset = 0) {
+    return this.fetch<{ messages: any[] }>(`/api/threads/${threadId}/messages?limit=${limit}&offset=${offset}`);
+  }
+
+  async sendThreadMessage(threadId: string, content: string) {
+    return this.fetch<any>('/api/messages', {
+      method: 'POST',
+      body: JSON.stringify({ thread_id: threadId, content }),
+    });
+  }
+
+  // Channel upgrade
+  async upgradeToChannel(channelId: string, name: string): Promise<Channel> {
+    return this.fetch(`/api/channels/${channelId}/upgrade`, {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    });
+  }
+
+  // Owner agent conversations
+  async listOwnerAgentConversations(): Promise<{ conversations: any[] }> {
+    return this.fetch('/api/messages/agent-conversations');
+  }
+
+  // Projects
+  async listProjects(): Promise<Project[]> {
+    return this.fetch('/api/projects');
+  }
+
+  async getProject(id: string): Promise<Project> {
+    return this.fetch(`/api/projects/${id}`);
+  }
+
+  async createProject(data: { title: string; description?: string; schedule_type: string }): Promise<Project> {
+    return this.fetch('/api/projects', { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async createProjectFromChat(data: CreateProjectFromChatRequest): Promise<Project> {
+    return this.fetch('/api/projects/from-chat', { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async updateProject(id: string, data: Partial<Project>): Promise<Project> {
+    return this.fetch(`/api/projects/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+  }
+
+  async deleteProject(id: string): Promise<void> {
+    await this.fetch(`/api/projects/${id}`, { method: 'DELETE' });
+  }
+
+  async forkProject(id: string, data: { branch_name: string; fork_reason?: string }): Promise<ProjectVersion> {
+    return this.fetch(`/api/projects/${id}/fork`, { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async listProjectVersions(id: string): Promise<ProjectVersion[]> {
+    return this.fetch(`/api/projects/${id}/versions`);
+  }
+
+  async listProjectRuns(id: string): Promise<ProjectRun[]> {
+    return this.fetch(`/api/projects/${id}/runs`);
+  }
+
+  async approvePlan(projectId: string): Promise<void> {
+    await this.fetch(`/api/projects/${projectId}/approve`, { method: 'POST' });
+  }
+
+  async rejectPlan(projectId: string, reason: string): Promise<void> {
+    await this.fetch(`/api/projects/${projectId}/reject`, { method: 'POST', body: JSON.stringify({ reason }) });
+  }
+
+  // Project Execution
+  async startProjectExecution(projectId: string): Promise<ProjectRun> {
+    return this.fetch(`/api/projects/${projectId}/start`, { method: 'POST' });
+  }
+
+  // Workflow Step Actions
+  async retryWorkflowStep(workflowId: string, stepId: string): Promise<void> {
+    return this.fetch(`/api/workflows/${workflowId}/steps/${stepId}/retry`, { method: 'POST' });
+  }
+
+  async replaceStepAgent(workflowId: string, stepId: string, agentId: string): Promise<void> {
+    return this.fetch(`/api/workflows/${workflowId}/steps/${stepId}/agent`, {
+      method: 'PATCH',
+      body: JSON.stringify({ agent_id: agentId }),
+    });
+  }
+
+  async createWorkflowStep(workflowId: string, data: { description: string }) {
+    return this.fetch(`/api/workflows/${workflowId}/steps`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteWorkflowStep(workflowId: string, stepId: string): Promise<void> {
+    return this.fetch(`/api/workflows/${workflowId}/steps/${stepId}`, { method: 'DELETE' });
+  }
+
+  async updateWorkflowStep(workflowId: string, stepId: string, updates: Record<string, unknown>) {
+    return this.fetch(`/api/workflows/${workflowId}/steps/${stepId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(updates),
+    });
+  }
+
+  // File Index
+  async listFiles(params?: { source_type?: string; project_id?: string; channel_id?: string }): Promise<FileIndex[]> {
+    const search = new URLSearchParams();
+    if (params?.source_type) search.set("source_type", params.source_type);
+    if (params?.project_id) search.set("project_id", params.project_id);
+    if (params?.channel_id) search.set("channel_id", params.channel_id);
+    return this.fetch(`/api/files?${search}`);
+  }
+
+  async listMyFiles(): Promise<FileIndex[]> {
+    return this.fetch("/api/files/mine");
+  }
+
+  async listProjectFiles(projectId: string): Promise<FileIndex[]> {
+    return this.fetch(`/api/projects/${projectId}/files`);
+  }
+
+  // Metrics
+  async getWorkspaceMetrics(): Promise<WorkspaceMetrics> {
+    return this.fetch("/api/metrics");
+  }
 }

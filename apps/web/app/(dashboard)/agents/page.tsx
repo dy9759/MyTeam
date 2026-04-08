@@ -86,20 +86,20 @@ import { useFileUpload } from "@/shared/hooks/use-file-upload";
 // ---------------------------------------------------------------------------
 
 const statusConfig: Record<AgentStatus, { label: string; color: string; dot: string }> = {
-  idle: { label: "Idle", color: "text-muted-foreground", dot: "bg-muted-foreground" },
-  working: { label: "Working", color: "text-success", dot: "bg-success" },
-  blocked: { label: "Blocked", color: "text-warning", dot: "bg-warning" },
-  error: { label: "Error", color: "text-destructive", dot: "bg-destructive" },
-  offline: { label: "Offline", color: "text-muted-foreground/50", dot: "bg-muted-foreground/40" },
+  idle: { label: "空闲", color: "text-muted-foreground", dot: "bg-muted-foreground" },
+  working: { label: "工作中", color: "text-success", dot: "bg-success" },
+  blocked: { label: "已阻塞", color: "text-warning", dot: "bg-warning" },
+  error: { label: "错误", color: "text-destructive", dot: "bg-destructive" },
+  offline: { label: "离线", color: "text-muted-foreground/50", dot: "bg-muted-foreground/40" },
 };
 
 const taskStatusConfig: Record<string, { label: string; icon: typeof CheckCircle2; color: string }> = {
-  queued: { label: "Queued", icon: Clock, color: "text-muted-foreground" },
-  dispatched: { label: "Dispatched", icon: Play, color: "text-info" },
-  running: { label: "Running", icon: Loader2, color: "text-success" },
-  completed: { label: "Completed", icon: CheckCircle2, color: "text-success" },
-  failed: { label: "Failed", icon: XCircle, color: "text-destructive" },
-  cancelled: { label: "Cancelled", icon: XCircle, color: "text-muted-foreground" },
+  queued: { label: "排队中", icon: Clock, color: "text-muted-foreground" },
+  dispatched: { label: "已派发", icon: Play, color: "text-info" },
+  running: { label: "运行中", icon: Loader2, color: "text-success" },
+  completed: { label: "已完成", icon: CheckCircle2, color: "text-success" },
+  failed: { label: "失败", icon: XCircle, color: "text-destructive" },
+  cancelled: { label: "已取消", icon: XCircle, color: "text-muted-foreground" },
 };
 
 
@@ -155,7 +155,7 @@ function CreateAgentDialog({
       });
       onClose();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to create agent");
+      toast.error(err instanceof Error ? err.message : "创建代理失败");
       setCreating(false);
     }
   };
@@ -246,11 +246,11 @@ function CreateAgentDialog({
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="truncate font-medium">
-                      {selectedRuntime?.name ?? "No runtime available"}
+                      {selectedRuntime?.name ?? "无可用运行时"}
                     </span>
                     {selectedRuntime?.runtime_mode === "cloud" && (
                       <span className="shrink-0 rounded bg-info/10 px-1.5 py-0.5 text-xs font-medium text-info">
-                        Cloud
+                        云端
                       </span>
                     )}
                   </div>
@@ -282,7 +282,7 @@ function CreateAgentDialog({
                         <span className="truncate font-medium">{device.name}</span>
                         {device.runtime_mode === "cloud" && (
                           <span className="shrink-0 rounded bg-info/10 px-1.5 py-0.5 text-xs font-medium text-info">
-                            Cloud
+                            云端
                           </span>
                         )}
                       </div>
@@ -302,13 +302,13 @@ function CreateAgentDialog({
 
         <DialogFooter>
           <Button variant="ghost" onClick={onClose}>
-            Cancel
+            取消
           </Button>
           <Button
             onClick={handleSubmit}
             disabled={creating || !name.trim() || !selectedRuntime}
           >
-            {creating ? "Creating..." : "Create"}
+            {creating ? "创建中..." : "创建"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -415,7 +415,7 @@ function InstructionsTab({
 
       <div className="flex items-center justify-between">
         <span className="text-xs text-muted-foreground">
-          {value.length > 0 ? `${value.length} characters` : "No instructions set"}
+          {value.length > 0 ? `${value.length} characters` : "未设置指令"}
         </span>
         <Button
           size="xs"
@@ -427,7 +427,7 @@ function InstructionsTab({
           ) : (
             <Save className="h-3 w-3" />
           )}
-          Save
+          保存
         </Button>
       </div>
     </div>
@@ -494,7 +494,7 @@ function SkillsTab({
           disabled={saving || availableSkills.length === 0}
         >
           <Plus className="h-3 w-3" />
-          Add Skill
+          添加技能
         </Button>
       </div>
 
@@ -513,7 +513,7 @@ function SkillsTab({
               disabled={saving}
             >
               <Plus className="h-3 w-3" />
-              Add Skill
+              添加技能
             </Button>
           )}
         </div>
@@ -586,7 +586,7 @@ function SkillsTab({
             </div>
             <DialogFooter>
               <Button variant="ghost" onClick={() => setShowPicker(false)}>
-                Cancel
+                取消
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -672,7 +672,7 @@ function AddToolDialog({
                       : ""
                   }`}
                 >
-                  {type === "api_key" ? "API Key" : type === "oauth" ? "OAuth" : "None"}
+                  {type === "api_key" ? "API 密钥" : type === "oauth" ? "OAuth" : "无"}
                 </Button>
               ))}
             </div>
@@ -687,7 +687,7 @@ function AddToolDialog({
             onClick={handleAdd}
             disabled={!name.trim()}
           >
-            Add
+            添加
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -750,7 +750,7 @@ function ToolsTab({
               size="xs"
             >
               <Save className="h-3 w-3" />
-              {saving ? "Saving..." : "Save"}
+              {saving ? "保存中..." : "保存"}
             </Button>
           )}
           <Button
@@ -759,8 +759,7 @@ function ToolsTab({
             onClick={() => setShowAdd(true)}
           >
             <Plus className="h-3 w-3" />
-            Add Tool
-          </Button>
+            添加工具          </Button>
         </div>
       </div>
 
@@ -812,7 +811,7 @@ function ToolsTab({
                       : "bg-muted text-muted-foreground hover:bg-accent"
                   }
                 >
-                  {tool.connected ? "Connected" : "Connect"}
+                  {tool.connected ? "已连接" : "连接"}
                 </Button>
                 <Button
                   variant="ghost"
@@ -912,7 +911,7 @@ function TriggersTab({
               size="xs"
             >
               <Save className="h-3 w-3" />
-              {saving ? "Saving..." : "Save"}
+              {saving ? "保存中..." : "保存"}
             </Button>
           )}
         </div>
@@ -937,10 +936,10 @@ function TriggersTab({
               <div className="min-w-0 flex-1">
                 <div className="text-sm font-medium">
                   {trigger.type === "on_assign"
-                    ? "On Issue Assign"
+                    ? "任务分配时"
                     : trigger.type === "on_comment"
-                      ? "On Comment"
-                      : "Scheduled"}
+                      ? "收到评论时"
+                      : "定时触发"}
                 </div>
                 <div className="text-xs text-muted-foreground">
                   {trigger.type === "on_assign"
@@ -978,7 +977,7 @@ function TriggersTab({
               <div className="mt-3 grid grid-cols-2 gap-3 pl-12">
                 <div>
                   <Label className="text-xs text-muted-foreground">
-                    Cron Expression
+                    Cron 表达式
                   </Label>
                   <Input
                     type="text"
@@ -995,7 +994,7 @@ function TriggersTab({
                 </div>
                 <div>
                   <Label className="text-xs text-muted-foreground">
-                    Timezone
+                    时区
                   </Label>
                   <Input
                     type="text"
@@ -1024,7 +1023,7 @@ function TriggersTab({
           className="border-dashed text-muted-foreground hover:text-foreground"
         >
           <Bot className="h-3 w-3" />
-          Add On Assign
+          添加任务分配触发
         </Button>
         <Button
           variant="outline"
@@ -1033,7 +1032,7 @@ function TriggersTab({
           className="border-dashed text-muted-foreground hover:text-foreground"
         >
           <MessageSquare className="h-3 w-3" />
-          Add On Comment
+          添加评论触发
         </Button>
         <Button
           variant="outline"
@@ -1042,7 +1041,7 @@ function TriggersTab({
           className="border-dashed text-muted-foreground hover:text-foreground"
         >
           <Timer className="h-3 w-3" />
-          Add Scheduled
+          添加定时触发
         </Button>
       </div>
     </div>
@@ -1085,7 +1084,7 @@ function TasksTab({ agent }: { agent: Agent }) {
   }
 
   // Sort: active tasks (running > dispatched > queued) first, then completed/failed by date
-  const activeStatuses = ["running", "dispatched", "queued"];
+  const activeStatuses = ["运行中", "dispatched", "queued"];
   const sortedTasks = [...tasks].sort((a, b) => {
     const aActive = activeStatuses.indexOf(a.status);
     const bActive = activeStatuses.indexOf(b.status);
@@ -1205,9 +1204,9 @@ function SettingsTab({
       const result = await upload(file);
       if (!result) return;
       await onSave({ avatar_url: result.link });
-      toast.success("Avatar updated");
+      toast.success("头像已更新");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to upload avatar");
+      toast.error(err instanceof Error ? err.message : "上传头像失败");
     }
   };
 
@@ -1263,7 +1262,7 @@ function SettingsTab({
             onChange={handleAvatarUpload}
           />
           <div className="text-xs text-muted-foreground">
-            Click to upload avatar
+            点击上传头像
           </div>
         </div>
       </div>
@@ -1343,13 +1342,13 @@ function SettingsTab({
           ) : (
             <Monitor className="h-4 w-4" />
           )}
-          {runtimeDevice?.name ?? (agent.runtime_mode === "cloud" ? "Cloud" : "Local")}
+          {runtimeDevice?.name ?? (agent.runtime_mode === "cloud" ? "云端" : "Local")}
         </div>
       </div>
 
       <Button onClick={handleSave} disabled={!dirty || saving} size="sm">
         {saving ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Save className="h-3.5 w-3.5 mr-1.5" />}
-        Save Changes
+        保存更改
       </Button>
     </div>
   );
@@ -1363,11 +1362,11 @@ type DetailTab = "instructions" | "skills" | "tools" | "triggers" | "tasks" | "s
 
 const detailTabs: { id: DetailTab; label: string; icon: typeof FileText }[] = [
   { id: "instructions", label: "Instructions", icon: FileText },
-  { id: "skills", label: "Skills", icon: BookOpenText },
-  { id: "tools", label: "Tools", icon: Wrench },
-  { id: "triggers", label: "Triggers", icon: Timer },
+  { id: "skills", label: "技能", icon: BookOpenText },
+  { id: "tools", label: "工具", icon: Wrench },
+  { id: "triggers", label: "触发器", icon: Timer },
   { id: "tasks", label: "Tasks", icon: ListTodo },
-  { id: "settings", label: "Settings", icon: Settings },
+  { id: "settings", label: "设置", icon: Settings },
 ];
 
 function AgentDetail({
@@ -1397,7 +1396,7 @@ function AgentDetail({
           <AlertCircle className="h-3.5 w-3.5 shrink-0" />
           <span className="flex-1">This agent is archived. It cannot be assigned or mentioned.</span>
           <Button variant="outline" size="sm" className="h-6 text-xs" onClick={() => onRestore(agent.id)}>
-            Restore
+            恢复
           </Button>
         </div>
       )}
@@ -1410,7 +1409,7 @@ function AgentDetail({
             <h2 className={`text-sm font-semibold truncate ${isArchived ? "text-muted-foreground" : ""}`}>{agent.name}</h2>
             {isArchived ? (
               <span className="rounded-md bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
-                Archived
+                已归档
               </span>
             ) : (
               <span className={`flex items-center gap-1.5 text-xs ${st.color}`}>
@@ -1424,7 +1423,7 @@ function AgentDetail({
               ) : (
                 <Monitor className="h-3 w-3" />
               )}
-              {runtimeDevice?.name ?? (agent.runtime_mode === "cloud" ? "Cloud" : "Local")}
+              {runtimeDevice?.name ?? (agent.runtime_mode === "cloud" ? "云端" : "Local")}
             </span>
           </div>
         </div>
@@ -1443,7 +1442,7 @@ function AgentDetail({
                 onClick={() => setConfirmArchive(true)}
               >
                 <Trash2 className="h-3.5 w-3.5" />
-                Archive Agent
+                归档代理
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -1527,7 +1526,7 @@ function AgentDetail({
                   onArchive(agent.id);
                 }}
               >
-                Archive
+                归档
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -1663,7 +1662,7 @@ export default function AgentsPage() {
         {/* Left column — agent list */}
         <div className="overflow-y-auto h-full border-r">
           <div className="flex h-12 items-center justify-between border-b px-4">
-            <h1 className="text-sm font-semibold">Agents</h1>
+            <h1 className="text-sm font-semibold">代理</h1>
             <div className="flex items-center gap-1">
               {archivedCount > 0 && (
                 <Button
@@ -1688,7 +1687,7 @@ export default function AgentsPage() {
             <div className="flex flex-col items-center justify-center px-4 py-12">
               <Bot className="h-8 w-8 text-muted-foreground/40" />
               <p className="mt-3 text-sm text-muted-foreground">
-                {showArchived ? "No archived agents" : archivedCount > 0 ? "No active agents" : "No agents yet"}
+                {showArchived ? "No archived agents" : archivedCount > 0 ? "No active agents" : "暂无代理"}
               </p>
               {!showArchived && (
                 <Button
@@ -1697,7 +1696,7 @@ export default function AgentsPage() {
                   className="mt-3"
                 >
                   <Plus className="h-3 w-3" />
-                  Create Agent
+                  创建代理
                 </Button>
               )}
             </div>
@@ -1732,14 +1731,14 @@ export default function AgentsPage() {
         ) : (
           <div className="flex h-full flex-col items-center justify-center text-muted-foreground">
             <Bot className="h-10 w-10 text-muted-foreground/30" />
-            <p className="mt-3 text-sm">Select an agent to view details</p>
+            <p className="mt-3 text-sm">选择一个代理查看详情</p>
             <Button
               onClick={() => setShowCreate(true)}
               size="xs"
               className="mt-3"
             >
               <Plus className="h-3 w-3" />
-              Create Agent
+              创建代理
             </Button>
           </div>
         )}

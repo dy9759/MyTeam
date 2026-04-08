@@ -47,13 +47,13 @@ export default function WorkflowsPage() {
     setCreating(true);
     try {
       const wf = await api.createWorkflow({ title: title.trim() });
-      toast.success("Workflow created");
+      toast.success("工作流已创建");
       setCreateOpen(false);
       setTitle("");
       fetchWorkflows();
       router.push(`/workflows/${wf.id}`);
     } catch {
-      toast.error("Failed to create workflow");
+      toast.error("创建工作流失败");
     } finally {
       setCreating(false);
     }
@@ -64,15 +64,15 @@ export default function WorkflowsPage() {
     setGenerating(true);
     try {
       const plan = await api.generatePlan(generateInput.trim());
-      toast.success("Plan generated, creating workflow...");
+      toast.success("计划已生成，正在创建工作流...");
       const wf = await api.createWorkflow({ title: plan.title, plan_id: plan.id });
-      toast.success("Workflow created from plan");
+      toast.success("已从计划创建工作流");
       setGenerateOpen(false);
       setGenerateInput("");
       fetchWorkflows();
       router.push(`/workflows/${wf.id}`);
     } catch {
-      toast.error("Failed to generate plan");
+      toast.error("生成计划失败");
     } finally {
       setGenerating(false);
     }
@@ -81,15 +81,15 @@ export default function WorkflowsPage() {
   return (
     <div className="flex-1 overflow-auto p-6">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-semibold">Workflows</h1>
+        <h1 className="text-2xl font-semibold">工作流</h1>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => setGenerateOpen(true)}>
             <Sparkles className="size-4 mr-2" />
-            Generate from Chat
+            从聊天生成
           </Button>
           <Button onClick={() => setCreateOpen(true)}>
             <Plus className="size-4 mr-2" />
-            New Workflow
+            新建工作流
           </Button>
         </div>
       </div>
@@ -100,8 +100,8 @@ export default function WorkflowsPage() {
         </div>
       ) : workflows.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-          <p className="text-lg mb-2">No workflows yet</p>
-          <p className="text-sm">Create a workflow or generate one from a chat prompt.</p>
+          <p className="text-lg mb-2">暂无工作流</p>
+          <p className="text-sm">创建一个工作流或从聊天提示生成。</p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -129,19 +129,19 @@ export default function WorkflowsPage() {
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>New Workflow</DialogTitle>
+            <DialogTitle>新建工作流</DialogTitle>
           </DialogHeader>
           <Input
-            placeholder="Workflow title"
+            placeholder="工作流标题"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleCreate()}
           />
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>取消</Button>
             <Button onClick={handleCreate} disabled={creating || !title.trim()}>
               {creating && <Loader2 className="size-4 mr-2 animate-spin" />}
-              Create
+              创建
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -151,19 +151,19 @@ export default function WorkflowsPage() {
       <Dialog open={generateOpen} onOpenChange={setGenerateOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Generate from Chat</DialogTitle>
+            <DialogTitle>从聊天生成</DialogTitle>
           </DialogHeader>
           <Textarea
-            placeholder="Describe what you want to accomplish..."
+            placeholder="描述你想要完成的任务..."
             value={generateInput}
             onChange={(e) => setGenerateInput(e.target.value)}
             rows={4}
           />
           <DialogFooter>
-            <Button variant="outline" onClick={() => setGenerateOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setGenerateOpen(false)}>取消</Button>
             <Button onClick={handleGenerate} disabled={generating || !generateInput.trim()}>
               {generating && <Loader2 className="size-4 mr-2 animate-spin" />}
-              Generate
+              生成
             </Button>
           </DialogFooter>
         </DialogContent>

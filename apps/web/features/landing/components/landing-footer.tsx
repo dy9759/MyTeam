@@ -21,7 +21,7 @@ export function LandingFooter() {
             <Link href="#product" className="flex items-center gap-3">
               <MulticaIcon className="size-5 text-white" noSpin />
               <span className="text-[18px] font-semibold tracking-[0.04em] lowercase">
-                multica
+                my team
               </span>
             </Link>
             <p className="mt-4 max-w-[300px] text-[14px] leading-[1.7] text-white/50 sm:text-[15px]">

@@ -143,7 +143,7 @@ function CommentRow({
       await onEdit(entry.id, trimmed);
       setEditing(false);
     } catch {
-      toast.error("Failed to update comment");
+      toast.error("更新评论失败");
     }
   };
 
@@ -312,7 +312,7 @@ function CommentCard({
       await onEdit(entry.id, trimmed);
       setEditing(false);
     } catch {
-      toast.error("Failed to update comment");
+      toast.error("更新评论失败");
     }
   };
 

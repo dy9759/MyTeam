@@ -43,18 +43,18 @@ export function RuntimeDetail({ runtime }: { runtime: AgentRuntime }) {
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
         {/* Info grid */}
         <div className="grid grid-cols-2 gap-4">
-          <InfoField label="Runtime Mode" value={runtime.runtime_mode} />
-          <InfoField label="Provider" value={runtime.provider} />
-          <InfoField label="Status" value={runtime.status} />
+          <InfoField label="运行模式" value={runtime.runtime_mode} />
+          <InfoField label="提供者" value={runtime.provider} />
+          <InfoField label="状态" value={runtime.status} />
           <InfoField
-            label="Last Seen"
+            label="最后上线"
             value={formatLastSeen(runtime.last_seen_at)}
           />
           {runtime.device_info && (
-            <InfoField label="Device" value={runtime.device_info} />
+            <InfoField label="设备" value={runtime.device_info} />
           )}
           {runtime.daemon_id && (
-            <InfoField label="Daemon ID" value={runtime.daemon_id} mono />
+            <InfoField label="守护进程 ID" value={runtime.daemon_id} mono />
           )}
         </div>
 
@@ -105,7 +105,7 @@ export function RuntimeDetail({ runtime }: { runtime: AgentRuntime }) {
         {/* Timestamps */}
         <div className="grid grid-cols-2 gap-4 border-t pt-4">
           <InfoField
-            label="Created"
+            label="我创建的"
             value={new Date(runtime.created_at).toLocaleString()}
           />
           <InfoField

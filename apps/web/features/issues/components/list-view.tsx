@@ -133,7 +133,7 @@ export function ListView({
                   ))
                 ) : (
                   <p className="py-6 text-center text-xs text-muted-foreground">
-                    No issues
+                    暂无任务
                   </p>
                 )}
               </Accordion.Panel>

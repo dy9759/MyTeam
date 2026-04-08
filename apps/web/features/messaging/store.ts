@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import type { Message, Conversation } from "@/shared/types/messaging";
+import type { Message, Conversation, Thread } from "@/shared/types/messaging";
 import { api } from "@/shared/api";
 import { toast } from "sonner";
 
@@ -9,16 +9,26 @@ interface MessagingState {
   conversations: Conversation[];
   currentMessages: Message[];
   loading: boolean;
+  threads: Thread[];
+  currentThreadMessages: Message[];
+  ownerAgentConversations: Conversation[];
   fetch: () => Promise<void>;
   fetchMessages: (params: { channel_id?: string; recipient_id?: string; session_id?: string }) => Promise<void>;
   sendMessage: (params: { channel_id?: string; recipient_id?: string; recipient_type?: string; session_id?: string; content: string }) => Promise<void>;
   addMessage: (message: Message) => void;
+  fetchThreads: (channelId: string) => Promise<void>;
+  fetchThreadMessages: (threadId: string) => Promise<void>;
+  sendThreadMessage: (threadId: string, content: string) => Promise<void>;
+  fetchOwnerAgentConversations: () => Promise<void>;
 }
 
 export const useMessagingStore = create<MessagingState>((set, get) => ({
   conversations: [],
   currentMessages: [],
   loading: false,
+  threads: [],
+  currentThreadMessages: [],
+  ownerAgentConversations: [],
 
   fetch: async () => {
     set({ loading: true });
@@ -55,4 +65,40 @@ export const useMessagingStore = create<MessagingState>((set, get) => ({
     set((s) => ({
       currentMessages: [...s.currentMessages, message],
     })),
+
+  fetchThreads: async (channelId) => {
+    try {
+      const threads = await api.listThreads(channelId);
+      set({ threads });
+    } catch {
+      toast.error("Failed to load threads");
+    }
+  },
+
+  fetchThreadMessages: async (threadId) => {
+    try {
+      const res = await api.getThreadMessages(threadId);
+      set({ currentThreadMessages: res.messages });
+    } catch {
+      toast.error("Failed to load thread messages");
+    }
+  },
+
+  sendThreadMessage: async (threadId, content) => {
+    try {
+      const msg = await api.sendThreadMessage(threadId, content);
+      set((s) => ({ currentThreadMessages: [...s.currentThreadMessages, msg] }));
+    } catch {
+      toast.error("Failed to send thread message");
+    }
+  },
+
+  fetchOwnerAgentConversations: async () => {
+    try {
+      const res = await api.listOwnerAgentConversations();
+      set({ ownerAgentConversations: res.conversations });
+    } catch {
+      toast.error("Failed to load agent conversations");
+    }
+  },
 }));

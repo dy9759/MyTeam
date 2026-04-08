@@ -40,8 +40,8 @@ import { api } from "@/shared/api";
 // ---------------------------------------------------------------------------
 
 const typeLabels: Record<InboxItemType, string> = {
-  issue_assigned: "Assigned",
-  unassigned: "Unassigned",
+  issue_assigned: "已分配",
+  unassigned: "未分配",
   assignee_changed: "Assignee changed",
   status_changed: "Status changed",
   priority_changed: "Priority changed",
@@ -59,7 +59,7 @@ const typeLabels: Record<InboxItemType, string> = {
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
   const minutes = Math.floor(diff / 60000);
-  if (minutes < 1) return "just now";
+  if (minutes < 1) return "刚刚";
   if (minutes < 60) return `${minutes}m`;
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h`;
@@ -89,7 +89,7 @@ function InboxDetailLabel({ item }: { item: InboxItem }) {
       const label = STATUS_CONFIG[details.to as IssueStatus]?.label ?? details.to;
       return (
         <span className="inline-flex items-center gap-1">
-          Set status to
+          设置状态为
           <StatusIcon status={details.to as IssueStatus} className="h-3 w-3" />
           {label}
         </span>
@@ -100,7 +100,7 @@ function InboxDetailLabel({ item }: { item: InboxItem }) {
       const label = PRIORITY_CONFIG[details.to as IssuePriority]?.label ?? details.to;
       return (
         <span className="inline-flex items-center gap-1">
-          Set priority to
+          设置优先级为
           <PriorityIcon priority={details.to as IssuePriority} className="h-3 w-3" />
           {label}
         </span>
@@ -108,7 +108,7 @@ function InboxDetailLabel({ item }: { item: InboxItem }) {
     }
     case "issue_assigned": {
       if (details.new_assignee_id) {
-        return <span>Assigned to {getActorName(details.new_assignee_type ?? "member", details.new_assignee_id)}</span>;
+        return <span>分配给 {getActorName(details.new_assignee_type ?? "member", details.new_assignee_id)}</span>;
       }
       return <span>{typeLabels[item.type]}</span>;
     }
@@ -116,7 +116,7 @@ function InboxDetailLabel({ item }: { item: InboxItem }) {
       return <span>Removed assignee</span>;
     case "assignee_changed": {
       if (details.new_assignee_id) {
-        return <span>Assigned to {getActorName(details.new_assignee_type ?? "member", details.new_assignee_id)}</span>;
+        return <span>分配给 {getActorName(details.new_assignee_type ?? "member", details.new_assignee_id)}</span>;
       }
       return <span>{typeLabels[item.type]}</span>;
     }
@@ -181,7 +181,7 @@ function InboxListItem({
             <span
               role="button"
               tabIndex={-1}
-              title="Archive"
+              title="归档"
               onClick={(e) => {
                 e.stopPropagation();
                 onArchive();
@@ -255,7 +255,7 @@ export default function InboxPage() {
       } catch {
         // Rollback: refetch to get server truth
         useInboxStore.getState().fetch();
-        toast.error("Failed to mark as read");
+        toast.error("标记已读失败");
       }
     }
   };
@@ -267,7 +267,7 @@ export default function InboxPage() {
       const archived = items.find((i) => i.id === id);
       if (archived && (archived.issue_id ?? archived.id) === selectedKey) setSelectedKey("");
     } catch {
-      toast.error("Failed to archive");
+      toast.error("归档失败");
     }
   };
 
@@ -277,7 +277,7 @@ export default function InboxPage() {
       useInboxStore.getState().markAllRead();
       await api.markAllInboxRead();
     } catch {
-      toast.error("Failed to mark all as read");
+      toast.error("全部标记已读失败");
       useInboxStore.getState().fetch();
     }
   };
@@ -288,7 +288,7 @@ export default function InboxPage() {
       setSelectedKey("");
       await api.archiveAllInbox();
     } catch {
-      toast.error("Failed to archive all");
+      toast.error("全部归档失败");
       useInboxStore.getState().fetch();
     }
   };
@@ -300,7 +300,7 @@ export default function InboxPage() {
       if (readKeys.includes(selectedKey)) setSelectedKey("");
       await api.archiveAllReadInbox();
     } catch {
-      toast.error("Failed to archive read items");
+      toast.error("归档已读项失败");
       useInboxStore.getState().fetch();
     }
   };
@@ -311,7 +311,7 @@ export default function InboxPage() {
       setSelectedKey("");
       await useInboxStore.getState().fetch();
     } catch {
-      toast.error("Failed to archive completed");
+      toast.error("归档已完成项失败");
     }
   };
 
@@ -354,7 +354,7 @@ export default function InboxPage() {
       <div className="flex flex-col border-r h-full">
         <div className="flex h-12 shrink-0 items-center justify-between border-b px-4">
           <div className="flex items-center gap-2">
-            <h1 className="text-sm font-semibold">Inbox</h1>
+            <h1 className="text-sm font-semibold">收件箱</h1>
             {unreadCount > 0 && (
               <span className="text-xs text-muted-foreground">
                 {unreadCount}
@@ -376,20 +376,20 @@ export default function InboxPage() {
             <DropdownMenuContent align="end" className="w-auto">
               <DropdownMenuItem onClick={handleMarkAllRead}>
                 <CheckCheck className="h-4 w-4" />
-                Mark all as read
+                全部标记为已读
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleArchiveAll}>
                 <Archive className="h-4 w-4" />
-                Archive all
+                全部归档
               </DropdownMenuItem>
               <DropdownMenuItem onClick={handleArchiveAllRead}>
                 <BookCheck className="h-4 w-4" />
-                Archive all read
+                归档所有已读
               </DropdownMenuItem>
               <DropdownMenuItem onClick={handleArchiveCompleted}>
                 <ListChecks className="h-4 w-4" />
-                Archive completed
+                归档已完成
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -399,7 +399,7 @@ export default function InboxPage() {
         {items.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
             <Inbox className="mb-3 h-8 w-8 text-muted-foreground/50" />
-            <p className="text-sm">No notifications</p>
+            <p className="text-sm">暂无通知</p>
           </div>
         ) : (
           <div>
@@ -450,7 +450,7 @@ export default function InboxPage() {
                 onClick={() => handleArchive(selected.id)}
               >
                 <Archive className="mr-1.5 h-3.5 w-3.5" />
-                Archive
+                归档
               </Button>
             </div>
           </div>
@@ -459,8 +459,8 @@ export default function InboxPage() {
             <Inbox className="mb-3 h-10 w-10 text-muted-foreground/30" />
             <p className="text-sm">
               {items.length === 0
-                ? "Your inbox is empty"
-                : "Select a notification to view details"}
+                ? "收件箱为空"
+                : "选择一条通知查看详情"}
             </p>
           </div>
         )}

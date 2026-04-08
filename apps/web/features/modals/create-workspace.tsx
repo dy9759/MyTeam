@@ -52,7 +52,7 @@ export function CreateWorkspaceModal({ onClose }: { onClose: () => void }) {
       onClose();
       await switchWorkspace(ws.id);
     } catch {
-      toast.error("Failed to create workspace");
+      toast.error("创建工作区失败");
     } finally {
       setCreating(false);
     }
@@ -124,7 +124,7 @@ export function CreateWorkspaceModal({ onClose }: { onClose: () => void }) {
             onClick={handleCreate}
             disabled={creating || !canSubmit}
           >
-            {creating ? "Creating..." : "Create workspace"}
+            {creating ? "创建中..." : "创建工作区"}
           </Button>
         </div>
       </DialogContent>

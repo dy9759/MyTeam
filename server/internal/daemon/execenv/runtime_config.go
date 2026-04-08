@@ -32,8 +32,8 @@ func InjectRuntimeConfig(workDir, provider string, ctx TaskContextForEnv) error 
 func buildMetaSkillContent(provider string, ctx TaskContextForEnv) string {
 	var b strings.Builder
 
-	b.WriteString("# Multica Agent Runtime\n\n")
-	b.WriteString("You are a coding agent in the Multica platform. Use the `multica` CLI to interact with the platform.\n\n")
+	b.WriteString("# My Team Agent Runtime\n\n")
+	b.WriteString("You are a coding agent in the My Team platform. Use the `multica` CLI to interact with the platform.\n\n")
 
 	// Inject agent identity instructions before workflow commands.
 	if ctx.AgentInstructions != "" {

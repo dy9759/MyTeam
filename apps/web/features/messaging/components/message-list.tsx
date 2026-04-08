@@ -43,7 +43,7 @@ export function MessageList({ messages, currentUserId }: MessageListProps) {
       ))}
       {messages.length === 0 && (
         <div className="text-center text-muted-foreground mt-8">
-          No messages yet
+          暂无消息
         </div>
       )}
     </div>

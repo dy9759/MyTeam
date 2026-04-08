@@ -42,3 +42,17 @@ UPDATE channel SET category = $2 WHERE id = $1;
 
 -- name: ListPublicChannels :many
 SELECT * FROM channel WHERE workspace_id = $1 AND visibility = 'public' ORDER BY created_at ASC;
+
+-- name: GetChannelByInviteCode :one
+SELECT * FROM channel WHERE invite_code = $1;
+
+-- name: UpdateChannelConversationType :exec
+UPDATE channel SET conversation_type = $2 WHERE id = $1;
+
+-- name: ListChannelsByConversationType :many
+SELECT * FROM channel
+WHERE workspace_id = $1 AND conversation_type = $2
+ORDER BY created_at ASC;
+
+-- name: UpdateChannelProject :exec
+UPDATE channel SET project_id = $2 WHERE id = $1;

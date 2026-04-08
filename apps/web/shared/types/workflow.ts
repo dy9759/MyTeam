@@ -20,6 +20,19 @@ export interface Plan {
   created_at: string;
 }
 
+export type WorkflowStepStatus =
+  | 'pending'
+  | 'queued'
+  | 'assigned'
+  | 'running'
+  | 'waiting_input'
+  | 'blocked'
+  | 'retrying'
+  | 'timeout'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
+
 export interface WorkflowStep {
   id: string;
   workflow_id: string;
@@ -31,11 +44,22 @@ export interface WorkflowStep {
   timeout_ms: number;
   retry_count: number;
   depends_on: string[];
-  status: "pending" | "running" | "completed" | "failed";
+  status: WorkflowStepStatus;
   started_at?: string;
   completed_at?: string;
   result?: any;
   error?: string;
+
+  // Execution fields
+  run_id?: string;
+  owner_escalation_policy?: { escalate_after_seconds: number; escalate_to: string };
+  timeout_rule?: { max_duration_seconds: number; action: 'retry' | 'fail' | 'escalate' };
+  retry_rule?: { max_retries: number; retry_delay_seconds: number };
+  human_approval_required?: boolean;
+  input_context_refs?: any[];
+  output_refs?: any[];
+  actual_agent_id?: string;
+  current_retry?: number;
 }
 
 export interface Workflow {

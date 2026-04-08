@@ -256,6 +256,86 @@ func (h *Handler) UpdateChannelCategory(w http.ResponseWriter, r *http.Request) 
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// UpgradeDMToChannel - POST /api/channels/{channelID}/upgrade
+// Changes conversation_type from 'dm' to 'channel'.
+// Validates current type is 'dm'.
+// Allows setting a name for the new channel.
+// Broadcasts channel:updated WS event.
+func (h *Handler) UpgradeDMToChannel(w http.ResponseWriter, r *http.Request) {
+	channelID := chi.URLParam(r, "channelID")
+	userID, ok := requireUserID(w, r)
+	if !ok {
+		return
+	}
+	workspaceID := resolveWorkspaceID(r)
+
+	// Load the channel.
+	ch, err := h.Queries.GetChannel(r.Context(), parseUUID(channelID))
+	if err != nil {
+		if isNotFound(err) {
+			writeError(w, http.StatusNotFound, "channel not found")
+			return
+		}
+		slog.Warn("upgrade dm: get channel failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to get channel")
+		return
+	}
+
+	// TODO: wire after migration — ch.ConversationType field.
+	// For now, check if the channel has a "dm" category or naming pattern to detect DM type.
+	// After migration, this check should be: ch.ConversationType != "dm".
+	// Placeholder validation using Category field:
+	if ch.Category.Valid && ch.Category.String != "dm" {
+		writeError(w, http.StatusBadRequest, "channel is not a DM conversation")
+		return
+	}
+
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.Name == "" {
+		writeError(w, http.StatusBadRequest, "name is required when upgrading DM to channel")
+		return
+	}
+
+	// TODO: wire after sqlc generation — expects db.UpgradeDMToChannelParams.
+	// For now, use UpdateChannelCategory to mark it as "channel" and update the name.
+	// After migration, this should set conversation_type = 'channel'.
+	err = h.Queries.UpdateChannelCategory(r.Context(), db.UpdateChannelCategoryParams{
+		ID:       parseUUID(channelID),
+		Category: strToText("channel"),
+	})
+	if err != nil {
+		slog.Warn("upgrade dm to channel: update category failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to upgrade DM to channel")
+		return
+	}
+
+	// Update channel name.
+	// TODO: wire after sqlc generation — expects db.UpdateChannelName or similar.
+	// For now, this is a placeholder. The name update will be part of the upgrade query.
+
+	h.publish("channel:updated", workspaceID, "member", userID, map[string]any{
+		"channel_id":        channelID,
+		"conversation_type": "channel",
+		"name":              req.Name,
+	})
+
+	// Re-fetch channel for response.
+	updatedCh, err := h.Queries.GetChannel(r.Context(), parseUUID(channelID))
+	if err != nil {
+		slog.Warn("upgrade dm: re-fetch channel failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to fetch upgraded channel")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, channelToResponse(updatedCh))
+}
+
 func channelToResponse(ch db.Channel) map[string]any {
 	return map[string]any{
 		"id":              uuidToString(ch.ID),

@@ -27,8 +27,8 @@ var authCmd = &cobra.Command{
 
 var authLoginCmd = &cobra.Command{
 	Use:    "login",
-	Short:  "Authenticate with Multica",
-	Long:   "Authenticate with Multica without auto-configuring workspaces. Use 'multica login' for the guided setup flow.",
+	Short:  "Authenticate with My Team",
+	Long:   "Authenticate with My Team without auto-configuring workspaces. Use 'multica login' for the guided setup flow.",
 	Hidden: true,
 	RunE:   runAuthLogin,
 }
@@ -301,7 +301,7 @@ const callbackSuccessHTML = `<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Multica — Authenticated</title>
+<title>My Team — Authenticated</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   @media (prefers-color-scheme: dark) {

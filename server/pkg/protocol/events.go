@@ -66,9 +66,23 @@ const (
 	EventWorkflowCreated       = "workflow:created"
 	EventWorkflowStarted       = "workflow:started"
 	EventWorkflowCompleted     = "workflow:completed"
+	EventWorkflowStepStarted   = "workflow:step:started"
 	EventWorkflowStepCompleted = "workflow:step:completed"
 	EventWorkflowStepFailed    = "workflow:step:failed"
 
+	// Project events
+	EventProjectCreated       = "project:created"
+	EventProjectUpdated       = "project:updated"
+	EventProjectDeleted       = "project:deleted"
+	EventProjectStatusChanged = "project:status_changed"
+
+	// Run events
+	EventRunStarted   = "run:started"
+	EventRunCompleted = "run:completed"
+	EventRunFailed    = "run:failed"
+
 	// Plan events
 	EventPlanGenerated = "plan:generated"
+	EventPlanApproved  = "plan:approved"
+	EventPlanRejected  = "plan:rejected"
 )

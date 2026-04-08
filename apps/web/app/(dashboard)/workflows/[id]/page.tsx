@@ -59,7 +59,7 @@ export default function WorkflowDetailPage() {
         setWorkflow(wf as Workflow);
         setSteps((stepsRes.steps ?? []) as WorkflowStep[]);
       } catch {
-        toast.error("Failed to load workflow");
+        toast.error("加载工作流失败");
       } finally {
         setLoading(false);
       }
@@ -72,9 +72,9 @@ export default function WorkflowDetailPage() {
     try {
       const updated = await api.startWorkflow(id);
       setWorkflow(updated as Workflow);
-      toast.success("Workflow started");
+      toast.success("工作流已启动");
     } catch {
-      toast.error("Failed to start workflow");
+      toast.error("启动工作流失败");
     } finally {
       setStarting(false);
     }
@@ -83,10 +83,10 @@ export default function WorkflowDetailPage() {
   const handleDelete = async () => {
     try {
       await api.deleteWorkflow(id);
-      toast.success("Workflow deleted");
+      toast.success("工作流已删除");
       router.push("/workflows");
     } catch {
-      toast.error("Failed to delete workflow");
+      toast.error("删除工作流失败");
     }
   };
 
@@ -101,7 +101,7 @@ export default function WorkflowDetailPage() {
   if (!workflow) {
     return (
       <div className="flex-1 p-6">
-        <p className="text-muted-foreground">Workflow not found.</p>
+        <p className="text-muted-foreground">未找到工作流。</p>
       </div>
     );
   }
@@ -121,7 +121,7 @@ export default function WorkflowDetailPage() {
             <Badge className={workflowStatusBadge[workflow.status] ?? ""} variant="outline">
               {workflow.status}
             </Badge>
-            <span>Type: {workflow.type}</span>
+            <span>类型：{workflow.type}</span>
             <span>v{workflow.version}</span>
             {workflow.cron_expr && <span>Cron: {workflow.cron_expr}</span>}
           </div>
@@ -130,7 +130,7 @@ export default function WorkflowDetailPage() {
           {canStart && (
             <Button onClick={handleStart} disabled={starting}>
               {starting ? <Loader2 className="size-4 mr-2 animate-spin" /> : <Play className="size-4 mr-2" />}
-              Start
+              开始
             </Button>
           )}
           <Button variant="outline" size="icon" onClick={handleDelete}>
@@ -141,13 +141,36 @@ export default function WorkflowDetailPage() {
 
       {/* Steps */}
       <div className="space-y-2">
-        <h2 className="text-lg font-medium mb-3">Steps</h2>
+        <h2 className="text-lg font-medium mb-3">步骤</h2>
         <WorkflowEditor
           steps={steps}
           readOnly={workflow.status === "completed" || workflow.status === "failed"}
-          onAddStep={() => {/* TODO: add step via API */}}
-          onRemoveStep={(stepId) => {/* TODO: remove step */}}
-          onUpdateStep={(stepId, updates) => {/* TODO: update step */}}
+          onAddStep={async () => {
+            try {
+              const step = await api.createWorkflowStep(id, { description: "新步骤" });
+              setSteps((prev) => [...prev, step as WorkflowStep]);
+              toast.success("步骤已添加");
+            } catch {
+              toast.error("添加步骤失败");
+            }
+          }}
+          onRemoveStep={async (stepId) => {
+            try {
+              await api.deleteWorkflowStep(id, stepId);
+              setSteps((prev) => prev.filter((s) => s.id !== stepId));
+              toast.success("步骤已删除");
+            } catch {
+              toast.error("删除步骤失败");
+            }
+          }}
+          onUpdateStep={async (stepId, updates) => {
+            try {
+              const updated = await api.updateWorkflowStep(id, stepId, updates);
+              setSteps((prev) => prev.map((s) => (s.id === stepId ? (updated as WorkflowStep) : s)));
+            } catch {
+              toast.error("更新步骤失败");
+            }
+          }}
         />
       </div>
     </div>

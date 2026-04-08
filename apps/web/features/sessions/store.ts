@@ -33,7 +33,7 @@ export const useSessionStore = create<SessionState>((set) => ({
       const res = await api.listSessions();
       set({ sessions: res.sessions, loading: false });
     } catch (err) {
-      toast.error("Failed to load sessions");
+      toast.error("加载会话失败");
       set({ loading: false });
     }
   },
@@ -43,7 +43,7 @@ export const useSessionStore = create<SessionState>((set) => ({
       const session = await api.getSession(id);
       set({ currentSession: session });
     } catch (err) {
-      toast.error("Failed to load session");
+      toast.error("加载会话失败");
     }
   },
 
@@ -52,7 +52,7 @@ export const useSessionStore = create<SessionState>((set) => ({
       const res = await api.getSessionMessages(id);
       set({ sessionMessages: res.messages });
     } catch (err) {
-      toast.error("Failed to load session messages");
+      toast.error("加载会话消息失败");
     }
   },
 
@@ -62,7 +62,7 @@ export const useSessionStore = create<SessionState>((set) => ({
       set((s) => ({ sessions: [...s.sessions, session] }));
       return session;
     } catch (err) {
-      toast.error("Failed to create session");
+      toast.error("创建会话失败");
       return null;
     }
   },
@@ -70,9 +70,9 @@ export const useSessionStore = create<SessionState>((set) => ({
   joinSession: async (id) => {
     try {
       await api.joinSession(id);
-      toast.success("Joined session");
+      toast.success("已加入会话");
     } catch (err) {
-      toast.error("Failed to join session");
+      toast.error("加入会话失败");
     }
   },
 
@@ -84,7 +84,7 @@ export const useSessionStore = create<SessionState>((set) => ({
         currentSession: s.currentSession?.id === id ? { ...s.currentSession, ...updated } : s.currentSession,
       }));
     } catch (err) {
-      toast.error("Failed to update session");
+      toast.error("更新会话失败");
     }
   },
 

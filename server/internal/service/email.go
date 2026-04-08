@@ -39,7 +39,7 @@ func (s *EmailService) SendVerificationCode(to, code string) error {
 	params := &resend.SendEmailRequest{
 		From:    s.fromEmail,
 		To:      []string{to},
-		Subject: "Your Multica verification code",
+		Subject: "Your My Team verification code",
 		Html: fmt.Sprintf(
 			`<div style="font-family: sans-serif; max-width: 400px; margin: 0 auto;">
 				<h2>Your verification code</h2>

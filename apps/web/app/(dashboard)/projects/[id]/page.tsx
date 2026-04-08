@@ -1,0 +1,696 @@
+"use client";
+
+import { useEffect, useRef, useState, useCallback } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { useProjectStore } from "@/features/projects";
+import { useWorkspaceStore } from "@/features/workspace";
+import { useWorkflowStore } from "@/features/workflow/store";
+import { PlanEditor } from "@/features/projects/components/plan-editor";
+import { VersionTree } from "@/features/projects/components/version-tree";
+import { ExecutionStepCard } from "@/features/projects/components/execution-step-card";
+import { MessageInput } from "@/features/messaging/components/message-input";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Progress } from "@/components/ui/progress";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { api } from "@/shared/api";
+import { toast } from "sonner";
+import {
+  ArrowLeft,
+  Loader2,
+  Play,
+  GitFork,
+  Check,
+  X as XIcon,
+  StopCircle,
+} from "lucide-react";
+import type {
+  ProjectStatus,
+  ProjectRun,
+  PlanStep,
+  Agent,
+} from "@/shared/types";
+import type { WorkflowStep } from "@/shared/types/workflow";
+import type { Message } from "@/shared/types/messaging";
+
+const STATUS_BADGE: Record<ProjectStatus, string> = {
+  not_started: "bg-muted text-muted-foreground",
+  running: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
+  paused: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
+  completed: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+  failed: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
+  archived: "bg-muted text-muted-foreground",
+};
+
+const STATUS_LABEL: Record<ProjectStatus, string> = {
+  not_started: "未开始",
+  running: "运行中",
+  paused: "已暂停",
+  completed: "已完成",
+  failed: "失败",
+  archived: "已归档",
+};
+
+const RUN_STATUS_BADGE: Record<string, string> = {
+  pending: "bg-muted text-muted-foreground",
+  running: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
+  paused: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
+  completed: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+  failed: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
+  cancelled: "bg-muted text-muted-foreground",
+};
+
+interface PlanEditorStep extends PlanStep {
+  agent_id?: string;
+}
+
+export default function ProjectDetailPage() {
+  const params = useParams();
+  const router = useRouter();
+  const id = params.id as string;
+
+  const {
+    currentProject,
+    versions,
+    runs,
+    fetchProject,
+    fetchVersions,
+    fetchRuns,
+    updateProject,
+    approvePlan,
+    rejectPlan,
+  } = useProjectStore();
+
+  const [loading, setLoading] = useState(true);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleValue, setTitleValue] = useState("");
+  const [forkOpen, setForkOpen] = useState(false);
+  const [forkBranch, setForkBranch] = useState("");
+  const [forkReason, setForkReason] = useState("");
+  const [rejectOpen, setRejectOpen] = useState(false);
+  const [rejectReason, setRejectReason] = useState("");
+  const [planSteps, setPlanSteps] = useState<PlanEditorStep[]>([]);
+
+  // Channel messages for tab 3
+  const [channelMessages, setChannelMessages] = useState<Message[]>([]);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Execution polling
+  const execPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [workflowSteps, setWorkflowSteps] = useState<WorkflowStep[]>([]);
+  const [startingExecution, setStartingExecution] = useState(false);
+
+  // Agents for replacement dropdown
+  const agents = useWorkspaceStore((s) => s.agents) as Agent[];
+  const { retryStep, replaceStepAgent } = useWorkflowStore();
+
+  useEffect(() => {
+    if (!id) return;
+    const load = async () => {
+      try {
+        await Promise.all([
+          fetchProject(id),
+          fetchVersions(id),
+          fetchRuns(id),
+        ]);
+      } catch {
+        toast.error("加载项目失败");
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, [id, fetchProject, fetchVersions, fetchRuns]);
+
+  // Sync title and plan steps when project loads
+  useEffect(() => {
+    if (currentProject) {
+      setTitleValue(currentProject.title);
+      if (currentProject.plan?.steps) {
+        setPlanSteps(currentProject.plan.steps as PlanEditorStep[]);
+      }
+    }
+  }, [currentProject]);
+
+  // Poll channel messages
+  useEffect(() => {
+    if (pollRef.current) clearInterval(pollRef.current);
+    const channelId = currentProject?.channel_id;
+    if (!channelId) return;
+
+    async function loadMessages() {
+      try {
+        const res = await api.getChannelMessages(channelId!);
+        setChannelMessages(res.messages);
+      } catch {
+        // silently fail
+      }
+    }
+
+    loadMessages();
+    pollRef.current = setInterval(loadMessages, 3000);
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [currentProject?.channel_id]);
+
+  // Fetch workflow steps when project has a plan / active run
+  const fetchWorkflowSteps = useCallback(async () => {
+    if (!currentProject?.plan) return;
+    try {
+      // Workflows are created from plans; use plan_id to find the workflow
+      const res = await api.listWorkflows(200);
+      const wf = (res.workflows as any[]).find(
+        (w: any) => w.plan_id === currentProject.plan!.id,
+      );
+      if (wf?.id) {
+        const stepsRes = await api.getWorkflowSteps(wf.id);
+        setWorkflowSteps(stepsRes.steps as WorkflowStep[]);
+      }
+    } catch {
+      // silently fail
+    }
+  }, [currentProject?.plan]);
+
+  // Poll execution status
+  useEffect(() => {
+    if (execPollRef.current) clearInterval(execPollRef.current);
+    const activeRun = currentProject?.active_run;
+    const isActive =
+      activeRun &&
+      (activeRun.status === "running" || activeRun.status === "paused");
+    if (!isActive) return;
+
+    async function pollExecution() {
+      try {
+        await Promise.all([fetchRuns(id), fetchProject(id), fetchWorkflowSteps()]);
+      } catch {
+        // silently fail
+      }
+    }
+
+    // Initial fetch
+    fetchWorkflowSteps();
+
+    execPollRef.current = setInterval(pollExecution, 3000);
+    return () => {
+      if (execPollRef.current) clearInterval(execPollRef.current);
+    };
+  }, [currentProject?.active_run?.status, id, fetchRuns, fetchProject, fetchWorkflowSteps]);
+
+  // Also fetch steps once on initial load if there's an active run
+  useEffect(() => {
+    if (currentProject?.active_run) {
+      fetchWorkflowSteps();
+    }
+  }, [currentProject?.active_run, fetchWorkflowSteps]);
+
+  async function handleTitleSave() {
+    if (!titleValue.trim() || !id) return;
+    await updateProject(id, { title: titleValue.trim() });
+    setEditingTitle(false);
+  }
+
+  async function handleFork() {
+    if (!forkBranch.trim()) return;
+    await useProjectStore.getState().forkProject(id, forkBranch.trim(), forkReason.trim() || undefined);
+    setForkOpen(false);
+    setForkBranch("");
+    setForkReason("");
+    fetchVersions(id);
+  }
+
+  async function handleApprove() {
+    await approvePlan(id);
+  }
+
+  async function handleReject() {
+    if (!rejectReason.trim()) return;
+    await rejectPlan(id, rejectReason.trim());
+    setRejectOpen(false);
+    setRejectReason("");
+  }
+
+  async function handleStartExecution() {
+    try {
+      setStartingExecution(true);
+      await api.startProjectExecution(id);
+      toast.success("执行已开始");
+      await Promise.all([fetchProject(id), fetchRuns(id)]);
+    } catch {
+      toast.error("启动执行失败");
+    } finally {
+      setStartingExecution(false);
+    }
+  }
+
+  function handleRetryStep(stepId: string) {
+    // Find the workflow for this project
+    const wfId = workflowSteps[0]?.workflow_id;
+    if (!wfId) return;
+    retryStep(wfId, stepId);
+  }
+
+  function handleReplaceAgent(stepId: string, agentId: string) {
+    const wfId = workflowSteps[0]?.workflow_id;
+    if (!wfId) return;
+    replaceStepAgent(wfId, stepId, agentId);
+  }
+
+  async function handleSendChannelMessage(content: string) {
+    if (!currentProject?.channel_id) return;
+    try {
+      const msg = await api.sendMessage({ channel_id: currentProject.channel_id, content });
+      setChannelMessages((prev) => [...prev, msg]);
+    } catch {
+      toast.error("发送消息失败");
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center flex-1 py-20">
+        <Loader2 className="size-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!currentProject) {
+    return (
+      <div className="flex-1 p-6">
+        <p className="text-muted-foreground">未找到项目。</p>
+      </div>
+    );
+  }
+
+  const plan = currentProject.plan;
+  const approvalStatus = (plan as any)?.approval_status as string | undefined;
+  const activeRun = currentProject.active_run;
+
+  return (
+    <div className="flex-1 overflow-auto p-6">
+      {/* Header */}
+      <div className="flex items-center gap-3 mb-6">
+        <Button variant="ghost" size="icon" onClick={() => router.push("/projects")}>
+          <ArrowLeft className="size-4" />
+        </Button>
+        <div className="flex-1 min-w-0">
+          {editingTitle ? (
+            <div className="flex items-center gap-2">
+              <Input
+                value={titleValue}
+                onChange={(e) => setTitleValue(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleTitleSave(); if (e.key === "Escape") setEditingTitle(false); }}
+                className="text-2xl font-semibold h-auto py-0"
+                autoFocus
+              />
+              <Button size="sm" onClick={handleTitleSave}>保存</Button>
+              <Button size="sm" variant="outline" onClick={() => setEditingTitle(false)}>取消</Button>
+            </div>
+          ) : (
+            <h1
+              className="text-2xl font-semibold truncate cursor-pointer hover:text-primary/80"
+              onClick={() => setEditingTitle(true)}
+            >
+              {currentProject.title}
+            </h1>
+          )}
+          <div className="flex items-center gap-2 mt-1">
+            <Badge className={STATUS_BADGE[currentProject.status]} variant="outline">
+              {STATUS_LABEL[currentProject.status]}
+            </Badge>
+            <span className="text-sm text-muted-foreground">
+              {currentProject.schedule_type === "one_time" ? "一次性" : currentProject.schedule_type === "scheduled" ? "定时" : "周期性"}
+            </span>
+            {currentProject.cron_expr && (
+              <span className="text-sm text-muted-foreground font-mono">{currentProject.cron_expr}</span>
+            )}
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setForkOpen(true)}>
+            <GitFork className="size-4 mr-1" />
+            分叉
+          </Button>
+        </div>
+      </div>
+
+      {/* Version selector */}
+      {versions.length > 1 && (
+        <div className="mb-4 border rounded-lg p-3">
+          <h3 className="text-sm font-medium mb-2">版本</h3>
+          <VersionTree
+            versions={versions}
+            onSelect={() => {
+              // Version switching would reload project with specific version
+              // For now just display
+            }}
+          />
+        </div>
+      )}
+
+      {/* Tabs */}
+      <Tabs defaultValue="plan" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="plan">计划</TabsTrigger>
+          <TabsTrigger value="execution">执行</TabsTrigger>
+          <TabsTrigger value="channel">频道</TabsTrigger>
+        </TabsList>
+
+        {/* Tab 1: Plan */}
+        <TabsContent value="plan" className="space-y-4">
+          {/* Task brief */}
+          {(plan as any)?.task_brief && (
+            <div className="border rounded-lg p-4">
+              <h3 className="text-sm font-medium mb-2">任务简报</h3>
+              <div className="text-sm text-muted-foreground whitespace-pre-wrap">
+                {(plan as any).task_brief}
+              </div>
+            </div>
+          )}
+
+          {/* Plan steps */}
+          <div>
+            <h3 className="text-sm font-medium mb-3">计划步骤</h3>
+            <PlanEditor
+              steps={planSteps}
+              onUpdate={setPlanSteps}
+              readOnly={approvalStatus === "approved"}
+            />
+          </div>
+
+          {/* Approval section */}
+          <div className="border rounded-lg p-4">
+            <h3 className="text-sm font-medium mb-3">审批</h3>
+            {approvalStatus === "draft" || approvalStatus === "pending_approval" || !approvalStatus ? (
+              <div className="flex items-center gap-3">
+                <Button onClick={handleApprove} className="bg-green-600 hover:bg-green-700 text-white">
+                  <Check className="size-4 mr-1" />
+                  批准计划
+                </Button>
+                <Button variant="outline" onClick={() => setRejectOpen(true)} className="text-destructive border-destructive hover:bg-destructive/10">
+                  <XIcon className="size-4 mr-1" />
+                  拒绝计划
+                </Button>
+                <span className="text-sm text-muted-foreground">
+                  {approvalStatus === "pending_approval" ? "待审批" : "草稿"}
+                </span>
+              </div>
+            ) : approvalStatus === "approved" ? (
+              <div className="flex items-center gap-2">
+                <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                  已批准
+                </Badge>
+                {(plan as any)?.approved_by && (
+                  <span className="text-sm text-muted-foreground">
+                    由 {(plan as any).approved_by.slice(0, 8)} 批准
+                  </span>
+                )}
+                {(plan as any)?.approved_at && (
+                  <span className="text-sm text-muted-foreground">
+                    · {new Date((plan as any).approved_at).toLocaleString()}
+                  </span>
+                )}
+              </div>
+            ) : approvalStatus === "rejected" ? (
+              <div>
+                <Badge className="bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
+                  已拒绝
+                </Badge>
+              </div>
+            ) : null}
+
+            {/* Start execution button */}
+            {approvalStatus === "approved" && currentProject.status === "not_started" && (
+              <div className="mt-4">
+                <Button onClick={handleStartExecution} disabled={startingExecution}>
+                  {startingExecution ? (
+                    <Loader2 className="size-4 mr-1 animate-spin" />
+                  ) : (
+                    <Play className="size-4 mr-1" />
+                  )}
+                  开始执行
+                </Button>
+              </div>
+            )}
+          </div>
+        </TabsContent>
+
+        {/* Tab 2: Execution */}
+        <TabsContent value="execution" className="space-y-4">
+          {activeRun ? (
+            <div className="space-y-4">
+              {/* Run summary bar */}
+              <RunSummaryBar
+                run={activeRun}
+                steps={workflowSteps}
+              />
+
+              {/* Step cards */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-medium">步骤</h3>
+                {workflowSteps.length > 0 ? (
+                  [...workflowSteps]
+                    .sort((a, b) => a.step_order - b.step_order)
+                    .map((step) => (
+                      <ExecutionStepCard
+                        key={step.id}
+                        step={step}
+                        agents={agents}
+                        workflowId={step.workflow_id}
+                        onRetry={handleRetryStep}
+                        onReplaceAgent={handleReplaceAgent}
+                      />
+                    ))
+                ) : (
+                  <div className="text-sm text-muted-foreground border rounded-lg p-4 text-center">
+                    暂无步骤数据
+                  </div>
+                )}
+              </div>
+
+              {activeRun.failure_reason && (
+                <div className="border border-destructive/30 rounded-lg p-3 bg-destructive/5">
+                  <div className="text-sm font-medium text-destructive">失败原因</div>
+                  <div className="text-sm text-muted-foreground mt-1">{activeRun.failure_reason}</div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="text-center py-12 text-muted-foreground">
+              <p className="mb-2">暂无运行中的执行</p>
+              {approvalStatus === "approved" && (
+                <Button
+                  variant="outline"
+                  onClick={handleStartExecution}
+                  disabled={startingExecution}
+                >
+                  {startingExecution ? (
+                    <Loader2 className="size-4 mr-1 animate-spin" />
+                  ) : (
+                    <Play className="size-4 mr-1" />
+                  )}
+                  开始执行
+                </Button>
+              )}
+            </div>
+          )}
+
+          {/* Run history */}
+          {runs.length > 0 && (
+            <div>
+              <h3 className="text-sm font-medium mb-3">运行历史</h3>
+              <div className="space-y-2">
+                {runs.map((run: ProjectRun) => (
+                  <div key={run.id} className="flex items-center gap-3 p-3 border rounded-lg">
+                    <Badge className={RUN_STATUS_BADGE[run.status] ?? ""} variant="outline">
+                      {run.status}
+                    </Badge>
+                    <div className="flex-1 min-w-0 text-sm">
+                      {run.start_at && (
+                        <span className="text-muted-foreground">
+                          {new Date(run.start_at).toLocaleString()}
+                        </span>
+                      )}
+                      {run.end_at && run.start_at && (
+                        <span className="text-muted-foreground">
+                          {" "}{"\u2192"} {new Date(run.end_at).toLocaleString()}
+                        </span>
+                      )}
+                    </div>
+                    {run.retry_count > 0 && (
+                      <span className="text-xs text-muted-foreground">
+                        重试 {run.retry_count} 次
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </TabsContent>
+
+        {/* Tab 3: Channel */}
+        <TabsContent value="channel">
+          {currentProject.channel_id ? (
+            <div className="flex flex-col border rounded-lg" style={{ height: "500px" }}>
+              <div className="p-3 border-b">
+                <h3 className="font-medium text-sm">项目频道</h3>
+              </div>
+              <div className="flex-1 overflow-auto p-4 space-y-3">
+                {channelMessages.map((msg) => (
+                  <div key={msg.id} className="flex justify-start">
+                    <div className="max-w-[70%] px-4 py-2 rounded-lg text-sm bg-muted">
+                      <div className="text-xs opacity-70 mb-1">
+                        {msg.sender_id?.slice(0, 12)} · {new Date(msg.created_at).toLocaleTimeString()}
+                      </div>
+                      <div>{msg.content}</div>
+                    </div>
+                  </div>
+                ))}
+                {channelMessages.length === 0 && (
+                  <div className="text-center text-muted-foreground mt-8">
+                    暂无消息
+                  </div>
+                )}
+              </div>
+              <MessageInput onSend={handleSendChannelMessage} placeholder="发送消息到项目频道..." />
+            </div>
+          ) : (
+            <div className="text-center py-12 text-muted-foreground">
+              <p>该项目暂无关联频道</p>
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
+
+      {/* Fork Dialog */}
+      <Dialog open={forkOpen} onOpenChange={setForkOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>分叉项目</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="text-sm text-muted-foreground">分支名称 *</label>
+              <Input
+                value={forkBranch}
+                onChange={(e) => setForkBranch(e.target.value)}
+                placeholder="例如：experiment-v2"
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <label className="text-sm text-muted-foreground">分叉原因</label>
+              <Input
+                value={forkReason}
+                onChange={(e) => setForkReason(e.target.value)}
+                placeholder="可选"
+                className="mt-1"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setForkOpen(false)}>取消</Button>
+            <Button onClick={handleFork} disabled={!forkBranch.trim()}>
+              <GitFork className="size-4 mr-1" />
+              分叉
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reject Dialog */}
+      <Dialog open={rejectOpen} onOpenChange={setRejectOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>拒绝计划</DialogTitle>
+          </DialogHeader>
+          <div>
+            <label className="text-sm text-muted-foreground">拒绝原因 *</label>
+            <Input
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              placeholder="请输入拒绝原因"
+              className="mt-1"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRejectOpen(false)}>取消</Button>
+            <Button variant="destructive" onClick={handleReject} disabled={!rejectReason.trim()}>
+              拒绝
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+/* ---------- Run Summary Bar ---------- */
+
+const RUN_STATUS_LABEL: Record<string, string> = {
+  pending: "待运行",
+  running: "运行中",
+  paused: "已暂停",
+  completed: "已完成",
+  failed: "已失败",
+  cancelled: "已取消",
+};
+
+function RunSummaryBar({
+  run,
+  steps,
+}: {
+  run: ProjectRun;
+  steps: WorkflowStep[];
+}) {
+  const completedCount = steps.filter((s) => s.status === "completed").length;
+  const totalCount = steps.length;
+  const progressPct = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+
+  const startTime = run.start_at ? new Date(run.start_at).getTime() : null;
+  const endTime = run.end_at ? new Date(run.end_at).getTime() : Date.now();
+  let durationStr: string | null = null;
+  if (startTime) {
+    const diffSec = Math.floor((endTime - startTime) / 1000);
+    if (diffSec < 60) durationStr = `${diffSec}秒`;
+    else if (diffSec < 3600)
+      durationStr = `${Math.floor(diffSec / 60)}分${diffSec % 60}秒`;
+    else {
+      const hours = Math.floor(diffSec / 3600);
+      const mins = Math.floor((diffSec % 3600) / 60);
+      durationStr = `${hours}时${mins}分`;
+    }
+  }
+
+  return (
+    <div className="border rounded-lg p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <h3 className="text-sm font-medium">当前运行</h3>
+          <Badge className={RUN_STATUS_BADGE[run.status] ?? ""} variant="outline">
+            {RUN_STATUS_LABEL[run.status] ?? run.status}
+          </Badge>
+          {durationStr && (
+            <span className="text-xs text-muted-foreground">
+              耗时 {durationStr}
+            </span>
+          )}
+        </div>
+        <span className="text-sm text-muted-foreground">
+          进度: {completedCount}/{totalCount} 步骤已完成
+        </span>
+      </div>
+      <Progress value={progressPct} className="h-2" />
+    </div>
+  );
+}

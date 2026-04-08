@@ -9,7 +9,7 @@ interface MessageInputProps {
 
 export function MessageInput({
   onSend,
-  placeholder = "Type a message...",
+  placeholder = "输入消息...",
   disabled,
 }: MessageInputProps) {
   const [input, setInput] = useState("");
@@ -41,7 +41,7 @@ export function MessageInput({
         disabled={sending || !input.trim() || disabled}
         className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium disabled:opacity-50"
       >
-        Send
+        发送
       </button>
     </form>
   );

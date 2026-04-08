@@ -31,3 +31,38 @@ UPDATE workflow_step SET status = $2, started_at = CASE WHEN $2 = 'running' THEN
 
 -- name: GetWorkflowStep :one
 SELECT * FROM workflow_step WHERE id = $1;
+
+-- name: UpdateWorkflowStep :one
+UPDATE workflow_step
+SET description = COALESCE(sqlc.narg('description'), description),
+    timeout_ms = COALESCE(sqlc.narg('timeout_ms'), timeout_ms),
+    retry_count = COALESCE(sqlc.narg('retry_count'), retry_count)
+WHERE id = @id
+RETURNING *;
+
+-- name: DeleteWorkflowStep :exec
+DELETE FROM workflow_step WHERE id = $1;
+
+-- name: CreateWorkflowStepTask :one
+-- Creates a task queue entry linked to a workflow step
+INSERT INTO agent_task_queue (agent_id, issue_id, status, priority, workflow_step_id, run_id)
+VALUES (@agent_id, NULL, 'pending', @priority, @workflow_step_id, @run_id)
+RETURNING *;
+
+-- name: GetTaskByWorkflowStep :one
+SELECT * FROM agent_task_queue WHERE workflow_step_id = @workflow_step_id AND status NOT IN ('completed', 'failed', 'cancelled') LIMIT 1;
+
+-- name: ListTasksByRun :many
+SELECT * FROM agent_task_queue WHERE run_id = @run_id ORDER BY created_at;
+
+-- name: UpdateWorkflowStepActualAgent :exec
+UPDATE workflow_step SET actual_agent_id = @actual_agent_id WHERE id = @id;
+
+-- name: IncrementWorkflowStepRetry :exec
+UPDATE workflow_step SET current_retry = current_retry + 1 WHERE id = @id;
+
+-- name: ListWorkflowStepsByRun :many
+SELECT * FROM workflow_step WHERE run_id = @run_id ORDER BY step_order;
+
+-- name: UpdateWorkflowStepOutputRefs :exec
+UPDATE workflow_step SET output_refs = @output_refs WHERE id = @id;

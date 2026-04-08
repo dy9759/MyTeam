@@ -14,7 +14,7 @@ import (
 const createPlan = `-- name: CreatePlan :one
 INSERT INTO plan (workspace_id, title, description, source_type, source_ref_id, constraints, expected_output, steps, created_by)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING id, workspace_id, title, description, source_type, source_ref_id, constraints, expected_output, steps, created_by, created_at, updated_at
+RETURNING id, workspace_id, title, description, source_type, source_ref_id, constraints, expected_output, steps, created_by, created_at, updated_at, project_id, version_id, task_brief, assigned_agents, risk_points, approval_status, approved_by, approved_at
 `
 
 type CreatePlanParams struct {
@@ -55,6 +55,14 @@ func (q *Queries) CreatePlan(ctx context.Context, arg CreatePlanParams) (Plan, e
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ProjectID,
+		&i.VersionID,
+		&i.TaskBrief,
+		&i.AssignedAgents,
+		&i.RiskPoints,
+		&i.ApprovalStatus,
+		&i.ApprovedBy,
+		&i.ApprovedAt,
 	)
 	return i, err
 }
@@ -69,7 +77,7 @@ func (q *Queries) DeletePlan(ctx context.Context, id pgtype.UUID) error {
 }
 
 const getPlan = `-- name: GetPlan :one
-SELECT id, workspace_id, title, description, source_type, source_ref_id, constraints, expected_output, steps, created_by, created_at, updated_at FROM plan WHERE id = $1
+SELECT id, workspace_id, title, description, source_type, source_ref_id, constraints, expected_output, steps, created_by, created_at, updated_at, project_id, version_id, task_brief, assigned_agents, risk_points, approval_status, approved_by, approved_at FROM plan WHERE id = $1
 `
 
 func (q *Queries) GetPlan(ctx context.Context, id pgtype.UUID) (Plan, error) {
@@ -88,12 +96,52 @@ func (q *Queries) GetPlan(ctx context.Context, id pgtype.UUID) (Plan, error) {
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ProjectID,
+		&i.VersionID,
+		&i.TaskBrief,
+		&i.AssignedAgents,
+		&i.RiskPoints,
+		&i.ApprovalStatus,
+		&i.ApprovedBy,
+		&i.ApprovedAt,
+	)
+	return i, err
+}
+
+const getPlanByProject = `-- name: GetPlanByProject :one
+SELECT id, workspace_id, title, description, source_type, source_ref_id, constraints, expected_output, steps, created_by, created_at, updated_at, project_id, version_id, task_brief, assigned_agents, risk_points, approval_status, approved_by, approved_at FROM plan WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1
+`
+
+func (q *Queries) GetPlanByProject(ctx context.Context, projectID pgtype.UUID) (Plan, error) {
+	row := q.db.QueryRow(ctx, getPlanByProject, projectID)
+	var i Plan
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Title,
+		&i.Description,
+		&i.SourceType,
+		&i.SourceRefID,
+		&i.Constraints,
+		&i.ExpectedOutput,
+		&i.Steps,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ProjectID,
+		&i.VersionID,
+		&i.TaskBrief,
+		&i.AssignedAgents,
+		&i.RiskPoints,
+		&i.ApprovalStatus,
+		&i.ApprovedBy,
+		&i.ApprovedAt,
 	)
 	return i, err
 }
 
 const listPlans = `-- name: ListPlans :many
-SELECT id, workspace_id, title, description, source_type, source_ref_id, constraints, expected_output, steps, created_by, created_at, updated_at FROM plan WHERE workspace_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3
+SELECT id, workspace_id, title, description, source_type, source_ref_id, constraints, expected_output, steps, created_by, created_at, updated_at, project_id, version_id, task_brief, assigned_agents, risk_points, approval_status, approved_by, approved_at FROM plan WHERE workspace_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3
 `
 
 type ListPlansParams struct {
@@ -124,6 +172,14 @@ func (q *Queries) ListPlans(ctx context.Context, arg ListPlansParams) ([]Plan, e
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ProjectID,
+			&i.VersionID,
+			&i.TaskBrief,
+			&i.AssignedAgents,
+			&i.RiskPoints,
+			&i.ApprovalStatus,
+			&i.ApprovedBy,
+			&i.ApprovedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -133,6 +189,36 @@ func (q *Queries) ListPlans(ctx context.Context, arg ListPlansParams) ([]Plan, e
 		return nil, err
 	}
 	return items, nil
+}
+
+const updatePlanApproval = `-- name: UpdatePlanApproval :exec
+UPDATE plan SET approval_status = $1, approved_by = $2, approved_at = NOW(), updated_at = NOW() WHERE id = $3
+`
+
+type UpdatePlanApprovalParams struct {
+	ApprovalStatus string      `json:"approval_status"`
+	ApprovedBy     pgtype.UUID `json:"approved_by"`
+	ID             pgtype.UUID `json:"id"`
+}
+
+func (q *Queries) UpdatePlanApproval(ctx context.Context, arg UpdatePlanApprovalParams) error {
+	_, err := q.db.Exec(ctx, updatePlanApproval, arg.ApprovalStatus, arg.ApprovedBy, arg.ID)
+	return err
+}
+
+const updatePlanProject = `-- name: UpdatePlanProject :exec
+UPDATE plan SET project_id = $1, version_id = $2, updated_at = NOW() WHERE id = $3
+`
+
+type UpdatePlanProjectParams struct {
+	ProjectID pgtype.UUID `json:"project_id"`
+	VersionID pgtype.UUID `json:"version_id"`
+	ID        pgtype.UUID `json:"id"`
+}
+
+func (q *Queries) UpdatePlanProject(ctx context.Context, arg UpdatePlanProjectParams) error {
+	_, err := q.db.Exec(ctx, updatePlanProject, arg.ProjectID, arg.VersionID, arg.ID)
+	return err
 }
 
 const updatePlanSteps = `-- name: UpdatePlanSteps :exec

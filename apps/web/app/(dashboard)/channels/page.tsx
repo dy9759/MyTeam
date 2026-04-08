@@ -33,19 +33,19 @@ export default function ChannelsPage() {
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Channels</h1>
+        <h1 className="text-2xl font-bold">频道</h1>
         <button
           onClick={() => setShowCreate(!showCreate)}
           className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium"
         >
-          {showCreate ? "Cancel" : "Create Channel"}
+          {showCreate ? "取消" : "创建频道"}
         </button>
       </div>
 
       {showCreate && (
         <form onSubmit={handleCreate} className="mb-6 p-4 border rounded-lg space-y-3">
           <div>
-            <label className="block text-sm font-medium mb-1">Name</label>
+            <label className="block text-sm font-medium mb-1">名称</label>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -55,12 +55,12 @@ export default function ChannelsPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Description (optional)</label>
+            <label className="block text-sm font-medium mb-1">描述（可选）</label>
             <input
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               className="w-full px-3 py-2 border rounded-md text-sm bg-background"
-              placeholder="A channel for general discussion"
+              placeholder="用于日常讨论的频道"
             />
           </div>
           <button
@@ -68,17 +68,17 @@ export default function ChannelsPage() {
             disabled={creating || !name.trim()}
             className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium disabled:opacity-50"
           >
-            {creating ? "Creating..." : "Create"}
+            {creating ? "创建中..." : "创建"}
           </button>
         </form>
       )}
 
       {loading && channels.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">Loading...</div>
+        <div className="text-center py-12 text-muted-foreground">加载中...</div>
       ) : channels.length === 0 ? (
         <div className="text-center py-12">
-          <p className="text-muted-foreground mb-2">No channels yet</p>
-          <p className="text-sm text-muted-foreground">Create a channel to start group communication with your team and agents.</p>
+          <p className="text-muted-foreground mb-2">暂无频道</p>
+          <p className="text-sm text-muted-foreground">创建一个频道，开始与团队和代理的群组沟通。</p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -91,7 +91,7 @@ export default function ChannelsPage() {
               <div className="font-medium">#{ch.name}</div>
               {ch.description && <div className="text-sm text-muted-foreground">{ch.description}</div>}
               <div className="text-xs text-muted-foreground mt-1">
-                Created {new Date(ch.created_at).toLocaleDateString()}
+                创建于 {new Date(ch.created_at).toLocaleDateString()}
               </div>
             </div>
           ))}

@@ -43,7 +43,7 @@ export default function SessionDetailPage() {
       await api.sendMessage({ session_id: id, content });
       fetchSessionMessages(id);
     } catch {
-      toast.error("Failed to send message");
+      toast.error("发送消息失败");
     }
   }
 
@@ -65,7 +65,7 @@ export default function SessionDetailPage() {
               )}
               {currentSession && (
                 <span className="text-xs text-muted-foreground">
-                  Turn {currentSession.current_turn}/{currentSession.max_turns || "\u221E"}
+                  轮次 {currentSession.current_turn}/{currentSession.max_turns || "\u221E"}
                 </span>
               )}
             </div>
@@ -74,7 +74,7 @@ export default function SessionDetailPage() {
             onClick={() => setShowContext(!showContext)}
             className="px-3 py-1 text-sm border rounded-md hover:bg-muted/50"
           >
-            {showContext ? "Hide Context" : "Context"}
+            {showContext ? "隐藏上下文" : "上下文"}
           </button>
         </div>
 
@@ -82,7 +82,7 @@ export default function SessionDetailPage() {
         <MessageList messages={sessionMessages} />
         <MessageInput
           onSend={handleSend}
-          placeholder="Send a message to session..."
+          placeholder="向会话发送消息..."
           disabled={isTerminal}
         />
       </div>
@@ -91,24 +91,24 @@ export default function SessionDetailPage() {
       {showContext && ctx && (
         <div className="w-72 border-l flex flex-col overflow-auto">
           <div className="p-4 border-b">
-            <h3 className="font-medium text-sm">Session Context</h3>
+            <h3 className="font-medium text-sm">会话上下文</h3>
           </div>
           <div className="p-4 space-y-4 text-sm">
             {ctx.topic && (
               <div>
-                <div className="font-medium text-muted-foreground mb-1">Topic</div>
+                <div className="font-medium text-muted-foreground mb-1">主题</div>
                 <div>{ctx.topic}</div>
               </div>
             )}
             {ctx.summary && (
               <div>
-                <div className="font-medium text-muted-foreground mb-1">Summary</div>
+                <div className="font-medium text-muted-foreground mb-1">摘要</div>
                 <div>{ctx.summary}</div>
               </div>
             )}
             {ctx.decisions && ctx.decisions.length > 0 && (
               <div>
-                <div className="font-medium text-muted-foreground mb-1">Decisions</div>
+                <div className="font-medium text-muted-foreground mb-1">决策</div>
                 <ul className="list-disc pl-4 space-y-1">
                   {ctx.decisions.map((d, i) => (
                     <li key={i}>
@@ -121,7 +121,7 @@ export default function SessionDetailPage() {
             )}
             {ctx.files && ctx.files.length > 0 && (
               <div>
-                <div className="font-medium text-muted-foreground mb-1">Files</div>
+                <div className="font-medium text-muted-foreground mb-1">文件</div>
                 <ul className="space-y-1">
                   {ctx.files.map((f, i) => (
                     <li key={i} className="text-xs bg-muted px-2 py-1 rounded">{f.name}</li>
@@ -131,7 +131,7 @@ export default function SessionDetailPage() {
             )}
             {ctx.code_snippets && ctx.code_snippets.length > 0 && (
               <div>
-                <div className="font-medium text-muted-foreground mb-1">Code Snippets</div>
+                <div className="font-medium text-muted-foreground mb-1">代码片段</div>
                 {ctx.code_snippets.map((s, i) => (
                   <div key={i} className="mb-2">
                     <div className="text-xs text-muted-foreground">{s.description} ({s.language})</div>

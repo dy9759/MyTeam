@@ -104,7 +104,7 @@ export function CreateIssueModal({ onClose, data }: { onClose: () => void; data?
   const assigneeLabel =
     assigneeType && assigneeId
       ? getActorName(assigneeType, assigneeId)
-      : "Assignee";
+      : "负责人";
 
   const dueDateObj = dueDate ? new Date(dueDate) : undefined;
 
@@ -159,7 +159,7 @@ export function CreateIssueModal({ onClose, data }: { onClose: () => void; data?
         </div>
       ), { duration: 5000 });
     } catch {
-      toast.error("Failed to create issue");
+      toast.error("创建任务失败");
     } finally {
       setSubmitting(false);
     }
@@ -199,7 +199,7 @@ export function CreateIssueModal({ onClose, data }: { onClose: () => void; data?
                   </button>
                 }
               />
-              <TooltipContent side="bottom">{isExpanded ? "Collapse" : "Expand"}</TooltipContent>
+              <TooltipContent side="bottom">{isExpanded ? "收起" : "展开"}</TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger
@@ -222,7 +222,7 @@ export function CreateIssueModal({ onClose, data }: { onClose: () => void; data?
           <TitleEditor
             autoFocus
             defaultValue={draft.title}
-            placeholder="Issue title"
+            placeholder="任务标题"
             className="text-lg font-semibold"
             onChange={(v) => updateTitle(v)}
             onSubmit={handleSubmit}
@@ -234,7 +234,7 @@ export function CreateIssueModal({ onClose, data }: { onClose: () => void; data?
           <ContentEditor
             ref={descEditorRef}
             defaultValue={draft.description}
-            placeholder="Add description..."
+            placeholder="添加描述..."
             onUpdate={(md) => setDraft({ description: md })}
             onUploadFile={handleUpload}
             debounceMs={500}
@@ -307,7 +307,7 @@ export function CreateIssueModal({ onClose, data }: { onClose: () => void; data?
                   type="text"
                   value={assigneeFilter}
                   onChange={(e) => setAssigneeFilter(e.target.value)}
-                  placeholder="Assign to..."
+                  placeholder="分配给..."
                   className="w-full bg-transparent text-sm placeholder:text-muted-foreground outline-none"
                 />
               </div>
@@ -422,7 +422,7 @@ export function CreateIssueModal({ onClose, data }: { onClose: () => void; data?
             onSelect={(file) => descEditorRef.current?.uploadFile(file)}
           />
           <Button size="sm" onClick={handleSubmit} disabled={!title.trim() || submitting}>
-            {submitting ? "Creating..." : "Create Issue"}
+            {submitting ? "创建中..." : "创建任务"}
           </Button>
         </div>
       </DialogContent>

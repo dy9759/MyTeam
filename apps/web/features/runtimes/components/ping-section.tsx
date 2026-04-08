@@ -10,9 +10,9 @@ const pingStatusConfig: Record<
 > = {
   pending: { label: "Waiting for daemon...", icon: Loader2, color: "text-muted-foreground" },
   running: { label: "Running test...", icon: Loader2, color: "text-info" },
-  completed: { label: "Connected", icon: CheckCircle2, color: "text-success" },
-  failed: { label: "Failed", icon: XCircle, color: "text-destructive" },
-  timeout: { label: "Timeout", icon: XCircle, color: "text-warning" },
+  completed: { label: "已连接", icon: CheckCircle2, color: "text-success" },
+  failed: { label: "failed", icon: XCircle, color: "text-destructive" },
+  timeout: { label: "超时", icon: XCircle, color: "text-warning" },
 };
 
 export function PingSection({ runtimeId }: { runtimeId: string }) {
@@ -88,7 +88,7 @@ export function PingSection({ runtimeId }: { runtimeId: string }) {
           ) : (
             <Zap className="h-3 w-3" />
           )}
-          {testing ? "Testing..." : "Test Connection"}
+          {testing ? "测试中..." : "测试连接"}
         </Button>
 
         {config && Icon && (

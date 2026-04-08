@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -21,9 +22,11 @@ import {
   Hash,
   RefreshCw,
   GitBranch,
+  FolderGit2,
 } from "lucide-react";
 import { WorkspaceAvatar } from "@/features/workspace";
 import { useIssueDraftStore } from "@/features/issues/stores/draft-store";
+import { api } from "@/shared/api";
 import {
   Sidebar,
   SidebarContent,
@@ -63,6 +66,7 @@ const communicationNav = [
   { href: "/channels", label: "Channels", icon: Hash },
   { href: "/sessions", label: "Sessions", icon: RefreshCw },
   { href: "/workflows", label: "Workflows", icon: GitBranch },
+  { href: "/projects", label: "Projects", icon: FolderGit2 },
 ];
 
 const workspaceNav = [
@@ -89,6 +93,13 @@ export function AppSidebar() {
   const switchWorkspace = useWorkspaceStore((s) => s.switchWorkspace);
 
   const unreadCount = useInboxStore((s) => s.unreadCount());
+  const [activeProjectCount, setActiveProjectCount] = useState(0);
+
+  useEffect(() => {
+    api.listProjects().then((projects) => {
+      setActiveProjectCount(projects.filter((p) => p.status === "running").length);
+    }).catch(() => {});
+  }, []);
 
   const logout = () => {
     router.push("/");
@@ -226,6 +237,11 @@ export function AppSidebar() {
                       >
                         <item.icon />
                         <span>{item.label}</span>
+                        {item.label === "Projects" && activeProjectCount > 0 && (
+                          <span className="ml-auto text-xs">
+                            {activeProjectCount > 99 ? "99+" : activeProjectCount}
+                          </span>
+                        )}
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   );

@@ -44,19 +44,19 @@ export default function SessionsPage() {
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Sessions</h1>
+        <h1 className="text-2xl font-bold">协作会话</h1>
         <button
           onClick={() => setShowCreate(!showCreate)}
           className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium"
         >
-          {showCreate ? "Cancel" : "New Session"}
+          {showCreate ? "取消" : "新建会话"}
         </button>
       </div>
 
       {showCreate && (
         <form onSubmit={handleCreate} className="mb-6 p-4 border rounded-lg space-y-3">
           <div>
-            <label className="block text-sm font-medium mb-1">Title</label>
+            <label className="block text-sm font-medium mb-1">标题</label>
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
@@ -66,7 +66,7 @@ export default function SessionsPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Max turns (optional)</label>
+            <label className="block text-sm font-medium mb-1">最大轮次（可选）</label>
             <input
               value={maxTurns}
               onChange={(e) => setMaxTurns(e.target.value)}
@@ -81,18 +81,18 @@ export default function SessionsPage() {
             disabled={creating || !title.trim()}
             className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium disabled:opacity-50"
           >
-            {creating ? "Creating..." : "Create Session"}
+            {creating ? "创建中..." : "创建会话"}
           </button>
         </form>
       )}
 
       {loading && sessions.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">Loading...</div>
+        <div className="text-center py-12 text-muted-foreground">加载中...</div>
       ) : sessions.length === 0 ? (
         <div className="text-center py-12">
-          <p className="text-muted-foreground mb-2">No sessions yet</p>
+          <p className="text-muted-foreground mb-2">暂无会话</p>
           <p className="text-sm text-muted-foreground">
-            Create a session to start a multi-turn collaboration with agents about an issue.
+            创建一个会话，开始与代理围绕任务进行多轮协作。
           </p>
         </div>
       ) : (
@@ -110,7 +110,7 @@ export default function SessionsPage() {
                 </span>
               </div>
               <div className="text-sm text-muted-foreground mt-1">
-                Turn {s.current_turn}/{s.max_turns || "\u221E"} · Updated {new Date(s.updated_at).toLocaleString()}
+                轮次 {s.current_turn}/{s.max_turns || "\u221E"} · 更新于 {new Date(s.updated_at).toLocaleString()}
               </div>
             </div>
           ))}

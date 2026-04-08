@@ -31,7 +31,7 @@ func (q *Queries) AddChannelMember(ctx context.Context, arg AddChannelMemberPara
 const createChannel = `-- name: CreateChannel :one
 INSERT INTO channel (workspace_id, name, description, created_by, created_by_type)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, workspace_id, name, description, created_by, created_by_type, created_at, visibility, category
+RETURNING id, workspace_id, name, description, created_by, created_by_type, created_at, visibility, category, conversation_type, parent_conversation_id, invite_code, reply_policy, auto_assignment_policy, project_id, linked_project_ids
 `
 
 type CreateChannelParams struct {
@@ -61,6 +61,13 @@ func (q *Queries) CreateChannel(ctx context.Context, arg CreateChannelParams) (C
 		&i.CreatedAt,
 		&i.Visibility,
 		&i.Category,
+		&i.ConversationType,
+		&i.ParentConversationID,
+		&i.InviteCode,
+		&i.ReplyPolicy,
+		&i.AutoAssignmentPolicy,
+		&i.ProjectID,
+		&i.LinkedProjectIds,
 	)
 	return i, err
 }
@@ -75,7 +82,7 @@ func (q *Queries) DeleteChannel(ctx context.Context, id pgtype.UUID) error {
 }
 
 const getChannel = `-- name: GetChannel :one
-SELECT id, workspace_id, name, description, created_by, created_by_type, created_at, visibility, category FROM channel WHERE id = $1
+SELECT id, workspace_id, name, description, created_by, created_by_type, created_at, visibility, category, conversation_type, parent_conversation_id, invite_code, reply_policy, auto_assignment_policy, project_id, linked_project_ids FROM channel WHERE id = $1
 `
 
 func (q *Queries) GetChannel(ctx context.Context, id pgtype.UUID) (Channel, error) {
@@ -91,12 +98,47 @@ func (q *Queries) GetChannel(ctx context.Context, id pgtype.UUID) (Channel, erro
 		&i.CreatedAt,
 		&i.Visibility,
 		&i.Category,
+		&i.ConversationType,
+		&i.ParentConversationID,
+		&i.InviteCode,
+		&i.ReplyPolicy,
+		&i.AutoAssignmentPolicy,
+		&i.ProjectID,
+		&i.LinkedProjectIds,
+	)
+	return i, err
+}
+
+const getChannelByInviteCode = `-- name: GetChannelByInviteCode :one
+SELECT id, workspace_id, name, description, created_by, created_by_type, created_at, visibility, category, conversation_type, parent_conversation_id, invite_code, reply_policy, auto_assignment_policy, project_id, linked_project_ids FROM channel WHERE invite_code = $1
+`
+
+func (q *Queries) GetChannelByInviteCode(ctx context.Context, inviteCode pgtype.Text) (Channel, error) {
+	row := q.db.QueryRow(ctx, getChannelByInviteCode, inviteCode)
+	var i Channel
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Name,
+		&i.Description,
+		&i.CreatedBy,
+		&i.CreatedByType,
+		&i.CreatedAt,
+		&i.Visibility,
+		&i.Category,
+		&i.ConversationType,
+		&i.ParentConversationID,
+		&i.InviteCode,
+		&i.ReplyPolicy,
+		&i.AutoAssignmentPolicy,
+		&i.ProjectID,
+		&i.LinkedProjectIds,
 	)
 	return i, err
 }
 
 const getChannelByName = `-- name: GetChannelByName :one
-SELECT id, workspace_id, name, description, created_by, created_by_type, created_at, visibility, category FROM channel WHERE workspace_id = $1 AND name = $2
+SELECT id, workspace_id, name, description, created_by, created_by_type, created_at, visibility, category, conversation_type, parent_conversation_id, invite_code, reply_policy, auto_assignment_policy, project_id, linked_project_ids FROM channel WHERE workspace_id = $1 AND name = $2
 `
 
 type GetChannelByNameParams struct {
@@ -117,12 +159,19 @@ func (q *Queries) GetChannelByName(ctx context.Context, arg GetChannelByNamePara
 		&i.CreatedAt,
 		&i.Visibility,
 		&i.Category,
+		&i.ConversationType,
+		&i.ParentConversationID,
+		&i.InviteCode,
+		&i.ReplyPolicy,
+		&i.AutoAssignmentPolicy,
+		&i.ProjectID,
+		&i.LinkedProjectIds,
 	)
 	return i, err
 }
 
 const getChannelsForMember = `-- name: GetChannelsForMember :many
-SELECT c.id, c.workspace_id, c.name, c.description, c.created_by, c.created_by_type, c.created_at, c.visibility, c.category FROM channel c
+SELECT c.id, c.workspace_id, c.name, c.description, c.created_by, c.created_by_type, c.created_at, c.visibility, c.category, c.conversation_type, c.parent_conversation_id, c.invite_code, c.reply_policy, c.auto_assignment_policy, c.project_id, c.linked_project_ids FROM channel c
 JOIN channel_member cm ON c.id = cm.channel_id
 WHERE cm.member_id = $1 AND cm.member_type = $2
 `
@@ -151,6 +200,13 @@ func (q *Queries) GetChannelsForMember(ctx context.Context, arg GetChannelsForMe
 			&i.CreatedAt,
 			&i.Visibility,
 			&i.Category,
+			&i.ConversationType,
+			&i.ParentConversationID,
+			&i.InviteCode,
+			&i.ReplyPolicy,
+			&i.AutoAssignmentPolicy,
+			&i.ProjectID,
+			&i.LinkedProjectIds,
 		); err != nil {
 			return nil, err
 		}
@@ -192,7 +248,7 @@ func (q *Queries) ListChannelMembers(ctx context.Context, channelID pgtype.UUID)
 }
 
 const listChannels = `-- name: ListChannels :many
-SELECT id, workspace_id, name, description, created_by, created_by_type, created_at, visibility, category FROM channel WHERE workspace_id = $1 ORDER BY created_at ASC
+SELECT id, workspace_id, name, description, created_by, created_by_type, created_at, visibility, category, conversation_type, parent_conversation_id, invite_code, reply_policy, auto_assignment_policy, project_id, linked_project_ids FROM channel WHERE workspace_id = $1 ORDER BY created_at ASC
 `
 
 func (q *Queries) ListChannels(ctx context.Context, workspaceID pgtype.UUID) ([]Channel, error) {
@@ -214,6 +270,13 @@ func (q *Queries) ListChannels(ctx context.Context, workspaceID pgtype.UUID) ([]
 			&i.CreatedAt,
 			&i.Visibility,
 			&i.Category,
+			&i.ConversationType,
+			&i.ParentConversationID,
+			&i.InviteCode,
+			&i.ReplyPolicy,
+			&i.AutoAssignmentPolicy,
+			&i.ProjectID,
+			&i.LinkedProjectIds,
 		); err != nil {
 			return nil, err
 		}
@@ -226,7 +289,7 @@ func (q *Queries) ListChannels(ctx context.Context, workspaceID pgtype.UUID) ([]
 }
 
 const listChannelsByCategory = `-- name: ListChannelsByCategory :many
-SELECT id, workspace_id, name, description, created_by, created_by_type, created_at, visibility, category FROM channel WHERE workspace_id = $1 AND category = $2 ORDER BY created_at ASC
+SELECT id, workspace_id, name, description, created_by, created_by_type, created_at, visibility, category, conversation_type, parent_conversation_id, invite_code, reply_policy, auto_assignment_policy, project_id, linked_project_ids FROM channel WHERE workspace_id = $1 AND category = $2 ORDER BY created_at ASC
 `
 
 type ListChannelsByCategoryParams struct {
@@ -253,6 +316,61 @@ func (q *Queries) ListChannelsByCategory(ctx context.Context, arg ListChannelsBy
 			&i.CreatedAt,
 			&i.Visibility,
 			&i.Category,
+			&i.ConversationType,
+			&i.ParentConversationID,
+			&i.InviteCode,
+			&i.ReplyPolicy,
+			&i.AutoAssignmentPolicy,
+			&i.ProjectID,
+			&i.LinkedProjectIds,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listChannelsByConversationType = `-- name: ListChannelsByConversationType :many
+SELECT id, workspace_id, name, description, created_by, created_by_type, created_at, visibility, category, conversation_type, parent_conversation_id, invite_code, reply_policy, auto_assignment_policy, project_id, linked_project_ids FROM channel
+WHERE workspace_id = $1 AND conversation_type = $2
+ORDER BY created_at ASC
+`
+
+type ListChannelsByConversationTypeParams struct {
+	WorkspaceID      pgtype.UUID `json:"workspace_id"`
+	ConversationType string      `json:"conversation_type"`
+}
+
+func (q *Queries) ListChannelsByConversationType(ctx context.Context, arg ListChannelsByConversationTypeParams) ([]Channel, error) {
+	rows, err := q.db.Query(ctx, listChannelsByConversationType, arg.WorkspaceID, arg.ConversationType)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Channel{}
+	for rows.Next() {
+		var i Channel
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.Name,
+			&i.Description,
+			&i.CreatedBy,
+			&i.CreatedByType,
+			&i.CreatedAt,
+			&i.Visibility,
+			&i.Category,
+			&i.ConversationType,
+			&i.ParentConversationID,
+			&i.InviteCode,
+			&i.ReplyPolicy,
+			&i.AutoAssignmentPolicy,
+			&i.ProjectID,
+			&i.LinkedProjectIds,
 		); err != nil {
 			return nil, err
 		}
@@ -265,7 +383,7 @@ func (q *Queries) ListChannelsByCategory(ctx context.Context, arg ListChannelsBy
 }
 
 const listPublicChannels = `-- name: ListPublicChannels :many
-SELECT id, workspace_id, name, description, created_by, created_by_type, created_at, visibility, category FROM channel WHERE workspace_id = $1 AND visibility = 'public' ORDER BY created_at ASC
+SELECT id, workspace_id, name, description, created_by, created_by_type, created_at, visibility, category, conversation_type, parent_conversation_id, invite_code, reply_policy, auto_assignment_policy, project_id, linked_project_ids FROM channel WHERE workspace_id = $1 AND visibility = 'public' ORDER BY created_at ASC
 `
 
 func (q *Queries) ListPublicChannels(ctx context.Context, workspaceID pgtype.UUID) ([]Channel, error) {
@@ -287,6 +405,13 @@ func (q *Queries) ListPublicChannels(ctx context.Context, workspaceID pgtype.UUI
 			&i.CreatedAt,
 			&i.Visibility,
 			&i.Category,
+			&i.ConversationType,
+			&i.ParentConversationID,
+			&i.InviteCode,
+			&i.ReplyPolicy,
+			&i.AutoAssignmentPolicy,
+			&i.ProjectID,
+			&i.LinkedProjectIds,
 		); err != nil {
 			return nil, err
 		}
@@ -324,6 +449,34 @@ type UpdateChannelCategoryParams struct {
 
 func (q *Queries) UpdateChannelCategory(ctx context.Context, arg UpdateChannelCategoryParams) error {
 	_, err := q.db.Exec(ctx, updateChannelCategory, arg.ID, arg.Category)
+	return err
+}
+
+const updateChannelConversationType = `-- name: UpdateChannelConversationType :exec
+UPDATE channel SET conversation_type = $2 WHERE id = $1
+`
+
+type UpdateChannelConversationTypeParams struct {
+	ID               pgtype.UUID `json:"id"`
+	ConversationType string      `json:"conversation_type"`
+}
+
+func (q *Queries) UpdateChannelConversationType(ctx context.Context, arg UpdateChannelConversationTypeParams) error {
+	_, err := q.db.Exec(ctx, updateChannelConversationType, arg.ID, arg.ConversationType)
+	return err
+}
+
+const updateChannelProject = `-- name: UpdateChannelProject :exec
+UPDATE channel SET project_id = $2 WHERE id = $1
+`
+
+type UpdateChannelProjectParams struct {
+	ID        pgtype.UUID `json:"id"`
+	ProjectID pgtype.UUID `json:"project_id"`
+}
+
+func (q *Queries) UpdateChannelProject(ctx context.Context, arg UpdateChannelProjectParams) error {
+	_, err := q.db.Exec(ctx, updateChannelProject, arg.ID, arg.ProjectID)
 	return err
 }
 
