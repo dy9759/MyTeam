@@ -175,14 +175,29 @@ func (h *Handler) ListProjects(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: Use h.Queries.ListProjects() once sqlc query is generated.
-	// projects, err := h.Queries.ListProjects(r.Context(), parseUUID(workspaceID))
-	// if err != nil {
-	//     writeError(w, http.StatusInternalServerError, "failed to list projects")
-	//     return
-	// }
+	projects, err := h.Queries.ListProjects(r.Context(), parseUUID(workspaceID))
+	if err != nil {
+		slog.Error("list projects failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to list projects")
+		return
+	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"projects": []ProjectResponse{}, "total": 0})
+	result := make([]ProjectResponse, 0, len(projects))
+	for _, p := range projects {
+		result = append(result, ProjectResponse{
+			ID:                  uuidToString(p.ID),
+			WorkspaceID:         uuidToString(p.WorkspaceID),
+			Title:               p.Title,
+			Description:         textToPtr(p.Description),
+			Status:              p.Status,
+			ScheduleType:        p.ScheduleType,
+			SourceConversations: p.SourceConversations,
+			CreatorOwnerID:      uuidToString(p.CreatorOwnerID),
+			CreatedAt:           p.CreatedAt.Time.Format(time.RFC3339),
+			UpdatedAt:           p.UpdatedAt.Time.Format(time.RFC3339),
+		})
+	}
+	writeJSON(w, http.StatusOK, result)
 }
 
 // GetProject handles GET /api/projects/{projectID}
