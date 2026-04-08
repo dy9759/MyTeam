@@ -365,12 +365,27 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 			// Triggers (AgentMesh integration)
 			r.Post("/api/triggers/check-mentions", h.CheckMentions)
 
+			// Projects (Phase 2)
+			r.Route("/api/projects", func(r chi.Router) {
+				r.Post("/", h.CreateProject)
+				r.Get("/", h.ListProjects)
+				r.Post("/from-chat", h.CreateProjectFromChat)
+				r.Route("/{projectID}", func(r chi.Router) {
+					r.Get("/", h.GetProject)
+					r.Patch("/", h.UpdateProject)
+					r.Delete("/", h.DeleteProject)
+					r.Post("/fork", h.ForkProject)
+					r.Get("/versions", h.ListProjectVersions)
+					r.Get("/runs", h.GetProjectRuns)
+					r.Post("/approve", h.ApprovePlan)
+					r.Post("/reject", h.RejectPlan)
+					r.Get("/files", h.GetFilesByProject)
+				})
+			})
+
 			// File index (Phase 4)
 			r.Get("/api/files", h.ListFiles)
 			r.Get("/api/files/mine", h.ListOwnerAndAgentFiles)
-
-			// Project files (Phase 4)
-			r.Get("/api/projects/{projectID}/files", h.GetFilesByProject)
 
 			// Metrics (Phase 5)
 			r.Get("/api/metrics", h.GetWorkspaceMetrics)
