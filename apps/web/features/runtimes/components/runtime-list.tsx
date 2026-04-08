@@ -65,11 +65,11 @@ export function RuntimeList({
             暂无注册的运行时
           </p>
           <p className="mt-1 text-xs text-muted-foreground text-center">
-            Run{" "}
+            运行{" "}
             <code className="rounded bg-muted px-1 py-0.5">
               multica daemon start
             </code>{" "}
-            to register a local runtime.
+            以注册本地运行时
           </p>
         </div>
       ) : (
