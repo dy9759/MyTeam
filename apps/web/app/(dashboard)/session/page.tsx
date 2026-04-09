@@ -7,6 +7,7 @@ import { useChannelStore } from "@/features/channels/store";
 import { useInboxStore } from "@/features/inbox";
 import { MessageList } from "@/features/messaging/components/message-list";
 import { MessageInput } from "@/features/messaging/components/message-input";
+import { ThreadPanel } from "@/features/messaging/components/thread-panel";
 import { api } from "@/shared/api";
 import type { Conversation } from "@/shared/types/messaging";
 import type { Message } from "@/shared/types/messaging";
@@ -384,6 +385,9 @@ export default function SessionPage() {
     [selectedId],
   );
 
+  // Thread state
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+
   // Search + Create state
   const [sidebarSearch, setSidebarSearch] = useState("");
   const [showCreateChannel, setShowCreateChannel] = useState(false);
@@ -505,8 +509,22 @@ export default function SessionPage() {
               </button>
             </div>
 
-            {/* Messages */}
-            <MessageList messages={messages} />
+            {/* Messages + Thread */}
+            <div className="flex-1 flex min-h-0">
+              <div className="flex-1 flex flex-col min-w-0">
+                <MessageList
+                  messages={messages}
+                  onOpenThread={selectedType === "channel" ? (msgId) => setActiveThreadId(msgId) : undefined}
+                />
+              </div>
+              {activeThreadId && selectedType === "channel" && selectedId && (
+                <ThreadPanel
+                  threadId={activeThreadId}
+                  channelId={selectedId}
+                  onClose={() => setActiveThreadId(null)}
+                />
+              )}
+            </div>
 
             {/* Input */}
             <MessageInput
