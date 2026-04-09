@@ -2,6 +2,7 @@
 import { useState, useRef } from "react";
 import { Paperclip, X, FileIcon, Loader2 } from "lucide-react";
 import { api } from "@/shared/api";
+import { toast } from "sonner";
 
 interface AttachmentPreview {
   file: File;
@@ -68,8 +69,14 @@ export function MessageInput({
               file_size: att.file.size,
               file_content_type: att.file.type || "application/octet-stream",
             });
-          } catch {
-            // If upload fails, send text-only message
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : "";
+            if (msg.includes("503") || msg.includes("not configured") || msg.includes("unavailable")) {
+              toast.error("文件上传服务未配置（需要 S3 存储）");
+            } else {
+              toast.error(`上传 ${att.name} 失败`);
+            }
+            // Send text-only if there's text
             if (input.trim()) {
               await onSend(input.trim());
             }
