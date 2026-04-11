@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -14,6 +12,7 @@ import (
 	"github.com/multica-ai/multica/server/internal/realtime"
 	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/multica-ai/multica/server/pkg/llmclient"
 )
 
 // AutoReplyConfig describes the LLM configuration stored in agent.auto_reply_config.
@@ -103,68 +102,24 @@ func (s *AutoReplyService) replyAsMentionedAgent(ctx context.Context, agentName 
 		history.WriteString(fmt.Sprintf("[%s]: %s\n", util.UUIDToString(m.SenderID), m.Content))
 	}
 
-	// 2. Call LLM
-	apiKey := cfg.LLMApiKey
-	if apiKey == "" {
-		apiKey = os.Getenv("ANTHROPIC_API_KEY")
-	}
-	if apiKey == "" {
-		apiKey = os.Getenv("LLM_API_KEY")
+	// 2. Call LLM via unified client.
+	llmCfg := llmclient.FromAgentConfig(cfg.LLMEndpoint, cfg.LLMApiKey, cfg.Model)
+
+	systemPrompt := fmt.Sprintf("You are %s, an AI agent. Respond naturally based on conversation context. Keep responses concise.", agentName)
+	if cfg.SystemPrompt != "" {
+		systemPrompt = cfg.SystemPrompt
 	}
 
 	replyText := ""
-	if apiKey != "" {
-		endpoint := cfg.LLMEndpoint
-		if endpoint == "" {
-			endpoint = getEnvOr("LLM_ENDPOINT", "https://api.anthropic.com/v1/messages")
-		}
-		model := cfg.Model
-		if model == "" {
-			model = getEnvOr("LLM_MODEL", "claude-sonnet-4-20250514")
-		}
-
-		systemPrompt := fmt.Sprintf("You are %s, an AI agent. Respond naturally based on conversation context. Keep responses concise.", agentName)
-		if cfg.SystemPrompt != "" {
-			systemPrompt = cfg.SystemPrompt
-		}
-
-		body, _ := json.Marshal(map[string]any{
-			"model": model, "max_tokens": 1024,
-			"system": systemPrompt,
-			"messages": []map[string]string{
-				{"role": "user", "content": fmt.Sprintf("Conversation:\n%s\nLatest message from %s: %s\n\nRespond:", history.String(), util.UUIDToString(trigger.SenderID), trigger.Content)},
-			},
+	if llmCfg.APIKey != "" {
+		userMsg := fmt.Sprintf("Conversation:\n%s\nLatest message from %s: %s\n\nRespond:", history.String(), util.UUIDToString(trigger.SenderID), trigger.Content)
+		text, err := llmclient.New(llmCfg).Chat(ctx, systemPrompt, []llmclient.Message{
+			{Role: "user", Content: userMsg},
 		})
-
-		req, _ := http.NewRequestWithContext(ctx, "POST", endpoint, strings.NewReader(string(body)))
-		req.Header.Set("Content-Type", "application/json")
-
-		if strings.Contains(endpoint, "anthropic") {
-			req.Header.Set("x-api-key", apiKey)
-			req.Header.Set("anthropic-version", "2023-06-01")
+		if err != nil {
+			slog.Warn("auto-reply: LLM call failed", "agent", agentName, "error", err)
 		} else {
-			req.Header.Set("Authorization", "Bearer "+apiKey)
-		}
-
-		resp, err := http.DefaultClient.Do(req)
-		if err == nil {
-			defer resp.Body.Close()
-			var llmResp map[string]any
-			json.NewDecoder(resp.Body).Decode(&llmResp)
-			// Anthropic format
-			if content, ok := llmResp["content"].([]any); ok && len(content) > 0 {
-				if block, ok := content[0].(map[string]any); ok {
-					replyText, _ = block["text"].(string)
-				}
-			}
-			// OpenAI format
-			if choices, ok := llmResp["choices"].([]any); ok && len(choices) > 0 {
-				if choice, ok := choices[0].(map[string]any); ok {
-					if msg, ok := choice["message"].(map[string]any); ok {
-						replyText, _ = msg["content"].(string)
-					}
-				}
-			}
+			replyText = text
 		}
 	}
 
@@ -226,9 +181,3 @@ func (s *AutoReplyService) pollAndReply(ctx context.Context) {
 	}
 }
 
-func getEnvOr(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return fallback
-}

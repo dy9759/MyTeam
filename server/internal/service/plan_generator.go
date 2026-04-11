@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"os"
 	"strings"
 
 	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/multica-ai/multica/server/pkg/llmclient"
 )
 
 type PlanStep struct {
@@ -64,8 +64,9 @@ Respond with JSON only:
   "constraints": "any constraints"
 }`, input)
 
-	apiKey := getEnv("ANTHROPIC_API_KEY", getEnv("LLM_API_KEY", ""))
-	if apiKey == "" {
+	llmCfg := llmclient.FromEnv()
+	llmCfg.MaxTokens = 2048
+	if llmCfg.APIKey == "" {
 		// Fallback: simple parsing without LLM
 		return &GeneratedPlan{
 			Title:       truncate(input, 60),
@@ -76,22 +77,9 @@ Respond with JSON only:
 		}, nil
 	}
 
-	endpoint := getEnv("LLM_ENDPOINT", "https://api.anthropic.com/v1/messages")
-	model := getEnv("LLM_MODEL", "claude-sonnet-4-20250514")
-
-	body, _ := json.Marshal(map[string]any{
-		"model":      model,
-		"max_tokens": 2048,
-		"system":     "You are a project planning assistant. Always respond with valid JSON.",
-		"messages":   []map[string]string{{"role": "user", "content": prompt}},
+	text, err := llmclient.New(llmCfg).Chat(ctx, "You are a project planning assistant. Always respond with valid JSON.", []llmclient.Message{
+		{Role: "user", Content: prompt},
 	})
-
-	req, _ := http.NewRequestWithContext(ctx, "POST", endpoint, strings.NewReader(string(body)))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("x-api-key", apiKey)
-	req.Header.Set("anthropic-version", "2023-06-01")
-
-	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		slog.Warn("LLM call failed", "error", err)
 		return &GeneratedPlan{
@@ -100,21 +88,9 @@ Respond with JSON only:
 			Steps:       []PlanStep{{Order: 1, Description: input}},
 		}, nil
 	}
-	defer resp.Body.Close()
-
-	var llmResp struct {
-		Content []struct {
-			Text string `json:"text"`
-		} `json:"content"`
-	}
-	json.NewDecoder(resp.Body).Decode(&llmResp)
-
-	if len(llmResp.Content) == 0 {
-		return &GeneratedPlan{Title: truncate(input, 60), Description: input, Steps: []PlanStep{{Order: 1, Description: input}}}, nil
-	}
 
 	var plan GeneratedPlan
-	if err := json.Unmarshal([]byte(llmResp.Content[0].Text), &plan); err != nil {
+	if err := json.Unmarshal([]byte(text), &plan); err != nil {
 		slog.Warn("failed to parse LLM plan", "error", err)
 		return &GeneratedPlan{Title: truncate(input, 60), Description: input, Steps: []PlanStep{{Order: 1, Description: input}}}, nil
 	}
@@ -214,64 +190,22 @@ Respond with JSON only:
   "task_brief": "structured task brief with objective, scope, and success criteria"
 }`, truncate(chatContext, 8000), agentDescriptions.String())
 
-	apiKey := getEnv("ANTHROPIC_API_KEY", getEnv("LLM_API_KEY", ""))
-	if apiKey == "" {
-		// Fallback: simple plan without LLM
-		var assignedAgent string
-		if len(agents) > 0 {
-			assignedAgent = agents[0].ID
-		}
-		return &GeneratedPlan{
-			Title:       truncate(chatContext, 60),
-			Description: chatContext,
-			Steps: []PlanStep{
-				{
-					Order:           1,
-					Description:     chatContext,
-					RequiredSkills:  []string{},
-					Parallelizable:  false,
-					AssignedAgentID: assignedAgent,
-				},
-			},
-			TaskBrief: fmt.Sprintf("## Objective\n%s\n\n## Scope\nDerived from conversation context.\n", truncate(chatContext, 200)),
-		}, nil
+	llmCfg := llmclient.FromEnv()
+	llmCfg.MaxTokens = 4096
+	if llmCfg.APIKey == "" {
+		return s.fallbackPlanWithContext(chatContext, agents), nil
 	}
 
-	endpoint := getEnv("LLM_ENDPOINT", "https://api.anthropic.com/v1/messages")
-	model := getEnv("LLM_MODEL", "claude-sonnet-4-20250514")
-
-	body, _ := json.Marshal(map[string]any{
-		"model":      model,
-		"max_tokens": 4096,
-		"system":     "You are a project planning assistant. Always respond with valid JSON. Assign agents to steps based on their capabilities.",
-		"messages":   []map[string]string{{"role": "user", "content": prompt}},
+	text, err := llmclient.New(llmCfg).Chat(ctx, "You are a project planning assistant. Always respond with valid JSON. Assign agents to steps based on their capabilities.", []llmclient.Message{
+		{Role: "user", Content: prompt},
 	})
-
-	req, _ := http.NewRequestWithContext(ctx, "POST", endpoint, strings.NewReader(string(body)))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("x-api-key", apiKey)
-	req.Header.Set("anthropic-version", "2023-06-01")
-
-	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		slog.Warn("LLM call failed for plan with context", "error", err)
 		return s.fallbackPlanWithContext(chatContext, agents), nil
 	}
-	defer resp.Body.Close()
-
-	var llmResp struct {
-		Content []struct {
-			Text string `json:"text"`
-		} `json:"content"`
-	}
-	json.NewDecoder(resp.Body).Decode(&llmResp)
-
-	if len(llmResp.Content) == 0 {
-		return s.fallbackPlanWithContext(chatContext, agents), nil
-	}
 
 	var plan GeneratedPlan
-	if err := json.Unmarshal([]byte(llmResp.Content[0].Text), &plan); err != nil {
+	if err := json.Unmarshal([]byte(text), &plan); err != nil {
 		slog.Warn("failed to parse LLM plan with context", "error", err)
 		return s.fallbackPlanWithContext(chatContext, agents), nil
 	}

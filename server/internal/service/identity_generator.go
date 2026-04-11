@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"strings"
 
 	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/multica-ai/multica/server/pkg/llmclient"
 )
 
 // IdentityGeneratorService generates identity cards for agents based on their
@@ -83,8 +83,8 @@ Completed Task Summaries: %s`,
 	)
 
 	// 6. Call LLM to generate structured identity card.
-	apiKey := getEnv("ANTHROPIC_API_KEY", getEnv("LLM_API_KEY", ""))
-	if apiKey == "" {
+	llmCfg := llmclient.FromEnv()
+	if llmCfg.APIKey == "" {
 		// Fallback: build a basic card without LLM.
 		return buildBasicIdentityCard(agent, skillNames, completedSummaries), nil
 	}
@@ -103,41 +103,16 @@ Respond with JSON only:
   "description_auto": "A concise auto-generated description of this agent based on its history and capabilities"
 }`, contextInfo)
 
-	endpoint := getEnv("LLM_ENDPOINT", "https://api.anthropic.com/v1/messages")
-	model := getEnv("LLM_MODEL", "claude-sonnet-4-20250514")
-
-	body, _ := json.Marshal(map[string]any{
-		"model":      model,
-		"max_tokens": 1024,
-		"system":     "You are an agent profiler. Always respond with valid JSON matching the requested schema.",
-		"messages":   []map[string]string{{"role": "user", "content": prompt}},
+	text, err := llmclient.New(llmCfg).Chat(ctx, "You are an agent profiler. Always respond with valid JSON matching the requested schema.", []llmclient.Message{
+		{Role: "user", Content: prompt},
 	})
-
-	req, _ := http.NewRequestWithContext(ctx, "POST", endpoint, strings.NewReader(string(body)))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("x-api-key", apiKey)
-	req.Header.Set("anthropic-version", "2023-06-01")
-
-	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		slog.Warn("identity generator: LLM call failed", "error", err)
 		return buildBasicIdentityCard(agent, skillNames, completedSummaries), nil
 	}
-	defer resp.Body.Close()
-
-	var llmResp struct {
-		Content []struct {
-			Text string `json:"text"`
-		} `json:"content"`
-	}
-	json.NewDecoder(resp.Body).Decode(&llmResp)
-
-	if len(llmResp.Content) == 0 {
-		return buildBasicIdentityCard(agent, skillNames, completedSummaries), nil
-	}
 
 	var card map[string]any
-	if err := json.Unmarshal([]byte(llmResp.Content[0].Text), &card); err != nil {
+	if err := json.Unmarshal([]byte(text), &card); err != nil {
 		slog.Warn("identity generator: failed to parse LLM response", "error", err)
 		return buildBasicIdentityCard(agent, skillNames, completedSummaries), nil
 	}
