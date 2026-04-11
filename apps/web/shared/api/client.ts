@@ -48,6 +48,7 @@ import type {
   AgentAutoReplyConfig,
   AgentProfile,
   RemoteSession,
+  FileVersion,
 } from "@/shared/types";
 import { type Logger, noopLogger } from "@/shared/logger";
 
@@ -620,6 +621,10 @@ export class ApiClient {
   // Typing
   async sendTyping(params: { channel_id?: string; session_id?: string; is_typing: boolean }): Promise<void> {
     await this.fetch("/api/typing", { method: "POST", body: JSON.stringify(params) });
+  }
+
+  async listFileVersions(fileId: string): Promise<FileVersion[]> {
+    return this.fetch(`/api/files/${fileId}/versions`);
   }
 
   // Messages

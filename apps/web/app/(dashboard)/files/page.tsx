@@ -1,7 +1,10 @@
 "use client"
 import { useEffect, useState, useRef, useCallback } from "react"
+import { ChevronDown, ChevronRight, History, Download } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { api } from "@/shared/api"
 import { toast } from "sonner"
+import type { FileVersion } from "@/shared/types"
 
 interface FileItem {
   id: string
@@ -24,6 +27,84 @@ const FILE_ICONS: Record<string, string> = {
 function getIcon(name: string) {
   const ext = name.split(".").pop()?.toLowerCase() ?? ""
   return FILE_ICONS[ext] ?? "📄"
+}
+
+function FileVersionHistory({ fileId }: { fileId: string }) {
+  const [versions, setVersions] = useState<FileVersion[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setError("")
+    api
+      .listFileVersions(fileId)
+      .then((v) => {
+        if (!cancelled) setVersions(v)
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load versions")
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [fileId])
+
+  if (loading) {
+    return (
+      <div className="pl-10 py-2 text-xs text-muted-foreground">
+        Loading versions...
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="pl-10 py-2 text-xs text-destructive">{error}</div>
+    )
+  }
+
+  if (versions.length === 0) {
+    return (
+      <div className="pl-10 py-2 text-xs text-muted-foreground">
+        No version history available.
+      </div>
+    )
+  }
+
+  return (
+    <div className="pl-10 pb-2 space-y-1">
+      {versions.map((v) => (
+        <div
+          key={v.id}
+          className="flex items-center gap-3 px-3 py-1.5 rounded-md bg-muted/30 text-xs"
+        >
+          <span className="font-mono text-muted-foreground">v{v.version}</span>
+          <span className="truncate flex-1">{v.filename}</span>
+          <span className="text-muted-foreground shrink-0">
+            {formatSize(v.size_bytes)}
+          </span>
+          <span className="text-muted-foreground shrink-0">
+            {new Date(v.created_at).toLocaleString()}
+          </span>
+          {v.download_url && (
+            <a
+              href={v.download_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="shrink-0"
+            >
+              <Button variant="ghost" size="xs">
+                <Download className="h-3 w-3" />
+              </Button>
+            </a>
+          )}
+        </div>
+      ))}
+    </div>
+  )
 }
 
 function formatSize(bytes?: number) {
@@ -49,6 +130,7 @@ export default function FilesPage() {
   const [files, setFiles] = useState<FileItem[]>([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
+  const [expandedFileId, setExpandedFileId] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const loadFiles = useCallback(async () => {
@@ -128,6 +210,10 @@ export default function FilesPage() {
     }
   }
 
+  function toggleExpanded(fileId: string) {
+    setExpandedFileId((prev) => (prev === fileId ? null : fileId))
+  }
+
   return (
     <div className="p-6 bg-background min-h-full">
       <div className="flex items-center justify-between mb-6">
@@ -156,26 +242,62 @@ export default function FilesPage() {
 
       <div className="space-y-1">
         {files.map((f) => (
-          <div key={f.id} className="flex items-center gap-3 p-3 rounded-[8px] border border-border hover:bg-secondary/50 transition-colors">
-            <span className="text-2xl shrink-0">{getIcon(f.file_name)}</span>
-            <div className="flex-1 min-w-0">
-              <div className="font-medium truncate text-foreground text-[14px]">{f.file_name}</div>
-              <div className="text-[12px] text-muted-foreground flex items-center gap-2">
-                {f.file_size ? <span>{formatSize(f.file_size)}</span> : null}
-                {f.content_type && <span>{f.content_type}</span>}
-                <span>{timeAgo(f.created_at)}</span>
+          <div key={f.id}>
+            <div
+              className="flex items-center gap-3 p-3 rounded-[8px] border border-border hover:bg-secondary/50 transition-colors cursor-pointer"
+              onClick={() => toggleExpanded(f.id)}
+            >
+              <button
+                className="shrink-0 text-muted-foreground hover:text-foreground"
+                onClick={(e) => { e.stopPropagation(); toggleExpanded(f.id) }}
+              >
+                {expandedFileId === f.id ? (
+                  <ChevronDown className="h-4 w-4" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )}
+              </button>
+              <span className="text-2xl shrink-0">{getIcon(f.file_name)}</span>
+              <div className="flex-1 min-w-0">
+                <div className="font-medium truncate text-foreground text-[14px]">{f.file_name}</div>
+                <div className="text-[12px] text-muted-foreground flex items-center gap-2">
+                  {f.file_size ? <span>{formatSize(f.file_size)}</span> : null}
+                  {f.content_type && <span>{f.content_type}</span>}
+                  <span>{timeAgo(f.created_at)}</span>
+                </div>
               </div>
+              {f.source_type && (
+                <span className="px-2 py-0.5 text-[11px] rounded-full border border-border text-secondary-foreground bg-secondary/50">
+                  {f.source_type}
+                </span>
+              )}
+              <Button
+                variant="ghost"
+                size="xs"
+                className="shrink-0 text-muted-foreground hover:text-foreground"
+                onClick={(e) => { e.stopPropagation(); toggleExpanded(f.id) }}
+              >
+                <History className="h-3.5 w-3.5" />
+                Versions
+              </Button>
+              {f.url && (
+                <a href={f.url} target="_blank" rel="noopener noreferrer"
+                  className="px-3 py-1 text-[12px] rounded-[6px] border border-border text-secondary-foreground hover:bg-secondary/50 transition-colors"
+                  onClick={(e) => e.stopPropagation()}>
+                  下载
+                </a>
+              )}
             </div>
-            {f.source_type && (
-              <span className="px-2 py-0.5 text-[11px] rounded-full border border-border text-secondary-foreground bg-secondary/50">
-                {f.source_type}
-              </span>
-            )}
-            {f.url && (
-              <a href={f.url} target="_blank" rel="noopener noreferrer"
-                className="px-3 py-1 text-[12px] rounded-[6px] border border-border text-secondary-foreground hover:bg-secondary/50 transition-colors">
-                下载
-              </a>
+
+            {/* Version History (expanded) */}
+            {expandedFileId === f.id && (
+              <div className="border-x border-b rounded-b-lg -mt-px">
+                <div className="flex items-center gap-1.5 px-4 pt-3 pb-1">
+                  <History className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-xs font-medium text-muted-foreground">Version History</span>
+                </div>
+                <FileVersionHistory fileId={f.id} />
+              </div>
             )}
           </div>
         ))}
