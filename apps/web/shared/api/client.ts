@@ -580,6 +580,11 @@ export class ApiClient {
     await this.fetch(`/api/attachments/${id}`, { method: "DELETE" });
   }
 
+  // Typing
+  async sendTyping(params: { channel_id?: string; session_id?: string; is_typing: boolean }): Promise<void> {
+    await this.fetch("/api/typing", { method: "POST", body: JSON.stringify(params) });
+  }
+
   // Messages
   async sendMessage(data: { channel_id?: string; recipient_id?: string; recipient_type?: string; session_id?: string; content: string; content_type?: string }) {
     return this.fetch<any>('/api/messages', { method: 'POST', body: JSON.stringify(data) })

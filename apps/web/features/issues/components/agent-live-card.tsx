@@ -4,12 +4,13 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Bot, ChevronRight, ChevronUp, Loader2, ArrowDown, Brain, AlertCircle, Clock, CheckCircle2, XCircle, Square } from "lucide-react";
 import { api } from "@/shared/api";
 import { useWSEvent } from "@/features/realtime";
-import type { TaskMessagePayload, TaskCompletedPayload, TaskFailedPayload, TaskCancelledPayload } from "@/shared/types/events";
+import type { TaskMessagePayload, TaskCompletedPayload, TaskFailedPayload, TaskCancelledPayload, TaskProgressPayload } from "@/shared/types/events";
 import type { AgentTask } from "@/shared/types/agent";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { ActorAvatar } from "@/components/common/actor-avatar";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Progress } from "@/components/ui/progress";
 import { useActorName } from "@/features/workspace";
 import { redactSecrets } from "../utils/redact";
 
@@ -111,6 +112,8 @@ export function AgentLiveCard({ issueId, agentName, scrollContainerRef }: AgentL
   const [elapsed, setElapsed] = useState("");
   const [autoScroll, setAutoScroll] = useState(true);
   const [cancelling, setCancelling] = useState(false);
+  const [progress, setProgress] = useState<number>(0);
+  const [progressMessage, setProgressMessage] = useState<string>("");
   const [isStuck, setIsStuck] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -163,6 +166,18 @@ export function AgentLiveCard({ issueId, agentName, scrollContainerRef }: AgentL
     }, [issueId]),
   );
 
+  // Handle task progress
+  useWSEvent(
+    "task:progress",
+    useCallback((payload: unknown) => {
+      const p = payload as TaskProgressPayload;
+      if (p.issue_id !== issueId) return;
+      if (activeTask && p.task_id !== activeTask.id) return;
+      setProgress(Math.min(100, Math.max(0, p.progress)));
+      if (p.message) setProgressMessage(p.message);
+    }, [issueId, activeTask]),
+  );
+
   // Handle task completion/failure
   useWSEvent(
     "task:completed",
@@ -173,6 +188,8 @@ export function AgentLiveCard({ issueId, agentName, scrollContainerRef }: AgentL
       setItems([]);
       seenSeqs.current.clear();
       setCancelling(false);
+      setProgress(0);
+      setProgressMessage("");
     }, [issueId]),
   );
 
@@ -185,6 +202,8 @@ export function AgentLiveCard({ issueId, agentName, scrollContainerRef }: AgentL
       setItems([]);
       seenSeqs.current.clear();
       setCancelling(false);
+      setProgress(0);
+      setProgressMessage("");
     }, [issueId]),
   );
 
@@ -197,6 +216,8 @@ export function AgentLiveCard({ issueId, agentName, scrollContainerRef }: AgentL
       setItems([]);
       seenSeqs.current.clear();
       setCancelling(false);
+      setProgress(0);
+      setProgressMessage("");
     }, [issueId]),
   );
 
@@ -212,6 +233,8 @@ export function AgentLiveCard({ issueId, agentName, scrollContainerRef }: AgentL
           setActiveTask(task);
           setItems([]);
           seenSeqs.current.clear();
+          setProgress(0);
+          setProgressMessage("");
         }
       }).catch(console.error);
     }, [issueId, activeTask]),
@@ -338,6 +361,19 @@ export function AgentLiveCard({ issueId, agentName, scrollContainerRef }: AgentL
             </button>
           )}
         </div>
+
+        {/* Progress bar */}
+        {progress > 0 && !isStuck && (
+          <div className="px-3 pb-2 space-y-1">
+            <div className="flex items-center gap-2">
+              <Progress value={progress} className="flex-1" />
+              <span className="text-xs text-muted-foreground tabular-nums shrink-0">{progress}%</span>
+            </div>
+            {progressMessage && (
+              <p className="text-xs text-muted-foreground truncate">{progressMessage}</p>
+            )}
+          </div>
+        )}
 
         {/* Timeline content — collapses when stuck */}
         <div

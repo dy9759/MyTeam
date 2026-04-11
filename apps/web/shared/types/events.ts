@@ -44,7 +44,8 @@ export type WSEventType =
   | "reaction:added"
   | "reaction:removed"
   | "issue_reaction:added"
-  | "issue_reaction:removed";
+  | "issue_reaction:removed"
+  | "typing";
 
 export interface WSMessage<T = unknown> {
   type: WSEventType;
@@ -214,4 +215,18 @@ export interface IssueReactionRemovedPayload {
   emoji: string;
   actor_type: string;
   actor_id: string;
+}
+
+export interface TypingPayload {
+  channel_id?: string;
+  session_id?: string;
+  is_typing: boolean;
+  sender_id: string;
+}
+
+export interface TaskProgressPayload {
+  task_id: string;
+  issue_id: string;
+  progress: number; // 0-100
+  message?: string;
 }
