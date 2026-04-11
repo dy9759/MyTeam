@@ -85,4 +85,10 @@ const (
 	EventPlanGenerated = "plan:generated"
 	EventPlanApproved  = "plan:approved"
 	EventPlanRejected  = "plan:rejected"
+
+	// Channel events
+	EventChannelUpdated = "channel:updated"
+
+	// Thread events
+	EventThreadCreated = "thread:created"
 )

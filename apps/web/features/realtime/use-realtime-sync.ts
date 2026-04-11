@@ -62,6 +62,12 @@ export function useRealtimeSync(ws: WSClient | null) {
         });
       },
       skill: () => void useWorkspaceStore.getState().refreshSkills(),
+      channel: () => {
+        // Import dynamically to avoid circular deps with the realtime feature.
+        import("@/features/channels/store")
+          .then((m) => m.useChannelStore.getState().fetch())
+          .catch((err) => logger.error("channel refresh failed", err));
+      },
     };
 
     const timers = new Map<string, ReturnType<typeof setTimeout>>();

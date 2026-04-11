@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/multica-ai/multica/server/pkg/protocol"
 )
 
 var messageDedup = util.NewBoundedUUIDSet(2000)
@@ -130,6 +131,17 @@ func (h *Handler) CreateMessage(w http.ResponseWriter, r *http.Request) {
 		h.publish("message:created", workspaceID, actorType, senderID, map[string]any{
 			"message": messageToResponse(msg),
 		})
+
+		// Broadcast thread:created when this message is a threaded reply.
+		if req.ParentID != nil && *req.ParentID != "" {
+			payload := map[string]any{
+				"thread_id": *req.ParentID,
+			}
+			if req.ChannelID != nil {
+				payload["channel_id"] = *req.ChannelID
+			}
+			h.publish(protocol.EventThreadCreated, workspaceID, "member", senderID, payload)
+		}
 	}
 
 	// Log impersonation activity if applicable.

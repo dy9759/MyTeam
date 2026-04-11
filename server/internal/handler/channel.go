@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/multica-ai/multica/server/pkg/protocol"
 )
 
 // POST /api/channels
@@ -205,6 +206,10 @@ func (h *Handler) ListChannelMessages(w http.ResponseWriter, r *http.Request) {
 // PATCH /api/channels/{channelID}/visibility
 func (h *Handler) UpdateChannelVisibility(w http.ResponseWriter, r *http.Request) {
 	channelID := chi.URLParam(r, "channelID")
+	userID, ok := requireUserID(w, r)
+	if !ok {
+		return
+	}
 
 	var req struct {
 		Visibility string `json:"visibility"`
@@ -228,12 +233,21 @@ func (h *Handler) UpdateChannelVisibility(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	workspaceID := resolveWorkspaceID(r)
+	h.publish(protocol.EventChannelUpdated, workspaceID, "member", userID, map[string]any{
+		"channel_id": channelID,
+	})
+
 	w.WriteHeader(http.StatusNoContent)
 }
 
 // PATCH /api/channels/{channelID}/category
 func (h *Handler) UpdateChannelCategory(w http.ResponseWriter, r *http.Request) {
 	channelID := chi.URLParam(r, "channelID")
+	userID, ok := requireUserID(w, r)
+	if !ok {
+		return
+	}
 
 	var req struct {
 		Category string `json:"category"`
@@ -252,6 +266,11 @@ func (h *Handler) UpdateChannelCategory(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusInternalServerError, "failed to update category")
 		return
 	}
+
+	workspaceID := resolveWorkspaceID(r)
+	h.publish(protocol.EventChannelUpdated, workspaceID, "member", userID, map[string]any{
+		"channel_id": channelID,
+	})
 
 	w.WriteHeader(http.StatusNoContent)
 }
