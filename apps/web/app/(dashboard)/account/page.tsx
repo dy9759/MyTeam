@@ -1,5 +1,6 @@
 "use client"
 import { useEffect, useState } from "react"
+import { MetricsOverview } from "@/features/workspace/components/metrics-overview"
 
 export default function AccountPage() {
   const [user, setUser] = useState<any>(null)
@@ -27,6 +28,12 @@ export default function AccountPage() {
   return (
     <div className="p-6 max-w-3xl mx-auto">
       <h1 className="text-2xl font-bold mb-6">Account</h1>
+
+      {/* Workspace Metrics */}
+      <div className="mb-6">
+        <h2 className="text-lg font-semibold mb-3">Overview</h2>
+        <MetricsOverview />
+      </div>
 
       {/* Profile Card */}
       <div className="border rounded-xl overflow-hidden mb-6">

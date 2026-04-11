@@ -46,3 +46,5 @@ export type {
   WorkflowStep,
   Workflow,
 } from "./workflow";
+export type { SearchResult, SearchResponse } from "./search";
+export type { WorkspaceMetrics } from "./metrics";

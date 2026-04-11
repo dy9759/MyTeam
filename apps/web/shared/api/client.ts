@@ -35,6 +35,8 @@ import type {
   TimelineEntry,
   TaskMessagePayload,
   Attachment,
+  SearchResponse,
+  WorkspaceMetrics,
 } from "@/shared/types";
 import { type Logger, noopLogger } from "@/shared/logger";
 
@@ -653,4 +655,16 @@ export class ApiClient {
   async startWorkflow(id: string) { return this.fetch<any>(`/api/workflows/${id}/start`, { method: 'POST' }) }
   async updateWorkflowDAG(id: string, dag: any) { return this.fetch<any>(`/api/workflows/${id}/dag`, { method: 'PATCH', body: JSON.stringify({ dag }) }) }
   async deleteWorkflow(id: string) { return this.fetch<void>(`/api/workflows/${id}`, { method: 'DELETE' }) }
+
+  // Search
+  async search(q: string, type?: string): Promise<SearchResponse> {
+    const params = new URLSearchParams({ q });
+    if (type) params.set("type", type);
+    return this.fetch(`/api/search?${params}`);
+  }
+
+  // Workspace Metrics
+  async getWorkspaceMetrics(): Promise<WorkspaceMetrics> {
+    return this.fetch("/api/metrics");
+  }
 }
