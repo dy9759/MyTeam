@@ -8,6 +8,7 @@ import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/s
 import { useAuthStore } from "@/features/auth";
 import { useWorkspaceStore } from "@/features/workspace";
 import { AppSidebar } from "./_components/app-sidebar";
+import { CommandSearch } from "@/features/search";
 
 export default function DashboardLayout({
   children,
@@ -53,6 +54,7 @@ export default function DashboardLayout({
           </div>
         )}
       </SidebarInset>
+      <CommandSearch />
     </SidebarProvider>
   );
 }

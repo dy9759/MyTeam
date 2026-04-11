@@ -43,6 +43,7 @@ import type {
   ProjectRun,
   CreateProjectFromChatRequest,
   FileIndex,
+  SearchResponse,
   WorkspaceMetrics,
 } from "@/shared/types";
 import { type Logger, noopLogger } from "@/shared/logger";
@@ -816,6 +817,13 @@ export class ApiClient {
 
   async listProjectFiles(projectId: string): Promise<FileIndex[]> {
     return this.fetch(`/api/projects/${projectId}/files`);
+  }
+
+  // Search
+  async search(q: string, type?: string): Promise<SearchResponse> {
+    const params = new URLSearchParams({ q });
+    if (type) params.set("type", type);
+    return this.fetch(`/api/search?${params}`);
   }
 
   // Metrics

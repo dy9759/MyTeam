@@ -10,6 +10,7 @@ import {
   Copy, Check, Plus, Zap, Circle, Shield, Wrench,
   Globe, User, GitBranch
 } from "lucide-react"
+import { MetricsOverview } from "@/features/workspace/components/metrics-overview"
 
 /* ================================================================== */
 /* Helpers                                                             */
@@ -77,6 +78,12 @@ function OverviewTab() {
 
   return (
     <div className="space-y-8">
+      {/* Workspace Metrics */}
+      <section>
+        <h2 className="text-sm font-semibold mb-4">概览</h2>
+        <MetricsOverview />
+      </section>
+
       {/* Profile */}
       <section>
         <h2 className="text-sm font-semibold mb-4">个人信息</h2>

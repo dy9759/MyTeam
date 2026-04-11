@@ -1,0 +1,81 @@
+client:
+  name: basic
+  file-system: device-agnostic
+tools: {}
+targets:
+  "MyTeamNative-arm64-apple-macosx-debug.exe": ["<MyTeamNative-arm64-apple-macosx-debug.exe>"]
+  "MyTeamNative-arm64-apple-macosx-debug.module": ["<MyTeamNative-arm64-apple-macosx-debug.module>"]
+  "PackageStructure": ["<PackageStructure>"]
+  "main": ["<MyTeamNative-arm64-apple-macosx-debug.exe>","<MyTeamNative-arm64-apple-macosx-debug.module>"]
+  "test": ["<MyTeamNative-arm64-apple-macosx-debug.exe>","<MyTeamNative-arm64-apple-macosx-debug.module>"]
+default: "main"
+nodes:
+  "/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/Sources/MyTeamNative/":
+    is-directory-structure: true
+    content-exclusion-patterns: [".git",".build"]
+  "/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/MyTeamNative":
+    is-mutated: true
+commands:
+  "/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/MyTeamNative-entitlement.plist":
+    tool: write-auxiliary-file
+    inputs: ["<entitlement-plist>","<com.apple.security.get-task-allow>"]
+    outputs: ["/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/MyTeamNative-entitlement.plist"]
+    description: "Write auxiliary file /Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/MyTeamNative-entitlement.plist"
+
+  "/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/MyTeamNative.build/sources":
+    tool: write-auxiliary-file
+    inputs: ["<sources-file-list>","/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/Sources/MyTeamNative/main.swift"]
+    outputs: ["/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/MyTeamNative.build/sources"]
+    description: "Write auxiliary file /Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/MyTeamNative.build/sources"
+
+  "/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/MyTeamNative.product/Objects.LinkFileList":
+    tool: write-auxiliary-file
+    inputs: ["<link-file-list>","/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/MyTeamNative.build/main.swift.o"]
+    outputs: ["/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/MyTeamNative.product/Objects.LinkFileList"]
+    description: "Write auxiliary file /Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/MyTeamNative.product/Objects.LinkFileList"
+
+  "/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt":
+    tool: write-auxiliary-file
+    inputs: ["<swift-get-version>","/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"]
+    outputs: ["/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"]
+    always-out-of-date: "true"
+    description: "Write auxiliary file /Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+
+  "<MyTeamNative-arm64-apple-macosx-debug.exe>":
+    tool: phony
+    inputs: ["<MyTeamNative-arm64-apple-macosx-debug.exe-CodeSigning>"]
+    outputs: ["<MyTeamNative-arm64-apple-macosx-debug.exe>"]
+
+  "<MyTeamNative-arm64-apple-macosx-debug.module>":
+    tool: phony
+    inputs: ["/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/MyTeamNative.build/main.swift.o","/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/Modules/MyTeamNative.swiftmodule"]
+    outputs: ["<MyTeamNative-arm64-apple-macosx-debug.module>"]
+
+  "C.MyTeamNative-arm64-apple-macosx-debug.exe":
+    tool: shell
+    inputs: ["/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/MyTeamNative.build/main.swift.o","/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/MyTeamNative.product/Objects.LinkFileList"]
+    outputs: ["/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/MyTeamNative"]
+    description: "Linking ./.build/arm64-apple-macosx/debug/MyTeamNative"
+    args: ["/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc","-L","/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug","-o","/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/MyTeamNative","-module-name","MyTeamNative","-Xlinker","-no_warn_duplicate_libraries","-emit-executable","-Xlinker","-alias","-Xlinker","_MyTeamNative_main","-Xlinker","_main","-Xlinker","-rpath","-Xlinker","@loader_path","@/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/MyTeamNative.product/Objects.LinkFileList","-Xlinker","-rpath","-Xlinker","/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-6.2/macosx","-target","arm64-apple-macosx13.0","-Xlinker","-add_ast_path","-Xlinker","/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/Modules/MyTeamNative.swiftmodule","-plugin-path","/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing","-sdk","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.4.sdk","-F","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-I","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-L","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-g"]
+
+  "C.MyTeamNative-arm64-apple-macosx-debug.exe-entitlements":
+    tool: shell
+    inputs: ["/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/MyTeamNative","/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/MyTeamNative-entitlement.plist"]
+    outputs: ["<MyTeamNative-arm64-apple-macosx-debug.exe-CodeSigning>"]
+    description: "Applying debug entitlements to ./.build/arm64-apple-macosx/debug/MyTeamNative"
+    args: ["codesign","--force","--sign","-","--entitlements","/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/MyTeamNative-entitlement.plist","/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/MyTeamNative"]
+
+  "C.MyTeamNative-arm64-apple-macosx-debug.module":
+    tool: shell
+    inputs: ["/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/Sources/MyTeamNative/main.swift","/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt","/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/MyTeamNative.build/sources"]
+    outputs: ["/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/MyTeamNative.build/main.swift.o","/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/Modules/MyTeamNative.swiftmodule"]
+    description: "Compiling Swift Module 'MyTeamNative' (1 sources)"
+    args: ["/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc","-module-name","MyTeamNative","-emit-dependencies","-emit-module","-emit-module-path","/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/Modules/MyTeamNative.swiftmodule","-output-file-map","/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/MyTeamNative.build/output-file-map.json","-incremental","-c","@/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/MyTeamNative.build/sources","-I","/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/Modules","-target","arm64-apple-macosx13.0","-incremental","-enable-batch-mode","-serialize-diagnostics","-index-store-path","/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/index/store","-Onone","-enable-testing","-j10","-DSWIFT_PACKAGE","-DDEBUG","-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE","-module-cache-path","/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/ModuleCache","-parseable-output","-Xfrontend","-entry-point-function-name","-Xfrontend","MyTeamNative_main","-swift-version","5","-plugin-path","/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing","-sdk","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.4.sdk","-F","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-I","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-L","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-g","-Xcc","-isysroot","-Xcc","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.4.sdk","-Xcc","-F","-Xcc","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-Xcc","-fPIC","-Xcc","-g","-package-name","native_macos"]
+
+  "PackageStructure":
+    tool: package-structure-tool
+    inputs: ["/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/Sources/MyTeamNative/","/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/Package.swift","/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/Package.resolved"]
+    outputs: ["<PackageStructure>"]
+    description: "Planning build"
+    allow-missing-inputs: true
+

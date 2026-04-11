@@ -63,3 +63,4 @@ export type {
   CreateProjectFromChatRequest,
 } from "./project";
 export type { FileIndex, FileSnapshot, WorkspaceMetrics } from "./file";
+export type { SearchResult, SearchResponse } from "./search";

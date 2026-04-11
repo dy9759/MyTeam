@@ -1,0 +1,12 @@
+{
+  "": {
+    "swift-dependencies": "/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/MyTeamNative.build/primary.swiftdeps"
+  },
+  "/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/Sources/MyTeamNative/main.swift": {
+    "dependencies": "/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/MyTeamNative.build/main.d",
+    "object": "/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/MyTeamNative.build/main.swift.o",
+    "swiftmodule": "/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/MyTeamNative.build/main~partial.swiftmodule",
+    "swift-dependencies": "/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/MyTeamNative.build/main.swiftdeps",
+    "diagnostics": "/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/MyTeamNative.build/main.dia"
+  }
+}

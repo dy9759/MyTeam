@@ -1,0 +1,251 @@
+{
+  "builtTestProducts" : [
+
+  ],
+  "copyCommands" : {
+
+  },
+  "explicitTargetDependencyImportCheckingMode" : {
+    "none" : {
+
+    }
+  },
+  "generatedSourceTargetSet" : [
+
+  ],
+  "pluginDescriptions" : [
+
+  ],
+  "swiftCommands" : {
+    "C.MyTeamNative-arm64-apple-macosx-debug.module" : {
+      "executable" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "fileList" : "/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/MyTeamNative.build/sources",
+      "importPath" : "/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/Modules",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/Sources/MyTeamNative/main.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/MyTeamNative.build/sources"
+        }
+      ],
+      "isLibrary" : false,
+      "moduleName" : "MyTeamNative",
+      "moduleOutputPath" : "/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/Modules/MyTeamNative.swiftmodule",
+      "objects" : [
+        "/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/MyTeamNative.build/main.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-macosx13.0",
+        "-incremental",
+        "-enable-batch-mode",
+        "-serialize-diagnostics",
+        "-index-store-path",
+        "/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/index/store",
+        "-Onone",
+        "-enable-testing",
+        "-j10",
+        "-DSWIFT_PACKAGE",
+        "-DDEBUG",
+        "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+        "-module-cache-path",
+        "/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/ModuleCache",
+        "-parseable-output",
+        "-Xfrontend",
+        "-entry-point-function-name",
+        "-Xfrontend",
+        "MyTeamNative_main",
+        "-swift-version",
+        "5",
+        "-plugin-path",
+        "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+        "-sdk",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.4.sdk",
+        "-F",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-I",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-L",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.4.sdk",
+        "-Xcc",
+        "-F",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "native_macos"
+      ],
+      "outputFileMapPath" : "/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/MyTeamNative.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/MyTeamNative.build/main.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/Modules/MyTeamNative.swiftmodule"
+        }
+      ],
+      "prepareForIndexing" : false,
+      "sources" : [
+        "/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/Sources/MyTeamNative/main.swift"
+      ],
+      "tempsPath" : "/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/MyTeamNative.build",
+      "wholeModuleOptimization" : false
+    }
+  },
+  "swiftFrontendCommands" : {
+
+  },
+  "swiftTargetScanArgs" : {
+    "MyTeamNative" : [
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "-module-name",
+      "MyTeamNative",
+      "-package-name",
+      "native_macos",
+      "-c",
+      "/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/Sources/MyTeamNative/main.swift",
+      "-I",
+      "/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/Modules",
+      "-target",
+      "arm64-apple-macosx13.0",
+      "-incremental",
+      "-enable-batch-mode",
+      "-serialize-diagnostics",
+      "-index-store-path",
+      "/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/index/store",
+      "-Onone",
+      "-enable-testing",
+      "-j10",
+      "-DSWIFT_PACKAGE",
+      "-DDEBUG",
+      "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+      "-module-cache-path",
+      "/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/ModuleCache",
+      "-parseable-output",
+      "-Xfrontend",
+      "-entry-point-function-name",
+      "-Xfrontend",
+      "MyTeamNative_main",
+      "-swift-version",
+      "5",
+      "-plugin-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+      "-sdk",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.4.sdk",
+      "-F",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-I",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-L",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.4.sdk",
+      "-Xcc",
+      "-F",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "native_macos",
+      "-driver-use-frontend-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+    ]
+  },
+  "targetDependencyMap" : {
+    "MyTeamNative" : [
+
+    ]
+  },
+  "testDiscoveryCommands" : {
+
+  },
+  "testEntryPointCommands" : {
+
+  },
+  "traitConfiguration" : {
+    "default" : {
+
+    }
+  },
+  "writeCommands" : {
+    "/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/MyTeamNative-entitlement.plist" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<entitlement-plist>"
+        },
+        {
+          "kind" : "virtual",
+          "name" : "<com.apple.security.get-task-allow>"
+        }
+      ],
+      "outputFilePath" : "/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/MyTeamNative-entitlement.plist"
+    },
+    "/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/MyTeamNative.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/Sources/MyTeamNative/main.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/MyTeamNative.build/sources"
+    },
+    "/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/MyTeamNative.product/Objects.LinkFileList" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<link-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/MyTeamNative.build/main.swift.o"
+        }
+      ],
+      "outputFilePath" : "/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/MyTeamNative.product/Objects.LinkFileList"
+    },
+    "/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt" : {
+      "alwaysOutOfDate" : true,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<swift-get-version>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+        }
+      ],
+      "outputFilePath" : "/Users/chauncey2025/Documents/GitHub/MyTeam/apps/desktop/native-macos/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+    }
+  }
+}
