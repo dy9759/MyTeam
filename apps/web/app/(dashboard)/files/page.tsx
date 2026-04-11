@@ -1,22 +1,108 @@
 "use client"
 import { useEffect, useState, useRef } from "react"
+import { ChevronDown, ChevronRight, History, Download } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { api } from "@/shared/api"
+import type { FileVersion } from "@/shared/types"
+
+function FileVersionHistory({ fileId }: { fileId: string }) {
+  const [versions, setVersions] = useState<FileVersion[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setError("")
+    api
+      .listFileVersions(fileId)
+      .then((v) => {
+        if (!cancelled) setVersions(v)
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load versions")
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [fileId])
+
+  if (loading) {
+    return (
+      <div className="pl-10 py-2 text-xs text-muted-foreground">
+        Loading versions...
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="pl-10 py-2 text-xs text-destructive">{error}</div>
+    )
+  }
+
+  if (versions.length === 0) {
+    return (
+      <div className="pl-10 py-2 text-xs text-muted-foreground">
+        No version history available.
+      </div>
+    )
+  }
+
+  return (
+    <div className="pl-10 pb-2 space-y-1">
+      {versions.map((v) => (
+        <div
+          key={v.id}
+          className="flex items-center gap-3 px-3 py-1.5 rounded-md bg-muted/30 text-xs"
+        >
+          <span className="font-mono text-muted-foreground">v{v.version}</span>
+          <span className="truncate flex-1">{v.filename}</span>
+          <span className="text-muted-foreground shrink-0">
+            {formatSize(v.size_bytes)}
+          </span>
+          <span className="text-muted-foreground shrink-0">
+            {new Date(v.created_at).toLocaleString()}
+          </span>
+          {v.download_url && (
+            <a
+              href={v.download_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="shrink-0"
+            >
+              <Button variant="ghost" size="xs">
+                <Download className="h-3 w-3" />
+              </Button>
+            </a>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function formatSize(bytes: number) {
+  if (!bytes) return ""
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / 1048576).toFixed(1)} MB`
+}
 
 export default function FilesPage() {
   const [files, setFiles] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
+  const [expandedFileId, setExpandedFileId] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    // Fetch files from issues' attachments
     async function load() {
       try {
-        // Use issues API to get attachments (no direct file list API)
-        // For now fetch recent issues and collect attachments
         const res = await fetch("/api/issues?limit=50")
         const data = await res.json()
         const allFiles: any[] = []
-        // Files will appear as attachments from issues
         setFiles(allFiles)
       } catch {} finally { setLoading(false) }
     }
@@ -33,7 +119,6 @@ export default function FilesPage() {
         formData.append("file", file)
         await fetch("/api/upload-file", { method: "POST", body: formData })
       }
-      // Reload
     } catch {} finally {
       setUploading(false)
       if (fileInputRef.current) fileInputRef.current.value = ""
@@ -48,11 +133,9 @@ export default function FilesPage() {
     const ext = name.split(".").pop()?.toLowerCase() ?? ""
     return fileIcons[ext] ?? "📄"
   }
-  function formatSize(bytes: number) {
-    if (!bytes) return ""
-    if (bytes < 1024) return `${bytes} B`
-    if (bytes < 1048576) return `${(bytes/1024).toFixed(1)} KB`
-    return `${(bytes/1048576).toFixed(1)} MB`
+
+  function toggleExpanded(fileId: string) {
+    setExpandedFileId((prev) => (prev === fileId ? null : fileId))
   }
 
   return (
@@ -78,20 +161,56 @@ export default function FilesPage() {
         </div>
       )}
 
-      <div className="space-y-2">
+      <div className="space-y-1">
         {files.map((f: any) => (
-          <div key={f.id} className="flex items-center gap-3 p-3 border rounded-lg hover:bg-muted/50">
-            <span className="text-2xl">{getIcon(f.filename ?? "")}</span>
-            <div className="flex-1 min-w-0">
-              <div className="font-medium truncate">{f.filename}</div>
-              <div className="text-xs text-muted-foreground">
-                {formatSize(f.size_bytes)} · {f.content_type} · {new Date(f.created_at).toLocaleDateString()}
+          <div key={f.id}>
+            <div
+              className="flex items-center gap-3 p-3 border rounded-lg hover:bg-muted/50 cursor-pointer"
+              onClick={() => toggleExpanded(f.id)}
+            >
+              <button
+                className="shrink-0 text-muted-foreground hover:text-foreground"
+                onClick={(e) => { e.stopPropagation(); toggleExpanded(f.id) }}
+              >
+                {expandedFileId === f.id ? (
+                  <ChevronDown className="h-4 w-4" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )}
+              </button>
+              <span className="text-2xl">{getIcon(f.filename ?? "")}</span>
+              <div className="flex-1 min-w-0">
+                <div className="font-medium truncate">{f.filename}</div>
+                <div className="text-xs text-muted-foreground">
+                  {formatSize(f.size_bytes)} · {f.content_type} · {new Date(f.created_at).toLocaleDateString()}
+                </div>
               </div>
+              <Button
+                variant="ghost"
+                size="xs"
+                className="shrink-0 text-muted-foreground hover:text-foreground"
+                onClick={(e) => { e.stopPropagation(); toggleExpanded(f.id) }}
+              >
+                <History className="h-3.5 w-3.5" />
+                Versions
+              </Button>
+              <a href={f.url} target="_blank" rel="noopener noreferrer"
+                className="px-3 py-1 text-sm bg-primary/10 text-primary rounded hover:bg-primary/20"
+                onClick={(e) => e.stopPropagation()}>
+                Download
+              </a>
             </div>
-            <a href={f.url} target="_blank" rel="noopener noreferrer"
-              className="px-3 py-1 text-sm bg-primary/10 text-primary rounded hover:bg-primary/20">
-              Download
-            </a>
+
+            {/* Version History (expanded) */}
+            {expandedFileId === f.id && (
+              <div className="border-x border-b rounded-b-lg -mt-px">
+                <div className="flex items-center gap-1.5 px-4 pt-3 pb-1">
+                  <History className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-xs font-medium text-muted-foreground">Version History</span>
+                </div>
+                <FileVersionHistory fileId={f.id} />
+              </div>
+            )}
           </div>
         ))}
       </div>

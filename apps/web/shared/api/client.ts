@@ -35,6 +35,7 @@ import type {
   TimelineEntry,
   TaskMessagePayload,
   Attachment,
+  FileVersion,
 } from "@/shared/types";
 import { type Logger, noopLogger } from "@/shared/logger";
 
@@ -578,6 +579,10 @@ export class ApiClient {
 
   async deleteAttachment(id: string): Promise<void> {
     await this.fetch(`/api/attachments/${id}`, { method: "DELETE" });
+  }
+
+  async listFileVersions(fileId: string): Promise<FileVersion[]> {
+    return this.fetch(`/api/files/${fileId}/versions`);
   }
 
   // Messages

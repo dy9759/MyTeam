@@ -12,3 +12,17 @@ export interface Attachment {
   size_bytes: number;
   created_at: string;
 }
+
+export interface FileVersion {
+  id: string;
+  file_id: string;
+  version: number;
+  filename: string;
+  url: string;
+  download_url: string;
+  content_type: string;
+  size_bytes: number;
+  uploader_type: string;
+  uploader_id: string;
+  created_at: string;
+}

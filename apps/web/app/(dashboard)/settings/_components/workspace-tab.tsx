@@ -41,6 +41,8 @@ export function WorkspaceTab() {
     variant?: "destructive";
     onConfirm: () => Promise<void>;
   } | null>(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteConfirmName, setDeleteConfirmName] = useState("");
 
   const currentMember = members.find((m) => m.user_id === user?.id) ?? null;
   const canManageWorkspace = currentMember?.role === "owner" || currentMember?.role === "admin";
@@ -91,21 +93,21 @@ export function WorkspaceTab() {
 
   const handleDeleteWorkspace = () => {
     if (!workspace) return;
-    setConfirmAction({
-      title: "Delete workspace",
-      description: `Delete ${workspace.name}? This cannot be undone. All issues, agents, and data will be permanently removed.`,
-      variant: "destructive",
-      onConfirm: async () => {
-        setActionId("delete-workspace");
-        try {
-          await deleteWorkspace(workspace.id);
-        } catch (e) {
-          toast.error(e instanceof Error ? e.message : "Failed to delete workspace");
-        } finally {
-          setActionId(null);
-        }
-      },
-    });
+    setDeleteConfirmName("");
+    setDeleteConfirmOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!workspace) return;
+    setActionId("delete-workspace");
+    try {
+      await deleteWorkspace(workspace.id);
+      setDeleteConfirmOpen(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to delete workspace");
+    } finally {
+      setActionId(null);
+    }
   };
 
   if (!workspace) return null;
@@ -223,6 +225,7 @@ export function WorkspaceTab() {
         </Card>
       </section>
 
+      {/* Leave workspace confirmation */}
       <AlertDialog open={!!confirmAction} onOpenChange={(v) => { if (!v) setConfirmAction(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -239,6 +242,43 @@ export function WorkspaceTab() {
               }}
             >
               Confirm
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete workspace confirmation — requires typing workspace name */}
+      <AlertDialog open={deleteConfirmOpen} onOpenChange={(v) => { if (!v) { setDeleteConfirmOpen(false); setDeleteConfirmName(""); } }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete workspace</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. All issues, agents, and data in{" "}
+              <span className="font-semibold text-foreground">{workspace?.name}</span>{" "}
+              will be permanently removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-2 px-0">
+            <Label className="text-xs text-muted-foreground">
+              Type <span className="font-semibold text-foreground">{workspace?.name}</span> to confirm
+            </Label>
+            <Input
+              value={deleteConfirmName}
+              onChange={(e) => setDeleteConfirmName(e.target.value)}
+              placeholder={workspace?.name}
+              autoFocus
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => { setDeleteConfirmOpen(false); setDeleteConfirmName(""); }}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={deleteConfirmName !== workspace?.name || actionId === "delete-workspace"}
+              onClick={handleConfirmDelete}
+            >
+              {actionId === "delete-workspace" ? "Deleting..." : "Delete workspace"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
