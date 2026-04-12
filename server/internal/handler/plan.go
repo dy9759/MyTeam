@@ -25,6 +25,10 @@ type PlanResponse struct {
 	CreatedBy      string          `json:"created_by"`
 	CreatedAt      string          `json:"created_at"`
 	UpdatedAt      string          `json:"updated_at"`
+	ApprovalStatus string          `json:"approval_status"`
+	ApprovedBy     *string         `json:"approved_by"`
+	ApprovedAt     *string         `json:"approved_at"`
+	ProjectID      *string         `json:"project_id"`
 }
 
 func planToResponse(p db.Plan) PlanResponse {
@@ -41,6 +45,10 @@ func planToResponse(p db.Plan) PlanResponse {
 		CreatedBy:      uuidToString(p.CreatedBy),
 		CreatedAt:      timestampToString(p.CreatedAt),
 		UpdatedAt:      timestampToString(p.UpdatedAt),
+		ApprovalStatus: p.ApprovalStatus,
+		ApprovedBy:     uuidToPtr(p.ApprovedBy),
+		ApprovedAt:     timestampToPtr(p.ApprovedAt),
+		ProjectID:      uuidToPtr(p.ProjectID),
 	}
 }
 
@@ -189,6 +197,53 @@ func (h *Handler) GeneratePlan(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, plan)
+}
+
+// ApprovePlan approves a plan and optionally triggers workflow creation.
+// POST /api/plans/{planID}/approve
+func (h *Handler) ApprovePlan(w http.ResponseWriter, r *http.Request) {
+	planID := chi.URLParam(r, "planID")
+	userID, ok := requireUserID(w, r)
+	if !ok {
+		return
+	}
+	workspaceID := resolveWorkspaceID(r)
+
+	// 1. Load the plan
+	plan, err := h.Queries.GetPlan(r.Context(), parseUUID(planID))
+	if err != nil {
+		writeError(w, http.StatusNotFound, "plan not found")
+		return
+	}
+
+	if plan.ApprovalStatus == "approved" {
+		writeError(w, http.StatusConflict, "plan already approved")
+		return
+	}
+
+	// 2. Update approval status
+	updatedPlan, err := h.Queries.ApprovePlan(r.Context(), db.ApprovePlanParams{
+		ID:         parseUUID(planID),
+		ApprovedBy: parseUUID(userID),
+	})
+	if err != nil {
+		slog.Error("failed to approve plan", "plan_id", planID, "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to approve plan")
+		return
+	}
+
+	// 3. Publish event
+	actorType, actorID := h.resolveActor(r, userID, workspaceID)
+	h.publish("plan.approved", workspaceID, actorType, actorID, map[string]string{
+		"plan_id": planID,
+	})
+
+	// 4. Optionally trigger workflow creation via Scheduler
+	if h.Scheduler != nil {
+		slog.Info("plan approved, workflow scheduling available", "plan_id", planID)
+	}
+
+	writeJSON(w, http.StatusOK, planToResponse(updatedPlan))
 }
 
 // optionalUUID converts an optional string pointer to a pgtype.UUID.

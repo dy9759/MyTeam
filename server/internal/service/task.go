@@ -238,6 +238,13 @@ func (s *TaskService) CompleteTask(ctx context.Context, taskID pgtype.UUID, resu
 
 	slog.Info("task completed", "task_id", util.UUIDToString(task.ID), "issue_id", util.UUIDToString(task.IssueID))
 
+	// Clear needs_attention on successful completion
+	_ = s.Queries.SetAgentNeedsAttention(ctx, db.SetAgentNeedsAttentionParams{
+		ID:                   task.AgentID,
+		NeedsAttention:       false,
+		NeedsAttentionReason: pgtype.Text{},
+	})
+
 	// Post agent output as a comment, but only for assignment-triggered tasks.
 	// Comment-triggered tasks: the agent replies via CLI with --parent, so
 	// posting here would create a duplicate.
@@ -284,6 +291,13 @@ func (s *TaskService) FailTask(ctx context.Context, taskID pgtype.UUID, errMsg s
 	}
 
 	slog.Warn("task failed", "task_id", util.UUIDToString(task.ID), "issue_id", util.UUIDToString(task.IssueID), "error", errMsg)
+
+	// Set needs_attention after task failure
+	_ = s.Queries.SetAgentNeedsAttention(ctx, db.SetAgentNeedsAttentionParams{
+		ID:                   task.AgentID,
+		NeedsAttention:       true,
+		NeedsAttentionReason: pgtype.Text{String: errMsg, Valid: true},
+	})
 
 	if errMsg != "" {
 		s.createAgentComment(ctx, task.IssueID, task.AgentID, redact.Text(errMsg), "system", task.TriggerCommentID)

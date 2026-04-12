@@ -78,6 +78,27 @@ func (s *AutoReplyService) replyAsMentionedAgent(ctx context.Context, agentName 
 		}
 	}
 
+	// Rate limit: skip if agent already sent >=3 consecutive messages in this channel
+	recentMsgs, _ := s.Queries.ListChannelMessages(ctx, db.ListChannelMessagesParams{
+		ChannelID: util.ParseUUID(channelID),
+		Limit:     5,
+		Offset:    0,
+	})
+	consecutiveCount := 0
+	// Messages are ordered ASC, so iterate from the end (most recent first)
+	for i := len(recentMsgs) - 1; i >= 0; i-- {
+		m := recentMsgs[i]
+		if util.UUIDToString(m.SenderID) == util.UUIDToString(agent.ID) {
+			consecutiveCount++
+		} else {
+			break // stop counting at first non-agent message
+		}
+	}
+	if consecutiveCount >= 3 {
+		slog.Info("auto-reply: rate limited", "agent", agentName, "consecutive", consecutiveCount)
+		return nil
+	}
+
 	contentPreview := trigger.Content
 	if len(contentPreview) > 50 {
 		contentPreview = contentPreview[:50]

@@ -234,3 +234,79 @@ func (q *Queries) UpdatePlanSteps(ctx context.Context, arg UpdatePlanStepsParams
 	_, err := q.db.Exec(ctx, updatePlanSteps, arg.ID, arg.Steps)
 	return err
 }
+
+const approvePlan = `-- name: ApprovePlan :one
+UPDATE plan SET approval_status = 'approved', approved_by = $2, approved_at = NOW(), updated_at = NOW()
+WHERE id = $1
+RETURNING id, workspace_id, title, description, source_type, source_ref_id, constraints, expected_output, steps, created_by, created_at, updated_at, project_id, version_id, task_brief, assigned_agents, risk_points, approval_status, approved_by, approved_at
+`
+
+type ApprovePlanParams struct {
+	ID         pgtype.UUID `json:"id"`
+	ApprovedBy pgtype.UUID `json:"approved_by"`
+}
+
+func (q *Queries) ApprovePlan(ctx context.Context, arg ApprovePlanParams) (Plan, error) {
+	row := q.db.QueryRow(ctx, approvePlan, arg.ID, arg.ApprovedBy)
+	var i Plan
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Title,
+		&i.Description,
+		&i.SourceType,
+		&i.SourceRefID,
+		&i.Constraints,
+		&i.ExpectedOutput,
+		&i.Steps,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ProjectID,
+		&i.VersionID,
+		&i.TaskBrief,
+		&i.AssignedAgents,
+		&i.RiskPoints,
+		&i.ApprovalStatus,
+		&i.ApprovedBy,
+		&i.ApprovedAt,
+	)
+	return i, err
+}
+
+const getPlanBySourceRef = `-- name: GetPlanBySourceRef :one
+SELECT id, workspace_id, title, description, source_type, source_ref_id, constraints, expected_output, steps, created_by, created_at, updated_at, project_id, version_id, task_brief, assigned_agents, risk_points, approval_status, approved_by, approved_at FROM plan WHERE source_type = $1 AND source_ref_id = $2 ORDER BY created_at DESC LIMIT 1
+`
+
+type GetPlanBySourceRefParams struct {
+	SourceType  pgtype.Text `json:"source_type"`
+	SourceRefID pgtype.UUID `json:"source_ref_id"`
+}
+
+func (q *Queries) GetPlanBySourceRef(ctx context.Context, arg GetPlanBySourceRefParams) (Plan, error) {
+	row := q.db.QueryRow(ctx, getPlanBySourceRef, arg.SourceType, arg.SourceRefID)
+	var i Plan
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Title,
+		&i.Description,
+		&i.SourceType,
+		&i.SourceRefID,
+		&i.Constraints,
+		&i.ExpectedOutput,
+		&i.Steps,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ProjectID,
+		&i.VersionID,
+		&i.TaskBrief,
+		&i.AssignedAgents,
+		&i.RiskPoints,
+		&i.ApprovalStatus,
+		&i.ApprovedBy,
+		&i.ApprovedAt,
+	)
+	return i, err
+}

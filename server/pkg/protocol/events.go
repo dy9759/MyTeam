@@ -91,4 +91,7 @@ const (
 
 	// Thread events
 	EventThreadCreated = "thread:created"
+
+	// Message events
+	EventMessageCreated = "message:created"
 )

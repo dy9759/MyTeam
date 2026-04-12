@@ -1,0 +1,11 @@
+ALTER TABLE plan DROP CONSTRAINT IF EXISTS fk_plan_project;
+DROP TABLE IF EXISTS project_version;
+DROP TABLE IF EXISTS project;
+
+ALTER TABLE agent DROP COLUMN IF EXISTS needs_attention;
+ALTER TABLE agent DROP COLUMN IF EXISTS needs_attention_reason;
+
+ALTER TABLE plan DROP COLUMN IF EXISTS approval_status;
+ALTER TABLE plan DROP COLUMN IF EXISTS approved_by;
+ALTER TABLE plan DROP COLUMN IF EXISTS approved_at;
+ALTER TABLE plan DROP COLUMN IF EXISTS project_id;

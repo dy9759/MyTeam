@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/internal/service"
+	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/protocol"
 )
 
@@ -369,8 +369,8 @@ func (h *Handler) CreateProjectFromChat(w http.ResponseWriter, r *http.Request) 
 
 	// Step 10: Broadcast event
 	h.publish(protocol.EventProjectCreated, workspaceID, "member", userID, map[string]any{
-		"project":  projectResp,
-		"plan_id":  uuidToString(plan.ID),
+		"project":     projectResp,
+		"plan_id":     uuidToString(plan.ID),
 		"workflow_id": uuidToString(wf.ID),
 	})
 
@@ -441,9 +441,9 @@ func buildAssignedAgentsJSON(steps []service.PlanStep) json.RawMessage {
 // buildWorkflowDAG constructs a simple DAG JSON from plan steps.
 func buildWorkflowDAG(steps []service.PlanStep) json.RawMessage {
 	type dagNode struct {
-		Order       int   `json:"order"`
+		Order       int    `json:"order"`
 		Description string `json:"description"`
-		DependsOn   []int `json:"depends_on"`
+		DependsOn   []int  `json:"depends_on"`
 	}
 
 	nodes := make([]dagNode, len(steps))

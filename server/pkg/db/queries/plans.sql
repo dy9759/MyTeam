@@ -12,6 +12,14 @@ SELECT * FROM plan WHERE workspace_id = $1 ORDER BY created_at DESC LIMIT $2 OFF
 -- name: UpdatePlanSteps :exec
 UPDATE plan SET steps = $2, updated_at = NOW() WHERE id = $1;
 
+-- name: ApprovePlan :one
+UPDATE plan SET approval_status = 'approved', approved_by = $2, approved_at = NOW(), updated_at = NOW()
+WHERE id = $1
+RETURNING *;
+
+-- name: GetPlanBySourceRef :one
+SELECT * FROM plan WHERE source_type = $1 AND source_ref_id = $2 ORDER BY created_at DESC LIMIT 1;
+
 -- name: DeletePlan :exec
 DELETE FROM plan WHERE id = $1;
 

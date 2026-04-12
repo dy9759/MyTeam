@@ -37,6 +37,12 @@ WHERE workspace_id = $1
 -- name: GetSystemAgent :one
 SELECT * FROM agent WHERE workspace_id = $1 AND is_system = TRUE LIMIT 1;
 
+-- name: SetAgentNeedsAttention :exec
+UPDATE agent SET needs_attention = $2, needs_attention_reason = $3 WHERE id = $1;
+
+-- name: ListAllAgentsGlobal :many
+SELECT * FROM agent WHERE archived_at IS NULL ORDER BY created_at ASC;
+
 -- name: CreateSystemAgent :one
 INSERT INTO agent (workspace_id, name, description, status, is_system, owner_id, visibility)
 VALUES ($1, 'System Agent', 'Workspace system agent - manages defaults and automation', 'idle', TRUE, $2, 'workspace')

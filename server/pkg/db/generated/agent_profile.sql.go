@@ -808,3 +808,69 @@ func (q *Queries) UpdatePersonalAgentConfig(ctx context.Context, arg UpdatePerso
 	)
 	return i, err
 }
+
+const listAllAgentsGlobal = `-- name: ListAllAgentsGlobal :many
+SELECT id, workspace_id, name, avatar_url, runtime_mode, runtime_config, visibility, status, max_concurrent_tasks, owner_id, created_at, updated_at, description, tools, triggers, runtime_id, instructions, archived_at, archived_by, capabilities, auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags, agent_metadata, trigger_on_channel_mention, is_system, system_config, cloud_llm_config, agent_type, online_status, workload_status, identity_card, accessible_files_scope, allowed_channels_scope, last_active_at, page_scope, needs_attention, needs_attention_reason FROM agent WHERE archived_at IS NULL ORDER BY created_at ASC
+`
+
+func (q *Queries) ListAllAgentsGlobal(ctx context.Context) ([]Agent, error) {
+	rows, err := q.db.Query(ctx, listAllAgentsGlobal)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Agent{}
+	for rows.Next() {
+		var i Agent
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.Name,
+			&i.AvatarUrl,
+			&i.RuntimeMode,
+			&i.RuntimeConfig,
+			&i.Visibility,
+			&i.Status,
+			&i.MaxConcurrentTasks,
+			&i.OwnerID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Description,
+			&i.Tools,
+			&i.Triggers,
+			&i.RuntimeID,
+			&i.Instructions,
+			&i.ArchivedAt,
+			&i.ArchivedBy,
+			&i.Capabilities,
+			&i.AutoReplyEnabled,
+			&i.AutoReplyConfig,
+			&i.DisplayName,
+			&i.Avatar,
+			&i.Bio,
+			&i.Tags,
+			&i.AgentMetadata,
+			&i.TriggerOnChannelMention,
+			&i.IsSystem,
+			&i.SystemConfig,
+			&i.CloudLlmConfig,
+			&i.AgentType,
+			&i.OnlineStatus,
+			&i.WorkloadStatus,
+			&i.IdentityCard,
+			&i.AccessibleFilesScope,
+			&i.AllowedChannelsScope,
+			&i.LastActiveAt,
+			&i.PageScope,
+			&i.NeedsAttention,
+			&i.NeedsAttentionReason,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

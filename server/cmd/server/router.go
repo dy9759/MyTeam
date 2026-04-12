@@ -58,6 +58,11 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 	h.Scheduler = service.NewSchedulerService(queries, hub)
 	h.Scheduler.Bus = bus
 
+	// Identity generator + scheduler
+	identityGen := service.NewIdentityGeneratorService(queries)
+	identitySched := service.NewIdentitySchedulerService(queries, identityGen)
+	identitySched.Start()
+
 	// Start auto-reply poll daemon
 	go h.AutoReplyService.StartPollDaemon(context.Background())
 
@@ -88,7 +93,7 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 	resultsReporter.Start()
 
 	// Mediation service — drives the Session page system agent.
-	mediationSvc := service.NewMediationService(queries, hub, bus)
+	mediationSvc := service.NewMediationService(queries, hub, bus, h.AutoReplyService)
 	mediationSvc.Start()
 
 	r := chi.NewRouter()
@@ -360,6 +365,7 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 				r.Route("/{planID}", func(r chi.Router) {
 					r.Get("/", h.GetPlan)
 					r.Delete("/", h.DeletePlan)
+					r.Post("/approve", h.ApprovePlan)
 				})
 			})
 

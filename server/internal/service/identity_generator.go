@@ -120,6 +120,28 @@ Respond with JSON only:
 	return card, nil
 }
 
+// SaveCard persists a generated identity card to the agent.
+func (s *IdentityGeneratorService) SaveCard(ctx context.Context, agentID string, card map[string]any) error {
+	data, err := json.Marshal(card)
+	if err != nil {
+		return fmt.Errorf("marshal identity card: %w", err)
+	}
+	return s.Queries.UpdateAgentIdentityCard(ctx, db.UpdateAgentIdentityCardParams{
+		ID:           util.ParseUUID(agentID),
+		IdentityCard: data,
+	})
+}
+
+// GenerateAndSave generates an identity card and persists it to the agent.
+func (s *IdentityGeneratorService) GenerateAndSave(ctx context.Context, agentID, workspaceID string) error {
+	card, err := s.GenerateCard(ctx, agentID, workspaceID)
+	if err != nil {
+		return err
+	}
+	slog.Debug("[identity-generator] card generated", "agent_id", agentID)
+	return s.SaveCard(ctx, agentID, card)
+}
+
 // buildBasicIdentityCard constructs a simple identity card without LLM.
 func buildBasicIdentityCard(agent db.Agent, skills, completedTasks []string) map[string]any {
 	card := map[string]any{

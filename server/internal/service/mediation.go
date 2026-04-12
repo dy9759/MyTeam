@@ -11,6 +11,7 @@ import (
 	"github.com/multica-ai/multica/server/internal/realtime"
 	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/multica-ai/multica/server/pkg/protocol"
 )
 
 const (
@@ -20,24 +21,32 @@ const (
 
 // MediationService subscribes to message:created events and runs mediation logic
 // to determine if messages need responses and assign the best agent.
+//
+// It has two triggers:
+//  1. Immediate @mention trigger: if a user message contains @agent, fire off
+//     an auto-reply via AutoReplyService.
+//  2. SLA check: after the SLA timeout, verify that a response was received.
+//     If not, assign a responder and broadcast a system message.
 type MediationService struct {
-	Queries  *db.Queries
-	Hub      *realtime.Hub
-	EventBus *events.Bus
+	Queries   *db.Queries
+	Hub       *realtime.Hub
+	EventBus  *events.Bus
+	AutoReply *AutoReplyService
 }
 
 // NewMediationService creates a new MediationService.
-func NewMediationService(q *db.Queries, hub *realtime.Hub, bus *events.Bus) *MediationService {
+func NewMediationService(q *db.Queries, hub *realtime.Hub, bus *events.Bus, autoReply *AutoReplyService) *MediationService {
 	return &MediationService{
-		Queries:  q,
-		Hub:      hub,
-		EventBus: bus,
+		Queries:   q,
+		Hub:       hub,
+		EventBus:  bus,
+		AutoReply: autoReply,
 	}
 }
 
 // Start subscribes to message:created events and runs mediation logic.
 func (s *MediationService) Start() {
-	s.EventBus.Subscribe("message:created", func(e events.Event) {
+	s.EventBus.Subscribe(protocol.EventMessageCreated, func(e events.Event) {
 		go s.handleMessageCreated(e)
 	})
 	slog.Info("[mediation] service started, listening for message:created events")
@@ -48,6 +57,7 @@ type responseCheck struct {
 	needsResponse bool
 	reason        string
 	mentionedName string // agent name if @mentioned
+	mentions      []string
 }
 
 // handleMessageCreated processes a new message to determine if mediation is needed.
@@ -69,31 +79,46 @@ func (s *MediationService) handleMessageCreated(e events.Event) {
 	}
 
 	content, _ := msgData["content"].(string)
-	channelID, _ := msgData["channel_id"].(*string)
+	channelID, _ := msgData["channel_id"].(string)
 	messageID, _ := msgData["id"].(string)
+	senderID, _ := msgData["sender_id"].(string)
 	workspaceID := e.WorkspaceID
 
-	if channelID == nil || *channelID == "" {
+	if channelID == "" {
 		return // Not a channel message, skip mediation.
 	}
 
 	// Check if the message needs a response.
-	check := s.checkNeedsResponse(content, *channelID, workspaceID)
+	check := s.checkNeedsResponse(content, channelID, workspaceID)
 	if !check.needsResponse {
 		return
 	}
 
 	slog.Info("[mediation] message needs response",
 		"message_id", messageID,
-		"channel_id", *channelID,
+		"channel_id", channelID,
 		"reason", check.reason,
 	)
+
+	// Immediate auto-reply trigger for @mentions.
+	if s.AutoReply != nil && len(check.mentions) > 0 {
+		triggerMsg := db.Message{
+			ID:          util.ParseUUID(messageID),
+			WorkspaceID: util.ParseUUID(workspaceID),
+			SenderID:    util.ParseUUID(senderID),
+			SenderType:  senderType,
+			ChannelID:   util.ParseUUID(channelID),
+			Content:     content,
+			ContentType: "text",
+		}
+		s.AutoReply.CheckAndReply(context.Background(), check.mentions, workspaceID, channelID, triggerMsg)
+	}
 
 	// Schedule a delayed check: after SLA timeout, verify if the message was replied to.
 	// If not, assign a responder and send a system message.
 	go func() {
 		time.Sleep(defaultSLATimeout)
-		s.checkAndAssignResponder(context.Background(), messageID, *channelID, workspaceID, check)
+		s.checkAndAssignResponder(context.Background(), messageID, channelID, workspaceID, check)
 	}()
 }
 
@@ -106,6 +131,7 @@ func (s *MediationService) checkNeedsResponse(content, channelID, workspaceID st
 			needsResponse: true,
 			reason:        "has_mention",
 			mentionedName: mentions[0],
+			mentions:      mentions,
 		}
 	}
 
