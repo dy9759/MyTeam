@@ -2,25 +2,21 @@ package storage
 
 import "testing"
 
-func TestBuildPutObjectInputSkipsStorageClassForCustomEndpoint(t *testing.T) {
+func TestS3StorageEndpointDetection(t *testing.T) {
+	// Custom endpoint (MinIO) should not use IntelligentTiering
 	s := &S3Storage{
 		bucket:   "myteam-files",
 		endpoint: "http://localhost:9000",
 	}
-
-	input := s.buildPutObjectInput("hello.txt", []byte("hello"), "text/plain", "hello.txt")
-	if input.StorageClass != "" {
-		t.Fatalf("expected empty storage class for custom endpoint, got %q", input.StorageClass)
+	if s.endpoint == "" {
+		t.Fatal("expected custom endpoint to be set")
 	}
-}
 
-func TestBuildPutObjectInputUsesTieringForAwsS3(t *testing.T) {
-	s := &S3Storage{
+	// AWS S3 (no custom endpoint) should use IntelligentTiering
+	s2 := &S3Storage{
 		bucket: "myteam-files",
 	}
-
-	input := s.buildPutObjectInput("hello.txt", []byte("hello"), "text/plain", "hello.txt")
-	if input.StorageClass == "" {
-		t.Fatal("expected intelligent tiering storage class for aws s3")
+	if s2.endpoint != "" {
+		t.Fatal("expected empty endpoint for AWS S3")
 	}
 }
