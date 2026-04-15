@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { detectTrigger } from "@myteam/client-core";
+import { detectTrigger, filterCandidates } from "@myteam/client-core";
 import { MentionPicker, type MentionCandidate } from "./mention-picker";
 
 interface Props {
@@ -21,7 +21,12 @@ export function MessageInput({ placeholder, candidates, onSend, sending }: Props
 
   const recomputeTrigger = (text: string, pos: number) => {
     const t = detectTrigger(text, pos);
-    setPickerOpen(t.triggering);
+    // Only "open" the picker when there's at least one match — otherwise the
+    // parent's pickerOpen diverges from the actual picker UI and Enter gets
+    // swallowed without sending.
+    const hasMatches =
+      t.triggering && filterCandidates(candidates, t.query).length > 0;
+    setPickerOpen(hasMatches);
     setPickerQuery(t.query);
     if (t.triggering) setPickerRange({ start: t.start, end: t.end });
   };

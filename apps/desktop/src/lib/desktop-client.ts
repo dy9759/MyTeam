@@ -1,9 +1,11 @@
 import {
   DesktopApiClient,
   createAuthStore,
+  createMessagingStore,
   WORKSPACE_STORAGE_KEY,
   createWorkspaceStore,
   WSClient,
+  type MessagingApiClient,
   type NativeSecrets,
   type SessionStorageLike,
   type WSStatus,
@@ -56,9 +58,7 @@ function ensureWSClient(): WSClient {
     getWorkspaceId: () => useDesktopWorkspaceStore.getState().workspace?.id ?? null,
     onEvent: (msg) => {
       if (msg.type === "message:created") {
-        void import("@/features/messaging").then(({ useDesktopMessagingStore }) => {
-          useDesktopMessagingStore.getState().handleEvent(msg);
-        });
+        useDesktopMessagingStore.getState().handleEvent(msg);
       }
     },
   });
@@ -93,6 +93,36 @@ export const useWSStatusStore = create<{ status: WSStatus }>(() => ({
   status: "disconnected",
 }));
 
+// Messaging store — lives here (not in features/messaging) to break a circular
+// dependency: features/messaging would need desktopApi, desktop-client needs
+// the store for WS onEvent dispatch. Keeping it here resolves both directions.
+const messagingApiAdapter: MessagingApiClient = {
+  listConversations: () => desktopApi.listConversations(),
+  listChannels: () => desktopApi.listChannels(),
+  listMessages: (params) => desktopApi.listMessages(params),
+  sendMessage: (params) => desktopApi.sendMessage(params),
+  createChannel: (params) => desktopApi.createChannel(params),
+};
+
+export const useDesktopMessagingStore = createMessagingStore({
+  apiClient: messagingApiAdapter,
+  onError: (msg) => {
+    // eslint-disable-next-line no-console
+    console.error("[messaging]", msg);
+  },
+});
+
+// Auto-connect WS when a user is authenticated; disconnect on logout.
+// This covers first-login flow (where bootstrapDesktopApp has already finished
+// without a user) and switch-account transitions.
+useDesktopAuthStore.subscribe((state, prevState) => {
+  if (state.user && !prevState.user) {
+    ensureWSClient().connect();
+  } else if (!state.user && prevState.user) {
+    disconnectWS();
+  }
+});
+
 export async function bootstrapDesktopApp() {
   const storedWorkspaceId = await window.myteam.shell.getPreference(WORKSPACE_STORAGE_KEY);
   if (storedWorkspaceId) {
@@ -108,6 +138,8 @@ export async function bootstrapDesktopApp() {
 
   if (useDesktopAuthStore.getState().user) {
     await useDesktopWorkspaceStore.getState().bootstrap(storedWorkspaceId);
+    // WS connects via the auth-store subscription above when user populates.
+    // Trigger here too in case this app starts with a valid session.
     ensureWSClient().connect();
   }
 }
