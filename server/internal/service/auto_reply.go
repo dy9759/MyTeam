@@ -5,40 +5,27 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/realtime"
 	"github.com/multica-ai/multica/server/internal/util"
+	"github.com/multica-ai/multica/server/pkg/agent_runner"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
-	"github.com/multica-ai/multica/server/pkg/llmclient"
 )
-
-// AutoReplyConfig describes the LLM configuration stored in agent.auto_reply_config.
-type AutoReplyConfig struct {
-	Enabled      bool   `json:"enabled"`
-	LLMEndpoint  string `json:"llm_endpoint,omitempty"`
-	LLMApiKey    string `json:"llm_api_key,omitempty"`
-	Model        string `json:"model,omitempty"`
-	SystemPrompt string `json:"system_prompt,omitempty"`
-	Fallback     *struct {
-		Provider string `json:"provider"`
-		Endpoint string `json:"endpoint"`
-		ApiKey   string `json:"api_key"`
-		Model    string `json:"model"`
-	} `json:"fallback,omitempty"`
-}
 
 // AutoReplyService handles @mention-triggered auto-replies from agents.
 type AutoReplyService struct {
 	Queries *db.Queries
 	Hub     *realtime.Hub
+	Runner  agent_runner.AgentRunner
 }
 
 // NewAutoReplyService creates a new AutoReplyService.
-func NewAutoReplyService(q *db.Queries, hub *realtime.Hub) *AutoReplyService {
-	return &AutoReplyService{Queries: q, Hub: hub}
+func NewAutoReplyService(q *db.Queries, hub *realtime.Hub, runner agent_runner.AgentRunner) *AutoReplyService {
+	return &AutoReplyService{Queries: q, Hub: hub, Runner: runner}
 }
 
 // CheckAndReply checks if any mentioned agents have auto-reply enabled and
@@ -53,113 +40,195 @@ func (s *AutoReplyService) CheckAndReply(ctx context.Context, mentions []string,
 	}
 }
 
+var apiKeyRedactRE = regexp.MustCompile(`sk-[A-Za-z0-9\-]{6,}`)
+
+func redactKey(s string) string {
+	return apiKeyRedactRE.ReplaceAllString(s, "sk-***")
+}
+
+// agentTrigger is the shape of each element in the triggers JSON array.
+type agentTrigger struct {
+	Type    string `json:"type"`
+	Enabled bool   `json:"enabled"`
+}
+
+// agentHasTriggerEnabled reports whether a trigger type is enabled in the raw JSON triggers array.
+// Returns true when the triggers list is empty or does not contain the requested type (default-enabled).
+func agentHasTriggerEnabled(raw []byte, triggerType string) bool {
+	if len(raw) == 0 {
+		return true
+	}
+	var triggers []agentTrigger
+	if err := json.Unmarshal(raw, &triggers); err != nil {
+		return false
+	}
+	if len(triggers) == 0 {
+		return true
+	}
+	for _, t := range triggers {
+		if t.Type == triggerType {
+			return t.Enabled
+		}
+	}
+	return true // not configured = default enabled
+}
+
 func (s *AutoReplyService) replyAsMentionedAgent(ctx context.Context, agentName string, workspaceID string, channelID string, trigger db.Message) error {
-	// Look up agent by name in workspace.
 	agent, err := s.Queries.GetAgentByName(ctx, db.GetAgentByNameParams{
 		WorkspaceID: trigger.WorkspaceID,
 		Name:        agentName,
 	})
 	if err != nil {
-		slog.Debug("auto-reply: agent not found by name", "name", agentName, "error", err)
-		return nil // not an error — mention might not refer to an agent
-	}
-
-	if !agent.AutoReplyEnabled.Bool {
-		slog.Debug("auto-reply: agent has auto-reply disabled", "agent", agentName)
+		slog.Debug("auto-reply: agent not found", "name", agentName, "error", err)
 		return nil
 	}
 
-	// Parse auto-reply config.
-	var cfg AutoReplyConfig
-	if len(agent.AutoReplyConfig) > 0 {
-		if err := json.Unmarshal(agent.AutoReplyConfig, &cfg); err != nil {
-			slog.Warn("auto-reply: bad config JSON", "agent", agentName, "error", err)
-			return err
-		}
+	// Respect on_mention trigger.
+	if !agentHasTriggerEnabled(agent.Triggers, "on_mention") {
+		slog.Debug("auto-reply: on_mention disabled", "agent", agentName)
+		return nil
 	}
 
-	// Rate limit: skip if agent already sent >=3 consecutive messages in this channel
-	recentMsgs, _ := s.Queries.ListChannelMessages(ctx, db.ListChannelMessagesParams{
+	// Rate limit: skip if agent already sent >=3 consecutive messages in this channel.
+	recent, _ := s.Queries.ListChannelMessages(ctx, db.ListChannelMessagesParams{
 		ChannelID: util.ParseUUID(channelID),
 		Limit:     5,
 		Offset:    0,
 	})
-	consecutiveCount := 0
-	// Messages are ordered ASC, so iterate from the end (most recent first)
-	for i := len(recentMsgs) - 1; i >= 0; i-- {
-		m := recentMsgs[i]
-		if util.UUIDToString(m.SenderID) == util.UUIDToString(agent.ID) {
-			consecutiveCount++
+	consecutive := 0
+	for i := len(recent) - 1; i >= 0; i-- {
+		if util.UUIDToString(recent[i].SenderID) == util.UUIDToString(agent.ID) {
+			consecutive++
 		} else {
-			break // stop counting at first non-agent message
+			break
 		}
 	}
-	if consecutiveCount >= 3 {
-		slog.Info("auto-reply: rate limited", "agent", agentName, "consecutive", consecutiveCount)
+	if consecutive >= 3 {
+		slog.Info("auto-reply: rate limited", "agent", agentName, "consecutive", consecutive)
 		return nil
 	}
 
-	contentPreview := trigger.Content
-	if len(contentPreview) > 50 {
-		contentPreview = contentPreview[:50]
+	// Load per-agent config from cloud_llm_config.
+	var cfg CloudLLMConfig
+	if len(agent.CloudLlmConfig) > 0 {
+		if err := json.Unmarshal(agent.CloudLlmConfig, &cfg); err != nil {
+			s.postSystemNotification(ctx, agent, util.ParseUUID(channelID), util.ParseUUID(workspaceID),
+				"Agent configuration is invalid: "+redactKey(err.Error()))
+			return nil
+		}
 	}
-	slog.Info("auto-reply triggered",
-		"agent", agentName,
-		"channel", channelID,
-		"trigger_content", contentPreview,
-		"llm_endpoint", cfg.LLMEndpoint,
-		"model", cfg.Model,
-	)
+	if cfg.APIKey == "" {
+		s.postSystemNotification(ctx, agent, util.ParseUUID(channelID), util.ParseUUID(workspaceID),
+			"Agent is not configured: missing API key.")
+		return nil
+	}
 
-	// 1. Get recent channel messages for context
-	messages, _ := s.Queries.ListChannelMessages(ctx, db.ListChannelMessagesParams{
+	// Build prompt with recent context.
+	history, _ := s.Queries.ListChannelMessages(ctx, db.ListChannelMessagesParams{
 		ChannelID: util.ParseUUID(channelID),
 		Limit:     20,
 		Offset:    0,
 	})
+	var sb strings.Builder
+	for _, m := range history {
+		sb.WriteString(fmt.Sprintf("[%s]: %s\n", util.UUIDToString(m.SenderID), m.Content))
+	}
+	prompt := fmt.Sprintf("Conversation history:\n%sLatest message from %s: %s\n\nReply as %s:",
+		sb.String(),
+		util.UUIDToString(trigger.SenderID), trigger.Content,
+		agentName,
+	)
 
-	var history strings.Builder
-	for _, m := range messages {
-		history.WriteString(fmt.Sprintf("[%s]: %s\n", util.UUIDToString(m.SenderID), m.Content))
+	runnerCfg := agent_runner.Config{
+		Kernel:       cfg.Kernel,
+		BaseURL:      cfg.BaseURL,
+		APIKey:       cfg.APIKey,
+		Model:        cfg.Model,
+		SystemPrompt: cfg.SystemPrompt,
+	}
+	if runnerCfg.SystemPrompt == "" {
+		runnerCfg.SystemPrompt = fmt.Sprintf("You are %s, an AI assistant on MyTeam. Reply concisely and helpfully.", agentName)
 	}
 
-	// 2. Call LLM via unified client.
-	llmCfg := llmclient.FromAgentConfig(cfg.LLMEndpoint, cfg.LLMApiKey, cfg.Model)
+	slog.Info("auto-reply dispatching",
+		"agent", agentName,
+		"channel", channelID,
+		"kernel", cfg.Kernel,
+		"model", cfg.Model,
+	)
 
-	systemPrompt := fmt.Sprintf("You are %s, an AI agent. Respond naturally based on conversation context. Keep responses concise.", agentName)
-	if cfg.SystemPrompt != "" {
-		systemPrompt = cfg.SystemPrompt
+	reply, err := s.Runner.Run(ctx, prompt, runnerCfg)
+	if err != nil {
+		msg := fmt.Sprintf("Agent reply failed: %s", redactKey(err.Error()))
+		slog.Warn("auto-reply runner failed", "agent", agentName, "error", err)
+		s.postSystemNotification(ctx, agent, util.ParseUUID(channelID), util.ParseUUID(workspaceID), msg)
+		return nil
+	}
+	if reply == "" {
+		s.postSystemNotification(ctx, agent, util.ParseUUID(channelID), util.ParseUUID(workspaceID),
+			"Agent returned empty reply.")
+		return nil
 	}
 
-	replyText := ""
-	if llmCfg.APIKey != "" {
-		userMsg := fmt.Sprintf("Conversation:\n%s\nLatest message from %s: %s\n\nRespond:", history.String(), util.UUIDToString(trigger.SenderID), trigger.Content)
-		text, err := llmclient.New(llmCfg).Chat(ctx, systemPrompt, []llmclient.Message{
-			{Role: "user", Content: userMsg},
-		})
-		if err != nil {
-			slog.Warn("auto-reply: LLM call failed", "agent", agentName, "error", err)
-		} else {
-			replyText = text
-		}
-	}
-
-	if replyText == "" {
-		replyText = fmt.Sprintf("Hi! I'm %s. I noticed you mentioned me. How can I help?", agentName)
-	}
-
-	// 3. Send reply as agent
-	_, err = s.Queries.CreateMessage(ctx, db.CreateMessageParams{
+	// Insert agent's reply message.
+	replyMsg, err := s.Queries.CreateMessage(ctx, db.CreateMessageParams{
 		WorkspaceID: util.ParseUUID(workspaceID),
 		SenderID:    agent.ID,
 		SenderType:  "agent",
 		ChannelID:   util.ParseUUID(channelID),
-		Content:     replyText,
+		Content:     reply,
 		ContentType: "text",
+		Type:        "agent_reply",
 	})
+	if err != nil {
+		slog.Warn("auto-reply: failed to insert reply message", "error", err)
+		return err
+	}
+
+	if s.Hub != nil {
+		data, _ := json.Marshal(map[string]any{"type": "message:created", "payload": messageToMap(replyMsg)})
+		s.Hub.BroadcastToWorkspace(workspaceID, data)
+	}
 
 	slog.Info("auto-reply sent", "agent", agentName, "channel", channelID)
-	return err
+	return nil
+}
+
+// postSystemNotification sends a visible message from the agent to explain failure.
+func (s *AutoReplyService) postSystemNotification(ctx context.Context, agent db.Agent, channelID, workspaceID pgtype.UUID, message string) {
+	meta, _ := json.Marshal(map[string]any{"system_notification": true})
+	msg, err := s.Queries.CreateMessage(ctx, db.CreateMessageParams{
+		WorkspaceID: workspaceID,
+		SenderID:    agent.ID,
+		SenderType:  "agent",
+		ChannelID:   channelID,
+		Content:     message,
+		ContentType: "text",
+		Type:        "system_notification",
+		Metadata:    meta,
+	})
+	if err != nil {
+		slog.Warn("post system_notification failed", "error", err)
+		return
+	}
+	if s.Hub != nil {
+		data, _ := json.Marshal(map[string]any{"type": "message:created", "payload": messageToMap(msg)})
+		s.Hub.BroadcastToWorkspace(util.UUIDToString(workspaceID), data)
+	}
+}
+
+func messageToMap(m db.Message) map[string]any {
+	return map[string]any{
+		"id":           util.UUIDToString(m.ID),
+		"workspace_id": util.UUIDToString(m.WorkspaceID),
+		"channel_id":   util.UUIDToString(m.ChannelID),
+		"sender_id":    util.UUIDToString(m.SenderID),
+		"sender_type":  m.SenderType,
+		"content":      m.Content,
+		"content_type": m.ContentType,
+		"metadata":     json.RawMessage(m.Metadata),
+		"created_at":   m.CreatedAt.Time,
+	}
 }
 
 // StartPollDaemon starts a background loop that checks for unread messages every 5 seconds
@@ -182,8 +251,7 @@ func (s *AutoReplyService) StartPollDaemon(ctx context.Context) {
 
 func (s *AutoReplyService) pollAndReply(ctx context.Context) {
 	// GetAutoReplyAgents requires a workspace_id, so we pass a zero UUID
-	// to get agents across all workspaces. If the query filters by workspace,
-	// we iterate known workspaces. For now, use zero UUID as a best-effort scan.
+	// to get agents across all workspaces.
 	agents, err := s.Queries.GetAutoReplyAgents(ctx, pgtype.UUID{})
 	if err != nil {
 		slog.Debug("[auto-reply] poll: failed to get auto-reply agents", "error", err)
@@ -201,4 +269,3 @@ func (s *AutoReplyService) pollAndReply(ctx context.Context) {
 		}
 	}
 }
-
