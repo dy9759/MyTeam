@@ -12,6 +12,7 @@ import {
 import mylogo from "@web/public/desktop/mylogo.png";
 import { useDesktopWorkspaceStore } from "@/lib/desktop-client";
 import { WindowControls } from "./window-controls";
+import { ConnectionStatusBanner } from "./connection-status-banner";
 
 const navItems = [
   { to: "/session", label: "Session", icon: MessageSquare },
@@ -110,6 +111,7 @@ export function DesktopShell() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
+        <ConnectionStatusBanner />
         <header
           className="desktop-drag-region flex h-16 items-center justify-between border-b border-border/70 bg-background/85 px-6 backdrop-blur-xl"
         >

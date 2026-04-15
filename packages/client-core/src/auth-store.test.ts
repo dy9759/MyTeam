@@ -59,6 +59,7 @@ describe("createAuthStore", () => {
 
     expect(api.token).toBe("myt_test_token");
     expect(store.getState().user?.email).toBe("desk@example.com");
+    expect(store.getState().token).toBe("myt_test_token");
     expect(store.getState().isLoading).toBe(false);
   });
 
@@ -78,6 +79,7 @@ describe("createAuthStore", () => {
 
     expect(api.token).toBe("myt_new_token");
     expect(store.getState().user?.email).toBe("new@example.com");
+    expect(store.getState().token).toBe("myt_new_token");
     expect(await secrets.getToken()).toBe("myt_new_token");
 
     await store.getState().logout();
@@ -85,6 +87,7 @@ describe("createAuthStore", () => {
     expect(api.token).toBeNull();
     expect(api.workspaceId).toBeNull();
     expect(store.getState().user).toBeNull();
+    expect(store.getState().token).toBeNull();
     expect(await secrets.getToken()).toBeNull();
   });
 });

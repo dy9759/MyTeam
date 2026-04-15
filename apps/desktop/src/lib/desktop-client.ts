@@ -1,11 +1,16 @@
 import {
   DesktopApiClient,
   createAuthStore,
+  createMessagingStore,
   WORKSPACE_STORAGE_KEY,
   createWorkspaceStore,
+  WSClient,
+  type MessagingApiClient,
   type NativeSecrets,
   type SessionStorageLike,
+  type WSStatus,
 } from "@myteam/client-core";
+import { create } from "zustand";
 import { resolveDesktopConfig } from "./default-config";
 
 const apiBaseUrl = resolveDesktopConfig(
@@ -35,12 +40,40 @@ const secrets: NativeSecrets = {
   deleteToken: () => window.myteam.auth.clearSession(),
 };
 
+// WS client singleton — declared here so disconnectWS is hoisted before desktopApi
+let wsClient: WSClient | null = null;
+
+export function disconnectWS(): void {
+  wsClient?.disconnect();
+  wsClient = null;
+}
+
+function ensureWSClient(): WSClient {
+  if (wsClient) return wsClient;
+  const wsUrl =
+    (import.meta.env.VITE_WS_URL as string | undefined) ??
+    apiBaseUrl.replace(/^http/, "ws") + "/ws";
+  wsClient = new WSClient(wsUrl, {
+    getToken: () => useDesktopAuthStore.getState().token,
+    getWorkspaceId: () => useDesktopWorkspaceStore.getState().workspace?.id ?? null,
+    onEvent: (msg) => {
+      if (msg.type === "message:created") {
+        useDesktopMessagingStore.getState().handleEvent(msg);
+      }
+    },
+  });
+  wsClient.subscribeStatus((status) => useWSStatusStore.setState({ status }));
+  return wsClient;
+}
+
 export const desktopApi = new DesktopApiClient(apiBaseUrl, {
   async onUnauthorized() {
+    disconnectWS();
     await window.myteam.auth.clearSession();
     useDesktopWorkspaceStore.getState().clearWorkspace();
     useDesktopAuthStore.setState({
       user: null,
+      token: null,
       isLoading: false,
     });
   },
@@ -54,6 +87,40 @@ export const useDesktopAuthStore = createAuthStore({
 export const useDesktopWorkspaceStore = createWorkspaceStore({
   api: desktopApi,
   storage: preferenceStorage,
+});
+
+export const useWSStatusStore = create<{ status: WSStatus }>(() => ({
+  status: "disconnected",
+}));
+
+// Messaging store — lives here (not in features/messaging) to break a circular
+// dependency: features/messaging would need desktopApi, desktop-client needs
+// the store for WS onEvent dispatch. Keeping it here resolves both directions.
+const messagingApiAdapter: MessagingApiClient = {
+  listConversations: () => desktopApi.listConversations(),
+  listChannels: () => desktopApi.listChannels(),
+  listMessages: (params) => desktopApi.listMessages(params),
+  sendMessage: (params) => desktopApi.sendMessage(params),
+  createChannel: (params) => desktopApi.createChannel(params),
+};
+
+export const useDesktopMessagingStore = createMessagingStore({
+  apiClient: messagingApiAdapter,
+  onError: (msg) => {
+    // eslint-disable-next-line no-console
+    console.error("[messaging]", msg);
+  },
+});
+
+// Auto-connect WS when a user is authenticated; disconnect on logout.
+// This covers first-login flow (where bootstrapDesktopApp has already finished
+// without a user) and switch-account transitions.
+useDesktopAuthStore.subscribe((state, prevState) => {
+  if (state.user && !prevState.user) {
+    ensureWSClient().connect();
+  } else if (!state.user && prevState.user) {
+    disconnectWS();
+  }
 });
 
 export async function bootstrapDesktopApp() {
@@ -71,5 +138,8 @@ export async function bootstrapDesktopApp() {
 
   if (useDesktopAuthStore.getState().user) {
     await useDesktopWorkspaceStore.getState().bootstrap(storedWorkspaceId);
+    // WS connects via the auth-store subscription above when user populates.
+    // Trigger here too in case this app starts with a valid session.
+    ensureWSClient().connect();
   }
 }

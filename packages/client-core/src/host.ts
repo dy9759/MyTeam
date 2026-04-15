@@ -8,6 +8,7 @@ import type {
   WorkspaceCollaborator,
   WorkspaceSnapshot,
   AgentRuntime,
+  Message,
 } from "../../../apps/web/shared/types";
 
 export type SessionUser = User;
@@ -19,6 +20,7 @@ export type SessionBrowserTab = BrowserTab;
 export type SessionBrowserContext = BrowserContext;
 export type SessionCollaborator = WorkspaceCollaborator;
 export type SessionRuntime = AgentRuntime;
+export type { Message };
 
 export interface SessionStorageLike {
   getItem(key: string): string | null;

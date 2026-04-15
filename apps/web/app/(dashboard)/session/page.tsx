@@ -277,8 +277,8 @@ export default function SessionPage() {
   const conversations = useMessagingStore((s) => s.conversations);
   const dmMessages = useMessagingStore((s) => s.currentMessages);
   const dmLoading = useMessagingStore((s) => s.loading);
-  const fetchConversations = useMessagingStore((s) => s.fetch);
-  const fetchDmMessages = useMessagingStore((s) => s.fetchMessages);
+  const fetchConversations = useMessagingStore((s) => s.loadConversations);
+  const fetchDmMessages = useMessagingStore((s) => s.loadMessages);
   const sendDmMessage = useMessagingStore((s) => s.sendMessage);
 
   const channels = useChannelStore((s) => s.channels);

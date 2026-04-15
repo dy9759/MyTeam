@@ -232,7 +232,13 @@ export function useRealtimeSync(ws: WSClient | null) {
   useEffect(() => {
     if (!ws) return;
 
-    const unsub = ws.onReconnect(async () => {
+    let prevStatus = ws.status;
+    const unsub = ws.subscribeStatus(async (status) => {
+      if (status !== "connected" || prevStatus === "connected") {
+        prevStatus = status;
+        return;
+      }
+      prevStatus = status;
       logger.info("reconnected, refetching all data");
       try {
         await Promise.all([

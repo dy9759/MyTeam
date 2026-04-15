@@ -5,6 +5,7 @@ import type {
   Conversation,
   FileIndex,
   MemberWithUser,
+  Message,
   Project,
   User,
   Workspace,
@@ -190,7 +191,7 @@ export class DesktopApiClient {
     session_id?: string;
     limit?: number;
     offset?: number;
-  }): Promise<{ messages: unknown[] }> {
+  }): Promise<{ messages: Message[] }> {
     const search = new URLSearchParams();
     for (const [key, value] of Object.entries(params)) {
       if (value != null) {
@@ -198,6 +199,33 @@ export class DesktopApiClient {
       }
     }
     return this.request(`/api/messages?${search.toString()}`);
+  }
+
+  async sendMessage(params: {
+    channel_id?: string;
+    recipient_id?: string;
+    recipient_type?: "member" | "agent";
+    session_id?: string;
+    content: string;
+    content_type?: "text" | "json" | "file";
+    file_id?: string;
+    file_name?: string;
+  }): Promise<Message> {
+    return this.request<Message>("/api/messages", {
+      method: "POST",
+      body: JSON.stringify(params),
+    });
+  }
+
+  async createChannel(params: {
+    name: string;
+    description?: string;
+    visibility?: "public" | "private" | "invite_code";
+  }): Promise<Channel> {
+    return this.request<Channel>("/api/channels", {
+      method: "POST",
+      body: JSON.stringify(params),
+    });
   }
 
   async listAuditTrail(limit = 50): Promise<WorkspaceAuditEntry[]> {

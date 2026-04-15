@@ -43,8 +43,11 @@ export function WSProvider({ children }: { children: ReactNode }) {
     const token = localStorage.getItem("multica_token");
     if (!token) return;
 
-    const ws = new WSClient(WS_URL, { logger: createLogger("ws") });
-    ws.setAuth(token, workspace.id);
+    const ws = new WSClient(WS_URL, {
+      getToken: () => localStorage.getItem("multica_token"),
+      getWorkspaceId: () => useWorkspaceStore.getState().workspace?.id ?? null,
+      logger: createLogger("ws"),
+    });
     wsRef.current = ws;
     setWsClient(ws);
     ws.connect();
@@ -72,7 +75,13 @@ export function WSProvider({ children }: { children: ReactNode }) {
     (callback: () => void) => {
       const ws = wsRef.current;
       if (!ws) return () => {};
-      return ws.onReconnect(callback);
+      let prevStatus = ws.status;
+      return ws.subscribeStatus((status) => {
+        if (status === "connected" && prevStatus !== "connected") {
+          callback();
+        }
+        prevStatus = status;
+      });
     },
     [],
   );
