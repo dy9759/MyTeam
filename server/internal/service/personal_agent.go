@@ -13,16 +13,37 @@ import (
 )
 
 // CloudLLMConfig is the JSON shape stored in agent.cloud_llm_config.
+// This is the server env snapshot at agent creation time.
 type CloudLLMConfig struct {
-	Endpoint string `json:"endpoint,omitempty"`
-	APIKey   string `json:"api_key,omitempty"`
-	Model    string `json:"model,omitempty"`
+	Kernel       string `json:"kernel,omitempty"`        // "openai_compat" (default) or "anthropic"
+	BaseURL      string `json:"base_url,omitempty"`
+	APIKey       string `json:"api_key,omitempty"`
+	Model        string `json:"model,omitempty"`
+	SystemPrompt string `json:"system_prompt,omitempty"`
 }
 
-// EnsurePersonalAgent creates a cloud personal agent for an owner if one doesn't exist.
-// It also ensures a cloud runtime exists for the workspace.
+func envOr(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
+}
+
+// LoadCloudLLMConfigFromEnv reads the AGENT_* env vars and returns a CloudLLMConfig snapshot.
+func LoadCloudLLMConfigFromEnv() CloudLLMConfig {
+	return CloudLLMConfig{
+		Kernel:       envOr("AGENT_KERNEL", "openai_compat"),
+		BaseURL:      os.Getenv("AGENT_LLM_BASE_URL"),
+		APIKey:       os.Getenv("AGENT_LLM_API_KEY"),
+		Model:        os.Getenv("AGENT_LLM_MODEL"),
+		SystemPrompt: os.Getenv("AGENT_SYSTEM_PROMPT"),
+	}
+}
+
+// EnsurePersonalAgent creates a personal agent for the owner if one doesn't exist.
+// It snapshots AGENT_* server env vars into agent.cloud_llm_config so the auto-reply
+// runner can read per-agent config from the DB.
 func EnsurePersonalAgent(ctx context.Context, queries *db.Queries, workspaceID, ownerID pgtype.UUID, userName string) (db.Agent, error) {
-	// Check if personal agent already exists.
 	existing, err := queries.GetPersonalAgent(ctx, db.GetPersonalAgentParams{
 		WorkspaceID: workspaceID,
 		OwnerID:     ownerID,
@@ -31,24 +52,19 @@ func EnsurePersonalAgent(ctx context.Context, queries *db.Queries, workspaceID, 
 		return existing, nil
 	}
 
-	// Ensure cloud runtime exists for the workspace.
 	runtime, err := queries.EnsureCloudRuntime(ctx, workspaceID)
 	if err != nil {
 		return db.Agent{}, fmt.Errorf("ensure cloud runtime: %w", err)
 	}
 
-	// Build cloud LLM config from environment.
-	apiKey := os.Getenv("DASHSCOPE_API_KEY")
-	if apiKey == "" {
-		apiKey = "sk-b7085211c57b474e838936c8e6381b2b"
+	cfg := LoadCloudLLMConfigFromEnv()
+	if cfg.APIKey == "" {
+		slog.Warn("personal agent: AGENT_LLM_API_KEY not set; agent will be unable to reply until configured",
+			"workspace_id", util.UUIDToString(workspaceID),
+			"owner_id", util.UUIDToString(ownerID),
+		)
 	}
-
-	llmConfig := CloudLLMConfig{
-		Endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
-		APIKey:   apiKey,
-		Model:    "qwen-plus",
-	}
-	configJSON, _ := json.Marshal(llmConfig)
+	configJSON, _ := json.Marshal(cfg)
 
 	triggers, _ := json.Marshal([]map[string]any{
 		{"type": "on_assign", "enabled": true},
@@ -60,7 +76,7 @@ func EnsurePersonalAgent(ctx context.Context, queries *db.Queries, workspaceID, 
 	agent, err := queries.CreatePersonalAgent(ctx, db.CreatePersonalAgentParams{
 		WorkspaceID:    workspaceID,
 		Name:           agentName,
-		Description:    "Personal AI assistant powered by cloud LLM",
+		Description:    "Personal AI assistant powered by Claude Agent SDK",
 		RuntimeID:      runtime.ID,
 		OwnerID:        ownerID,
 		CloudLlmConfig: configJSON,
@@ -74,6 +90,8 @@ func EnsurePersonalAgent(ctx context.Context, queries *db.Queries, workspaceID, 
 		"agent_id", util.UUIDToString(agent.ID),
 		"owner_id", util.UUIDToString(ownerID),
 		"workspace_id", util.UUIDToString(workspaceID),
+		"kernel", cfg.Kernel,
+		"model", cfg.Model,
 	)
 
 	return agent, nil
