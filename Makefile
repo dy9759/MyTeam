@@ -1,4 +1,4 @@
-.PHONY: dev daemon cli multica build test migrate-up migrate-down sqlc seed clean setup start stop check worktree-env setup-main start-main stop-main check-main setup-worktree start-worktree stop-worktree check-worktree db-up db-down
+.PHONY: dev daemon cli multica myteam daemon-start daemon-stop daemon-status daemon-logs build test migrate-up migrate-down sqlc seed clean setup start stop check worktree-env setup-main start-main stop-main check-main setup-worktree start-worktree stop-worktree check-worktree db-up db-down
 
 MAIN_ENV_FILE ?= .env
 WORKTREE_ENV_FILE ?= .env.worktree
@@ -127,6 +127,25 @@ cli:
 
 multica:
 	cd server && go run ./cmd/multica $(MULTICA_ARGS)
+
+# ---------- myteam aliases (friendlier front for the multica CLI) ----------
+
+# Generic pass-through: `make myteam ARGS="daemon status"` equals `make multica ARGS="daemon status"`
+myteam:
+	@$(MAKE) multica MULTICA_ARGS="$(ARGS)"
+
+# Common daemon shortcuts
+daemon-start:
+	@$(MAKE) multica MULTICA_ARGS="daemon start $(ARGS)"
+
+daemon-stop:
+	@$(MAKE) multica MULTICA_ARGS="daemon stop $(ARGS)"
+
+daemon-status:
+	@$(MAKE) multica MULTICA_ARGS="daemon status $(ARGS)"
+
+daemon-logs:
+	@$(MAKE) multica MULTICA_ARGS="daemon logs $(ARGS)"
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
