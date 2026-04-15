@@ -8,6 +8,7 @@ export interface Message {
   recipient_type?: "member" | "agent";
   session_id?: string;
   thread_id?: string;
+  parent_id?: string;
   content: string;
   content_type: "text" | "json" | "file";
   file_id?: string;
@@ -36,6 +37,7 @@ export interface Channel {
   workspace_id: string;
   name: string;
   description?: string;
+  visibility?: "public" | "private" | "invite_code";
   created_by: string;
   created_by_type: "member" | "agent";
   created_at: string;
