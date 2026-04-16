@@ -1,4 +1,4 @@
-.PHONY: dev daemon cli multica myteam daemon-start daemon-stop daemon-status daemon-logs build test migrate-up migrate-down sqlc seed clean setup start stop check worktree-env setup-main start-main stop-main check-main setup-worktree start-worktree stop-worktree check-worktree db-up db-down
+.PHONY: dev daemon cli multica myteam daemon-start daemon-stop daemon-status daemon-logs build test migrate-up migrate-down sqlc seed clean setup start stop check worktree-env setup-main start-main stop-main check-main setup-worktree start-worktree stop-worktree check-worktree db-up db-down setup-agent-runner
 
 MAIN_ENV_FILE ?= .env
 WORKTREE_ENV_FILE ?= .env.worktree
@@ -47,8 +47,16 @@ setup:
 	@bash scripts/ensure-postgres.sh "$(ENV_FILE)"
 	@echo "==> Running migrations..."
 	cd server && go run ./cmd/migrate up
+	@$(MAKE) setup-agent-runner || echo "(personal agent runner not installed; run 'make setup-agent-runner' manually when ready)"
 	@echo ""
 	@echo "✓ Setup complete! Run 'make start' to launch the app."
+
+# Install Python deps for the personal agent runner (claude-agent-sdk).
+setup-agent-runner:
+	@command -v python3 >/dev/null 2>&1 || { echo "python3 is required; install Python 3.10+"; exit 1; }
+	@python3 -m pip install --upgrade pip >/dev/null
+	@python3 -m pip install -r server/pkg/agent_runner/requirements.txt
+	@echo "✓ agent runner Python deps installed"
 
 # Start all services (backend + frontend)
 start:
