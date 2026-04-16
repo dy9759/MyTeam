@@ -84,6 +84,19 @@ The daemon auto-detects available agent CLIs (`claude`, `codex`) on your PATH. W
 
 See the [CLI and Daemon Guide](CLI_AND_DAEMON.md) for the full command reference, daemon configuration, and advanced usage.
 
+### Personal agent runner
+
+Each user automatically gets a personal agent (`<User>'s Assistant`) that replies via the Claude Agent SDK (Python). To enable replies:
+
+1. Install Python 3.10+ and the SDK:
+   ```bash
+   make setup-agent-runner
+   ```
+2. Set `AGENT_LLM_API_KEY`, `AGENT_LLM_BASE_URL`, and `AGENT_LLM_MODEL` in `.env` (see `.env.example`). Bailian (OpenAI-compatible) is the default; Anthropic API is supported by setting `AGENT_KERNEL=anthropic`.
+3. Restart the backend.
+
+If the API key is missing, the agent is created but replies fail with a `system_notification` message in the conversation rather than silently dropping.
+
 ## Quickstart
 
 Once you have the CLI installed (or signed up for [Multica Cloud](https://multica.ai)), follow these steps to assign your first task to an agent:

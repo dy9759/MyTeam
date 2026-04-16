@@ -201,6 +201,14 @@ export class DesktopApiClient {
     return this.request(`/api/messages?${search.toString()}`);
   }
 
+  async getOrCreateSystemAgent(): Promise<{
+    id: string;
+    name: string;
+    agent_type?: string;
+  }> {
+    return this.request("/api/system-agent");
+  }
+
   async sendMessage(params: {
     channel_id?: string;
     recipient_id?: string;

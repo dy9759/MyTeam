@@ -138,6 +138,12 @@ export async function bootstrapDesktopApp() {
 
   if (useDesktopAuthStore.getState().user) {
     await useDesktopWorkspaceStore.getState().bootstrap(storedWorkspaceId);
+    // Fire-and-forget: ensure the personal agent is provisioned on the server.
+    // Failure is non-fatal; Session UI will still load without an Assistant DM.
+    void desktopApi.getOrCreateSystemAgent().catch((err) => {
+      // eslint-disable-next-line no-console
+      console.warn("[bootstrap] ensure system agent failed:", err);
+    });
     // WS connects via the auth-store subscription above when user populates.
     // Trigger here too in case this app starts with a valid session.
     ensureWSClient().connect();

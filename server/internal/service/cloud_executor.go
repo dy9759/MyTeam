@@ -203,8 +203,8 @@ func (s *CloudExecutorService) buildLLMConfig(agentRow db.Agent) llmclient.Confi
 
 	cfg := llmclient.DashScopeFromEnv()
 
-	if cloudCfg.Endpoint != "" {
-		cfg.Endpoint = cloudCfg.Endpoint
+	if cloudCfg.BaseURL != "" {
+		cfg.Endpoint = cloudCfg.BaseURL
 	}
 	if cloudCfg.APIKey != "" {
 		cfg.APIKey = cloudCfg.APIKey
