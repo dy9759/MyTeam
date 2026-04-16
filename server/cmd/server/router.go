@@ -19,6 +19,7 @@ import (
 	"github.com/multica-ai/multica/server/internal/realtime"
 	"github.com/multica-ai/multica/server/internal/service"
 	"github.com/multica-ai/multica/server/internal/storage"
+	"github.com/multica-ai/multica/server/pkg/agent_runner"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
@@ -52,7 +53,7 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 	s3 := storage.NewS3StorageFromEnv()
 	cfSigner := auth.NewCloudFrontSignerFromEnv()
 	h := handler.New(queries, pool, hub, bus, emailSvc, s3, cfSigner)
-	h.AutoReplyService = service.NewAutoReplyService(queries, hub, nil) // runner wired in Task 5
+	h.AutoReplyService = service.NewAutoReplyService(queries, hub, agent_runner.NewRunner())
 	h.PlanGenerator = service.NewPlanGeneratorService(queries)
 	h.IdentityGenerator = service.NewIdentityGeneratorService(queries)
 	h.Scheduler = service.NewSchedulerService(queries, hub)
