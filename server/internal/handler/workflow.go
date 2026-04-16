@@ -327,22 +327,31 @@ func (h *Handler) StartWorkflow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// If the workflow has a plan, validate the plan is approved.
+	// Create project_run if this workflow has a plan linked to a project
+	var runID pgtype.UUID
 	if wf.PlanID.Valid {
 		plan, planErr := h.Queries.GetPlan(r.Context(), wf.PlanID)
-		if planErr == nil {
-			// TODO: Check plan.ApprovalStatus when column exists in sqlc types.
-			// For now, log the plan association.
-			_ = plan
+		if planErr == nil && plan.ProjectID.Valid {
+			run, runErr := h.Queries.CreateProjectRun(r.Context(), db.CreateProjectRunParams{
+				PlanID:    wf.PlanID,
+				ProjectID: plan.ProjectID,
+				Status:    "pending",
+			})
+			if runErr != nil {
+				slog.Error("failed to create project run", "error", runErr)
+			} else {
+				runID = run.ID
+				_ = h.Queries.UpdateProjectStatus(r.Context(), db.UpdateProjectStatusParams{
+					ID:     plan.ProjectID,
+					Status: "running",
+				})
+			}
 		}
 	}
 
-	// TODO: Create a project_run record when the table and queries exist.
-	// run, err := h.Queries.CreateProjectRun(r.Context(), ...)
-	runID := "" // Placeholder until project_run is available.
-
 	// Schedule the workflow via the scheduler service.
-	if err := h.Scheduler.ScheduleWorkflow(r.Context(), id, runID); err != nil {
+	runIDStr := uuidToString(runID)
+	if err := h.Scheduler.ScheduleWorkflow(r.Context(), id, runIDStr); err != nil {
 		slog.Error("failed to schedule workflow", "workflow_id", id, "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to start workflow: "+err.Error())
 		return
@@ -353,10 +362,7 @@ func (h *Handler) StartWorkflow(w http.ResponseWriter, r *http.Request) {
 		"workflow_id": id,
 	})
 
-	// TODO: Update project status to "running" and broadcast project:status_changed
-	// when project association is available on the workflow.
-
-	writeJSON(w, http.StatusOK, map[string]string{"status": "running", "run_id": runID})
+	writeJSON(w, http.StatusOK, map[string]string{"status": "running", "run_id": runIDStr})
 }
 
 // RetryWorkflowStep retries a failed workflow step.

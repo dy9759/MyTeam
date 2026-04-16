@@ -43,6 +43,7 @@ import type {
   ProjectRun,
   ProjectBranch,
   ProjectResult,
+  ProjectContext,
   CreateProjectFromChatRequest,
   FileIndex,
   SearchResponse,
@@ -923,5 +924,21 @@ export class ApiClient {
       method: "PATCH",
       body: JSON.stringify({ cloud_llm_config: config }),
     });
+  }
+
+  async importProjectContext(projectId: string, data: {
+    source_type: string;
+    source_id: string;
+    date_from?: string;
+    date_to?: string;
+  }): Promise<ProjectContext> {
+    return this.fetch(`/api/projects/${projectId}/import-context`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async listProjectContexts(projectId: string): Promise<ProjectContext[]> {
+    return this.fetch(`/api/projects/${projectId}/contexts`);
   }
 }

@@ -118,5 +118,25 @@ export interface CreateProjectFromChatRequest {
   cron_expr?: string;
 }
 
+export interface ProjectContext {
+  id: string;
+  project_id: string;
+  source_type: 'channel' | 'dm' | 'thread';
+  source_name?: string;
+  message_count: number;
+  imported_at: string;
+}
+
+export interface TaskBrief {
+  goal?: string;
+  background?: string;
+  referenced_files?: { file_id: string; file_name: string; description?: string }[];
+  constraints?: string[];
+  participant_scope?: string;
+  deliverables?: { name: string; description: string; type: string }[];
+  acceptance_criteria?: string[];
+  timeline?: string;
+}
+
 import type { Plan } from './workflow';
 export type { Plan };

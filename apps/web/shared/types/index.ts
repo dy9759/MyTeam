@@ -68,6 +68,8 @@ export type {
   ProjectRun,
   RunStatus,
   ProjectResult,
+  ProjectContext,
+  TaskBrief,
   CreateProjectFromChatRequest,
 } from "./project";
 export type { FileIndex, FileSnapshot, WorkspaceMetrics } from "./file";

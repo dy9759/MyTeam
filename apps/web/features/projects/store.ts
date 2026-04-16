@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import type { Project, ProjectVersion, ProjectRun, ProjectBranch, ProjectResult, CreateProjectFromChatRequest } from "@/shared/types";
+import type { Project, ProjectVersion, ProjectRun, ProjectBranch, ProjectResult, ProjectContext, CreateProjectFromChatRequest } from "@/shared/types";
 import { toast } from "sonner";
 import { api } from "@/shared/api";
 import { createLogger } from "@/shared/logger";
@@ -15,6 +15,7 @@ interface ProjectState {
   runs: ProjectRun[];
   branches: ProjectBranch[];
   currentResult: ProjectResult | null;
+  contexts: ProjectContext[];
   loading: boolean;
 }
 
@@ -32,6 +33,8 @@ interface ProjectActions {
   rejectPlan: (projectId: string, reason: string) => Promise<void>;
   fetchBranches: (projectId: string) => Promise<void>;
   fetchResult: (projectId: string, runId: string) => Promise<void>;
+  fetchContexts: (projectId: string) => Promise<void>;
+  importContext: (projectId: string, data: { source_type: string; source_id: string; date_from?: string; date_to?: string }) => Promise<void>;
 }
 
 export const useProjectStore = create<ProjectState & ProjectActions>((set, get) => ({
@@ -41,6 +44,7 @@ export const useProjectStore = create<ProjectState & ProjectActions>((set, get) 
   runs: [],
   branches: [],
   currentResult: null,
+  contexts: [],
   loading: true,
 
   fetch: async () => {
@@ -174,5 +178,19 @@ export const useProjectStore = create<ProjectState & ProjectActions>((set, get) 
     } catch {
       set({ currentResult: null });
     }
+  },
+
+  fetchContexts: async (projectId: string) => {
+    try {
+      const contexts = await api.listProjectContexts(projectId);
+      set({ contexts });
+    } catch (err) {
+      logger.error("fetch contexts failed", err);
+    }
+  },
+
+  importContext: async (projectId: string, data) => {
+    const context = await api.importProjectContext(projectId, data);
+    set((s) => ({ contexts: [context, ...s.contexts] }));
   },
 }));
