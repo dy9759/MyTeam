@@ -670,6 +670,23 @@ type WorkflowStep struct {
 	OutputRefs            []byte             `json:"output_refs"`
 	ActualAgentID         pgtype.UUID        `json:"actual_agent_id"`
 	CurrentRetry          int32              `json:"current_retry"`
+	// Fields added by migration 045
+	Title              pgtype.Text        `json:"title"`
+	Goal               pgtype.Text        `json:"goal"`
+	Priority           pgtype.Text        `json:"priority"`
+	CandidateAgentIds  []pgtype.UUID      `json:"candidate_agent_ids"`
+	OwnerReviewerID    pgtype.UUID        `json:"owner_reviewer_id"`
+	ContextMdPath      pgtype.Text        `json:"context_md_path"`
+	InstructionMdPath  pgtype.Text        `json:"instruction_md_path"`
+	WorktreePath       pgtype.Text        `json:"worktree_path"`
+	ExpectedOutputs    []byte             `json:"expected_outputs"`
+	ActualOutputs      []byte             `json:"actual_outputs"`
+	Skippable          bool               `json:"skippable"`
+	AcceptanceChecks   []byte             `json:"acceptance_checks"`
+	DoneDefinition     pgtype.Text        `json:"done_definition"`
+	ErrorCode          pgtype.Text        `json:"error_code"`
+	ErrorSummary       pgtype.Text        `json:"error_summary"`
+	OnFailure          pgtype.Text        `json:"on_failure"`
 }
 
 type Workspace struct {

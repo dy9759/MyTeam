@@ -253,7 +253,7 @@ func (s *SchedulerService) HandleStepCompletion(ctx context.Context, stepID stri
 		allDepsCompleted := true
 		for _, depID := range pendingStep.DependsOn {
 			depStatus, exists := stepStatusMap[util.UUIDToString(depID)]
-			if !exists || depStatus != "completed" {
+			if !exists || (depStatus != "completed" && depStatus != "skipped") {
 				allDepsCompleted = false
 				break
 			}
@@ -264,17 +264,16 @@ func (s *SchedulerService) HandleStepCompletion(ctx context.Context, stepID stri
 				"step_id", util.UUIDToString(pendingStep.ID),
 				"workflow_id", util.UUIDToString(step.WorkflowID),
 			)
-			// TODO: Pass actual run_id when available on the step.
-			go s.ScheduleStep(ctx, pendingStep, "")
+			go s.ScheduleStep(ctx, pendingStep, util.UUIDToString(pendingStep.RunID))
 		}
 	}
 
-	// Check if all steps are done (completed or failed).
+	// Check if all steps are done (completed, skipped, failed, or cancelled).
 	allDone := true
 	allSucceeded := true
 	for _, st := range steps {
 		switch st.Status {
-		case "completed":
+		case "completed", "skipped":
 			// OK
 		case "failed", "cancelled":
 			allSucceeded = false
@@ -620,4 +619,384 @@ func (s *SchedulerService) broadcastStepEvent(ctx context.Context, eventType str
 		ActorID:     "",
 		Payload:     payload,
 	})
+}
+
+// MonitorActiveSteps runs periodically to check all running steps for timeout.
+// It should be launched as a goroutine and will run until ctx is cancelled.
+func (s *SchedulerService) MonitorActiveSteps(ctx context.Context) {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			s.checkRunningSteps(ctx)
+		}
+	}
+}
+
+// checkRunningSteps lists all running workflows and checks each running step for timeout.
+func (s *SchedulerService) checkRunningSteps(ctx context.Context) {
+	workflows, err := s.Queries.ListWorkflowsByStatus(ctx, "running")
+	if err != nil {
+		slog.Error("monitor: failed to list running workflows", "error", err)
+		return
+	}
+
+	for _, wf := range workflows {
+		steps, err := s.Queries.ListWorkflowSteps(ctx, wf.ID)
+		if err != nil {
+			slog.Error("monitor: failed to list steps", "workflow_id", util.UUIDToString(wf.ID), "error", err)
+			continue
+		}
+
+		for _, step := range steps {
+			if step.Status != "running" && step.Status != "assigned" {
+				continue
+			}
+
+			// Parse timeout rule.
+			timeoutRule := DefaultTimeoutRule()
+			if len(step.TimeoutRule) > 2 {
+				json.Unmarshal(step.TimeoutRule, &timeoutRule)
+			}
+
+			// Check if the step has exceeded its timeout.
+			if !step.StartedAt.Valid {
+				continue
+			}
+			elapsed := time.Since(step.StartedAt.Time)
+			maxDuration := time.Duration(timeoutRule.MaxDurationSeconds) * time.Second
+			if elapsed > maxDuration {
+				slog.Warn("monitor: step timed out",
+					"step_id", util.UUIDToString(step.ID),
+					"elapsed_seconds", int(elapsed.Seconds()),
+					"max_seconds", timeoutRule.MaxDurationSeconds,
+				)
+				if err := s.HandleStepTimeout(ctx, util.UUIDToString(step.ID)); err != nil {
+					slog.Error("monitor: failed to handle step timeout",
+						"step_id", util.UUIDToString(step.ID),
+						"error", err,
+					)
+				}
+			}
+		}
+	}
+}
+
+// onFailureValue returns the on_failure value for a step, defaulting to "block".
+func onFailureValue(step db.WorkflowStep) string {
+	if step.OnFailure.Valid && step.OnFailure.String != "" {
+		return step.OnFailure.String
+	}
+	return "block"
+}
+
+// retryStep increments the retry counter, sets status to "retrying", and schedules
+// with exponential backoff (capped at 5 minutes).
+func (s *SchedulerService) retryStep(ctx context.Context, step db.WorkflowStep, errMsg string) {
+	stepID := util.UUIDToString(step.ID)
+	currentRetry := step.CurrentRetry
+
+	// Parse retry rule.
+	retryRule := DefaultRetryRule()
+	if len(step.RetryRule) > 2 {
+		json.Unmarshal(step.RetryRule, &retryRule)
+	}
+
+	// Set status to retrying and increment retry count.
+	s.Queries.UpdateWorkflowStepStatus(ctx, db.UpdateWorkflowStepStatusParams{
+		ID:     step.ID,
+		Status: "retrying",
+		Result: nil,
+		Error:  pgtype.Text{String: errMsg, Valid: true},
+	})
+	s.Queries.IncrementWorkflowStepRetry(ctx, step.ID)
+
+	// Exponential backoff: base * 2^retry, capped at 5 minutes.
+	const maxDelay = 5 * 60
+	delay := retryRule.RetryDelaySeconds
+	if currentRetry > 0 {
+		delay = retryRule.RetryDelaySeconds * (1 << currentRetry)
+	}
+	if delay > maxDelay {
+		delay = maxDelay
+	}
+
+	slog.Info("scheduling step retry with backoff",
+		"step_id", stepID,
+		"delay_seconds", delay,
+		"retry", currentRetry+1,
+	)
+
+	go func() {
+		timer := time.NewTimer(time.Duration(delay) * time.Second)
+		defer timer.Stop()
+		<-timer.C
+
+		freshStep, err := s.Queries.GetWorkflowStep(context.Background(), step.ID)
+		if err != nil {
+			slog.Error("retry: failed to re-fetch step", "step_id", stepID, "error", err)
+			return
+		}
+		if freshStep.Status == "retrying" {
+			s.ScheduleStep(context.Background(), freshStep, util.UUIDToString(freshStep.RunID))
+		}
+	}()
+
+	s.broadcastStepEvent(ctx, protocol.EventWorkflowStepFailed, step, map[string]any{
+		"error":   errMsg,
+		"retry":   currentRetry + 1,
+		"action":  "retrying",
+	})
+}
+
+// tryReassign attempts to assign the step to one of its candidate_agent_ids.
+// Returns true if reassignment succeeded and the step was rescheduled.
+func (s *SchedulerService) tryReassign(ctx context.Context, step db.WorkflowStep) bool {
+	stepID := util.UUIDToString(step.ID)
+
+	for _, candidateID := range step.CandidateAgentIds {
+		// Skip the current agent.
+		if candidateID == step.AgentID {
+			continue
+		}
+
+		agent, err := s.Queries.GetAgent(ctx, candidateID)
+		if err != nil || !isAgentAvailable(agent) {
+			slog.Info("tryReassign: candidate unavailable",
+				"step_id", stepID,
+				"candidate_id", util.UUIDToString(candidateID),
+			)
+			continue
+		}
+
+		slog.Info("tryReassign: reassigning step to candidate agent",
+			"step_id", stepID,
+			"new_agent_id", util.UUIDToString(candidateID),
+		)
+
+		// Update actual_agent_id and reset step status.
+		s.Queries.UpdateWorkflowStepActualAgent(ctx, db.UpdateWorkflowStepActualAgentParams{
+			ID:            step.ID,
+			ActualAgentID: candidateID,
+		})
+		s.Queries.UpdateWorkflowStepStatus(ctx, db.UpdateWorkflowStepStatusParams{
+			ID:     step.ID,
+			Status: "queued",
+			Result: nil,
+			Error:  pgtype.Text{},
+		})
+
+		freshStep, err := s.Queries.GetWorkflowStep(ctx, step.ID)
+		if err != nil {
+			slog.Error("tryReassign: failed to re-fetch step", "step_id", stepID, "error", err)
+			return false
+		}
+		go s.ScheduleStep(ctx, freshStep, util.UUIDToString(freshStep.RunID))
+		return true
+	}
+	return false
+}
+
+// skipStep marks a step as "skipped" and unblocks its dependents.
+func (s *SchedulerService) skipStep(ctx context.Context, step db.WorkflowStep) {
+	stepID := util.UUIDToString(step.ID)
+	slog.Info("skipping step", "step_id", stepID)
+
+	s.Queries.UpdateWorkflowStepStatus(ctx, db.UpdateWorkflowStepStatusParams{
+		ID:     step.ID,
+		Status: "skipped",
+		Result: nil,
+		Error:  pgtype.Text{},
+	})
+
+	s.broadcastStepEvent(ctx, protocol.EventWorkflowStepCompleted, step, map[string]any{
+		"action": "skipped",
+	})
+
+	// Unblock dependents — treat skipped as resolved.
+	s.unblockDependents(ctx, step)
+}
+
+// pauseAndNotifyOwner sets the step to "blocked", pauses the workflow run,
+// and broadcasts a notification event.
+func (s *SchedulerService) pauseAndNotifyOwner(ctx context.Context, step db.WorkflowStep, errMsg string) {
+	stepID := util.UUIDToString(step.ID)
+	slog.Warn("pausing run and notifying owner", "step_id", stepID, "error", errMsg)
+
+	s.Queries.UpdateWorkflowStepStatus(ctx, db.UpdateWorkflowStepStatusParams{
+		ID:     step.ID,
+		Status: "blocked",
+		Result: nil,
+		Error:  pgtype.Text{String: errMsg, Valid: true},
+	})
+
+	// Pause the workflow.
+	s.Queries.UpdateWorkflowStatus(ctx, db.UpdateWorkflowStatusParams{
+		ID:     step.WorkflowID,
+		Status: "paused",
+	})
+
+	s.broadcastStepEvent(ctx, protocol.EventWorkflowStepFailed, step, map[string]any{
+		"error":  errMsg,
+		"action": "paused_for_owner",
+	})
+}
+
+// unblockDependents finds steps that depend on the completed/skipped step and
+// schedules those whose all dependencies are now resolved (completed or skipped).
+func (s *SchedulerService) unblockDependents(ctx context.Context, resolvedStep db.WorkflowStep) {
+	resolvedID := util.UUIDToString(resolvedStep.ID)
+
+	steps, err := s.Queries.ListWorkflowSteps(ctx, resolvedStep.WorkflowID)
+	if err != nil {
+		slog.Error("unblockDependents: failed to list steps", "error", err)
+		return
+	}
+
+	// Build status map.
+	statusMap := make(map[string]string, len(steps))
+	for _, st := range steps {
+		statusMap[util.UUIDToString(st.ID)] = st.Status
+	}
+
+	for _, pendingStep := range steps {
+		if pendingStep.Status != "pending" {
+			continue
+		}
+
+		// Check if this step depends on the resolved step.
+		dependsOnResolved := false
+		for _, depID := range pendingStep.DependsOn {
+			if util.UUIDToString(depID) == resolvedID {
+				dependsOnResolved = true
+				break
+			}
+		}
+		if !dependsOnResolved {
+			continue
+		}
+
+		// Check if ALL dependencies are resolved (completed or skipped).
+		allResolved := true
+		for _, depID := range pendingStep.DependsOn {
+			depStatus, exists := statusMap[util.UUIDToString(depID)]
+			if !exists || (depStatus != "completed" && depStatus != "skipped") {
+				allResolved = false
+				break
+			}
+		}
+
+		if allResolved {
+			slog.Info("unblockDependents: scheduling newly unblocked step",
+				"step_id", util.UUIDToString(pendingStep.ID),
+				"resolved_step_id", resolvedID,
+			)
+			go s.ScheduleStep(ctx, pendingStep, util.UUIDToString(pendingStep.RunID))
+		}
+	}
+}
+
+// HandleStepFailureWithCascade extends HandleStepFailure with on_failure cascade logic.
+// It reads step.OnFailure and applies the appropriate action:
+//   - "block" (default): fail the step and block downstream
+//   - "retry_once": retry once, then fail
+//   - "retry_n": retry up to max_retries (from retry_rule)
+//   - "reassign_then_retry": try candidate_agent_ids, then retry
+//   - "skip": mark as skipped if skippable=true, else fail
+//   - "pause_and_notify_owner": pause the run and send notification
+func (s *SchedulerService) HandleStepFailureWithCascade(ctx context.Context, stepID string, errMsg string) error {
+	step, err := s.Queries.GetWorkflowStep(ctx, util.ParseUUID(stepID))
+	if err != nil {
+		return fmt.Errorf("get step: %w", err)
+	}
+
+	slog.Warn("handling step failure with cascade",
+		"step_id", stepID,
+		"on_failure", onFailureValue(step),
+		"error", errMsg,
+	)
+
+	retryRule := DefaultRetryRule()
+	if len(step.RetryRule) > 2 {
+		json.Unmarshal(step.RetryRule, &retryRule)
+	}
+
+	switch onFailureValue(step) {
+	case "retry_once":
+		if step.CurrentRetry < 1 {
+			s.retryStep(ctx, step, errMsg)
+			return nil
+		}
+		// Retry exhausted — fall through to block.
+		s.failStep(ctx, step, fmt.Sprintf("retry_once exhausted: %s", errMsg))
+		s.broadcastStepEvent(ctx, protocol.EventWorkflowStepFailed, step, map[string]any{
+			"error":  errMsg,
+			"action": "failed",
+			"final":  true,
+		})
+		s.checkWorkflowFailure(ctx, step)
+
+	case "retry_n":
+		if int(step.CurrentRetry) < retryRule.MaxRetries {
+			s.retryStep(ctx, step, errMsg)
+			return nil
+		}
+		// Retries exhausted — fall through to block.
+		s.failStep(ctx, step, fmt.Sprintf("retry_n exhausted (%d/%d): %s", step.CurrentRetry, retryRule.MaxRetries, errMsg))
+		s.broadcastStepEvent(ctx, protocol.EventWorkflowStepFailed, step, map[string]any{
+			"error":  errMsg,
+			"action": "failed",
+			"final":  true,
+		})
+		s.checkWorkflowFailure(ctx, step)
+
+	case "reassign_then_retry":
+		if s.tryReassign(ctx, step) {
+			return nil
+		}
+		// No candidate available — retry with current agent if retries remain.
+		if int(step.CurrentRetry) < retryRule.MaxRetries {
+			s.retryStep(ctx, step, errMsg)
+			return nil
+		}
+		// All options exhausted.
+		s.failStep(ctx, step, fmt.Sprintf("reassign_then_retry exhausted: %s", errMsg))
+		s.broadcastStepEvent(ctx, protocol.EventWorkflowStepFailed, step, map[string]any{
+			"error":  errMsg,
+			"action": "failed",
+			"final":  true,
+		})
+		s.checkWorkflowFailure(ctx, step)
+
+	case "skip":
+		if step.Skippable {
+			s.skipStep(ctx, step)
+			return nil
+		}
+		// Not skippable — treat as block.
+		s.failStep(ctx, step, fmt.Sprintf("step not skippable: %s", errMsg))
+		s.broadcastStepEvent(ctx, protocol.EventWorkflowStepFailed, step, map[string]any{
+			"error":  errMsg,
+			"action": "failed",
+			"final":  true,
+		})
+		s.checkWorkflowFailure(ctx, step)
+
+	case "pause_and_notify_owner":
+		s.pauseAndNotifyOwner(ctx, step, errMsg)
+
+	default: // "block" or anything unknown
+		s.failStep(ctx, step, errMsg)
+		s.broadcastStepEvent(ctx, protocol.EventWorkflowStepFailed, step, map[string]any{
+			"error":  errMsg,
+			"action": "failed",
+			"final":  true,
+		})
+		s.checkWorkflowFailure(ctx, step)
+	}
+
+	return nil
 }

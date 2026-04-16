@@ -60,7 +60,7 @@ func (q *Queries) CreateWorkflow(ctx context.Context, arg CreateWorkflowParams) 
 const createWorkflowStep = `-- name: CreateWorkflowStep :one
 INSERT INTO workflow_step (workflow_id, step_order, description, agent_id, fallback_agent_ids, required_skills, timeout_ms, retry_count, depends_on)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING id, workflow_id, step_order, description, agent_id, fallback_agent_ids, required_skills, timeout_ms, retry_count, depends_on, status, started_at, completed_at, result, error, run_id, owner_escalation_policy, timeout_rule, retry_rule, human_approval_required, input_context_refs, output_refs, actual_agent_id, current_retry
+RETURNING id, workflow_id, step_order, description, agent_id, fallback_agent_ids, required_skills, timeout_ms, retry_count, depends_on, status, started_at, completed_at, result, error, run_id, owner_escalation_policy, timeout_rule, retry_rule, human_approval_required, input_context_refs, output_refs, actual_agent_id, current_retry, title, goal, priority, candidate_agent_ids, owner_reviewer_id, context_md_path, instruction_md_path, worktree_path, expected_outputs, actual_outputs, skippable, acceptance_checks, done_definition, error_code, error_summary, on_failure
 `
 
 type CreateWorkflowStepParams struct {
@@ -113,6 +113,22 @@ func (q *Queries) CreateWorkflowStep(ctx context.Context, arg CreateWorkflowStep
 		&i.OutputRefs,
 		&i.ActualAgentID,
 		&i.CurrentRetry,
+		&i.Title,
+		&i.Goal,
+		&i.Priority,
+		&i.CandidateAgentIds,
+		&i.OwnerReviewerID,
+		&i.ContextMdPath,
+		&i.InstructionMdPath,
+		&i.WorktreePath,
+		&i.ExpectedOutputs,
+		&i.ActualOutputs,
+		&i.Skippable,
+		&i.AcceptanceChecks,
+		&i.DoneDefinition,
+		&i.ErrorCode,
+		&i.ErrorSummary,
+		&i.OnFailure,
 	)
 	return i, err
 }
@@ -235,7 +251,7 @@ func (q *Queries) GetWorkflow(ctx context.Context, id pgtype.UUID) (Workflow, er
 }
 
 const getWorkflowStep = `-- name: GetWorkflowStep :one
-SELECT id, workflow_id, step_order, description, agent_id, fallback_agent_ids, required_skills, timeout_ms, retry_count, depends_on, status, started_at, completed_at, result, error, run_id, owner_escalation_policy, timeout_rule, retry_rule, human_approval_required, input_context_refs, output_refs, actual_agent_id, current_retry FROM workflow_step WHERE id = $1
+SELECT id, workflow_id, step_order, description, agent_id, fallback_agent_ids, required_skills, timeout_ms, retry_count, depends_on, status, started_at, completed_at, result, error, run_id, owner_escalation_policy, timeout_rule, retry_rule, human_approval_required, input_context_refs, output_refs, actual_agent_id, current_retry, title, goal, priority, candidate_agent_ids, owner_reviewer_id, context_md_path, instruction_md_path, worktree_path, expected_outputs, actual_outputs, skippable, acceptance_checks, done_definition, error_code, error_summary, on_failure FROM workflow_step WHERE id = $1
 `
 
 func (q *Queries) GetWorkflowStep(ctx context.Context, id pgtype.UUID) (WorkflowStep, error) {
@@ -266,6 +282,22 @@ func (q *Queries) GetWorkflowStep(ctx context.Context, id pgtype.UUID) (Workflow
 		&i.OutputRefs,
 		&i.ActualAgentID,
 		&i.CurrentRetry,
+		&i.Title,
+		&i.Goal,
+		&i.Priority,
+		&i.CandidateAgentIds,
+		&i.OwnerReviewerID,
+		&i.ContextMdPath,
+		&i.InstructionMdPath,
+		&i.WorktreePath,
+		&i.ExpectedOutputs,
+		&i.ActualOutputs,
+		&i.Skippable,
+		&i.AcceptanceChecks,
+		&i.DoneDefinition,
+		&i.ErrorCode,
+		&i.ErrorSummary,
+		&i.OnFailure,
 	)
 	return i, err
 }
@@ -323,7 +355,7 @@ func (q *Queries) ListTasksByRun(ctx context.Context, runID pgtype.UUID) ([]Agen
 }
 
 const listWorkflowSteps = `-- name: ListWorkflowSteps :many
-SELECT id, workflow_id, step_order, description, agent_id, fallback_agent_ids, required_skills, timeout_ms, retry_count, depends_on, status, started_at, completed_at, result, error, run_id, owner_escalation_policy, timeout_rule, retry_rule, human_approval_required, input_context_refs, output_refs, actual_agent_id, current_retry FROM workflow_step WHERE workflow_id = $1 ORDER BY step_order ASC
+SELECT id, workflow_id, step_order, description, agent_id, fallback_agent_ids, required_skills, timeout_ms, retry_count, depends_on, status, started_at, completed_at, result, error, run_id, owner_escalation_policy, timeout_rule, retry_rule, human_approval_required, input_context_refs, output_refs, actual_agent_id, current_retry, title, goal, priority, candidate_agent_ids, owner_reviewer_id, context_md_path, instruction_md_path, worktree_path, expected_outputs, actual_outputs, skippable, acceptance_checks, done_definition, error_code, error_summary, on_failure FROM workflow_step WHERE workflow_id = $1 ORDER BY step_order ASC
 `
 
 func (q *Queries) ListWorkflowSteps(ctx context.Context, workflowID pgtype.UUID) ([]WorkflowStep, error) {
@@ -360,6 +392,22 @@ func (q *Queries) ListWorkflowSteps(ctx context.Context, workflowID pgtype.UUID)
 			&i.OutputRefs,
 			&i.ActualAgentID,
 			&i.CurrentRetry,
+			&i.Title,
+			&i.Goal,
+			&i.Priority,
+			&i.CandidateAgentIds,
+			&i.OwnerReviewerID,
+			&i.ContextMdPath,
+			&i.InstructionMdPath,
+			&i.WorktreePath,
+			&i.ExpectedOutputs,
+			&i.ActualOutputs,
+			&i.Skippable,
+			&i.AcceptanceChecks,
+			&i.DoneDefinition,
+			&i.ErrorCode,
+			&i.ErrorSummary,
+			&i.OnFailure,
 		); err != nil {
 			return nil, err
 		}
@@ -372,7 +420,7 @@ func (q *Queries) ListWorkflowSteps(ctx context.Context, workflowID pgtype.UUID)
 }
 
 const listWorkflowStepsByRun = `-- name: ListWorkflowStepsByRun :many
-SELECT id, workflow_id, step_order, description, agent_id, fallback_agent_ids, required_skills, timeout_ms, retry_count, depends_on, status, started_at, completed_at, result, error, run_id, owner_escalation_policy, timeout_rule, retry_rule, human_approval_required, input_context_refs, output_refs, actual_agent_id, current_retry FROM workflow_step WHERE run_id = $1 ORDER BY step_order
+SELECT id, workflow_id, step_order, description, agent_id, fallback_agent_ids, required_skills, timeout_ms, retry_count, depends_on, status, started_at, completed_at, result, error, run_id, owner_escalation_policy, timeout_rule, retry_rule, human_approval_required, input_context_refs, output_refs, actual_agent_id, current_retry, title, goal, priority, candidate_agent_ids, owner_reviewer_id, context_md_path, instruction_md_path, worktree_path, expected_outputs, actual_outputs, skippable, acceptance_checks, done_definition, error_code, error_summary, on_failure FROM workflow_step WHERE run_id = $1 ORDER BY step_order
 `
 
 func (q *Queries) ListWorkflowStepsByRun(ctx context.Context, runID pgtype.UUID) ([]WorkflowStep, error) {
@@ -409,6 +457,22 @@ func (q *Queries) ListWorkflowStepsByRun(ctx context.Context, runID pgtype.UUID)
 			&i.OutputRefs,
 			&i.ActualAgentID,
 			&i.CurrentRetry,
+			&i.Title,
+			&i.Goal,
+			&i.Priority,
+			&i.CandidateAgentIds,
+			&i.OwnerReviewerID,
+			&i.ContextMdPath,
+			&i.InstructionMdPath,
+			&i.WorktreePath,
+			&i.ExpectedOutputs,
+			&i.ActualOutputs,
+			&i.Skippable,
+			&i.AcceptanceChecks,
+			&i.DoneDefinition,
+			&i.ErrorCode,
+			&i.ErrorSummary,
+			&i.OnFailure,
 		); err != nil {
 			return nil, err
 		}
@@ -497,7 +561,7 @@ SET description = COALESCE($1, description),
     timeout_ms = COALESCE($2, timeout_ms),
     retry_count = COALESCE($3, retry_count)
 WHERE id = $4
-RETURNING id, workflow_id, step_order, description, agent_id, fallback_agent_ids, required_skills, timeout_ms, retry_count, depends_on, status, started_at, completed_at, result, error, run_id, owner_escalation_policy, timeout_rule, retry_rule, human_approval_required, input_context_refs, output_refs, actual_agent_id, current_retry
+RETURNING id, workflow_id, step_order, description, agent_id, fallback_agent_ids, required_skills, timeout_ms, retry_count, depends_on, status, started_at, completed_at, result, error, run_id, owner_escalation_policy, timeout_rule, retry_rule, human_approval_required, input_context_refs, output_refs, actual_agent_id, current_retry, title, goal, priority, candidate_agent_ids, owner_reviewer_id, context_md_path, instruction_md_path, worktree_path, expected_outputs, actual_outputs, skippable, acceptance_checks, done_definition, error_code, error_summary, on_failure
 `
 
 type UpdateWorkflowStepParams struct {
@@ -540,6 +604,22 @@ func (q *Queries) UpdateWorkflowStep(ctx context.Context, arg UpdateWorkflowStep
 		&i.OutputRefs,
 		&i.ActualAgentID,
 		&i.CurrentRetry,
+		&i.Title,
+		&i.Goal,
+		&i.Priority,
+		&i.CandidateAgentIds,
+		&i.OwnerReviewerID,
+		&i.ContextMdPath,
+		&i.InstructionMdPath,
+		&i.WorktreePath,
+		&i.ExpectedOutputs,
+		&i.ActualOutputs,
+		&i.Skippable,
+		&i.AcceptanceChecks,
+		&i.DoneDefinition,
+		&i.ErrorCode,
+		&i.ErrorSummary,
+		&i.OnFailure,
 	)
 	return i, err
 }
@@ -591,4 +671,41 @@ func (q *Queries) UpdateWorkflowStepStatus(ctx context.Context, arg UpdateWorkfl
 		arg.Error,
 	)
 	return err
+}
+
+const listWorkflowsByStatus = `-- name: ListWorkflowsByStatus :many
+SELECT id, plan_id, workspace_id, title, status, type, cron_expr, version, dag, created_by, created_at, updated_at FROM workflow WHERE status = $1
+`
+
+func (q *Queries) ListWorkflowsByStatus(ctx context.Context, status string) ([]Workflow, error) {
+	rows, err := q.db.Query(ctx, listWorkflowsByStatus, status)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Workflow{}
+	for rows.Next() {
+		var i Workflow
+		if err := rows.Scan(
+			&i.ID,
+			&i.PlanID,
+			&i.WorkspaceID,
+			&i.Title,
+			&i.Status,
+			&i.Type,
+			&i.CronExpr,
+			&i.Version,
+			&i.Dag,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

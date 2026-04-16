@@ -66,3 +66,6 @@ SELECT * FROM workflow_step WHERE run_id = @run_id ORDER BY step_order;
 
 -- name: UpdateWorkflowStepOutputRefs :exec
 UPDATE workflow_step SET output_refs = @output_refs WHERE id = @id;
+
+-- name: ListWorkflowsByStatus :many
+SELECT * FROM workflow WHERE status = @status;
