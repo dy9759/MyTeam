@@ -342,6 +342,7 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 					r.Patch("/visibility", h.UpdateChannelVisibility)
 					r.Patch("/category", h.UpdateChannelCategory)
 					r.Post("/transfer-founder", h.TransferFounder)
+					r.Post("/split", h.SplitChannel)
 				})
 			})
 
