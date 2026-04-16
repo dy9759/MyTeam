@@ -7,6 +7,7 @@ import {
   MessageList,
   NewChannelDialog,
   NewDMDialog,
+  TypingIndicator,
   useDesktopMessagingStore,
   type DMCandidate,
 } from "@/features/messaging";
@@ -34,6 +35,7 @@ export function SessionRoute() {
   const [selection, setSelection] = useState<Selection | null>(null);
   const [showNewDM, setShowNewDM] = useState(false);
   const [showNewChannel, setShowNewChannel] = useState(false);
+  const [typingAgent, setTypingAgent] = useState<string | null>(null);
 
   const mentionCandidates = useMemo(() => {
     return [
@@ -82,6 +84,10 @@ export function SessionRoute() {
 
   const handleSend = async (text: string) => {
     if (!selection) return;
+    // Set typing indicator for agent DMs
+    if (selection.kind === "dm" && selection.conversation.peer_type === "agent") {
+      setTypingAgent(selection.conversation.peer_name ?? "Agent");
+    }
     if (selection.kind === "channel") {
       await sendMessage({ channel_id: selection.channel.id, content: text });
     } else {
@@ -92,6 +98,14 @@ export function SessionRoute() {
       });
     }
   };
+
+  useEffect(() => {
+    if (!typingAgent) return;
+    const lastMsg = currentMessages[currentMessages.length - 1];
+    if (lastMsg && lastMsg.sender_type === "agent") {
+      setTypingAgent(null);
+    }
+  }, [currentMessages, typingAgent]);
 
   return (
     <RouteShell
@@ -171,6 +185,7 @@ export function SessionRoute() {
               <EmptyPane message="Pick a channel or DM on the left, or start a new one." />
             )}
           </div>
+          {typingAgent ? <TypingIndicator agentName={typingAgent} /> : null}
           {selection ? (
             <MessageInput
               placeholder={placeholder}
