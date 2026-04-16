@@ -76,6 +76,13 @@ const (
 	EventProjectDeleted       = "project:deleted"
 	EventProjectStatusChanged = "project:status_changed"
 
+	EventProjectBranchCreated  = "project:branch_created"
+	EventProjectVersionCreated = "project:version_created"
+	EventProjectRunStarted     = "project:run_started"
+	EventProjectRunCompleted   = "project:run_completed"
+	EventProjectRunFailed      = "project:run_failed"
+	EventProjectResultCreated  = "project:result_created"
+
 	// Run events
 	EventRunStarted   = "run:started"
 	EventRunCompleted = "run:completed"

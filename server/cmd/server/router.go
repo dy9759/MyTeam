@@ -400,6 +400,8 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 					r.Post("/fork", h.ForkProject)
 					r.Get("/versions", h.ListProjectVersions)
 					r.Get("/runs", h.GetProjectRuns)
+					r.Get("/branches", h.ListProjectBranches)
+					r.Get("/runs/{runID}/result", h.GetProjectResult)
 					r.Post("/approve", h.ApprovePlan)
 					r.Post("/reject", h.RejectPlan)
 					r.Get("/files", h.GetFilesByProject)

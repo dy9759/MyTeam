@@ -716,6 +716,96 @@ func (h *Handler) GetProjectRuns(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"runs": result, "total": len(result)})
 }
 
+// ListProjectBranches handles GET /api/projects/{projectID}/branches
+func (h *Handler) ListProjectBranches(w http.ResponseWriter, r *http.Request) {
+	projectID := chi.URLParam(r, "projectID")
+	if projectID == "" {
+		writeError(w, http.StatusBadRequest, "projectID is required")
+		return
+	}
+	if _, ok := requireUserID(w, r); !ok {
+		return
+	}
+
+	branches, err := h.Queries.ListProjectBranches(r.Context(), parseUUID(projectID))
+	if err != nil {
+		slog.Error("list branches failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to list branches")
+		return
+	}
+
+	type BranchResponse struct {
+		ID             string  `json:"id"`
+		ProjectID      string  `json:"project_id"`
+		Name           string  `json:"name"`
+		ParentBranchID *string `json:"parent_branch_id"`
+		IsDefault      bool    `json:"is_default"`
+		Status         string  `json:"status"`
+		CreatedBy      string  `json:"created_by"`
+		CreatedAt      string  `json:"created_at"`
+	}
+
+	result := make([]BranchResponse, 0, len(branches))
+	for _, b := range branches {
+		result = append(result, BranchResponse{
+			ID:             uuidToString(b.ID),
+			ProjectID:      uuidToString(b.ProjectID),
+			Name:           b.Name,
+			ParentBranchID: ptrFromUUID(b.ParentBranchID),
+			IsDefault:      b.IsDefault,
+			Status:         b.Status,
+			CreatedBy:      uuidToString(b.CreatedBy),
+			CreatedAt:      b.CreatedAt.Time.Format(time.RFC3339),
+		})
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+// GetProjectResult handles GET /api/projects/{projectID}/runs/{runID}/result
+func (h *Handler) GetProjectResult(w http.ResponseWriter, r *http.Request) {
+	runID := chi.URLParam(r, "runID")
+	if runID == "" {
+		writeError(w, http.StatusBadRequest, "runID is required")
+		return
+	}
+	if _, ok := requireUserID(w, r); !ok {
+		return
+	}
+
+	result, err := h.Queries.GetProjectResultByRun(r.Context(), parseUUID(runID))
+	if err != nil {
+		writeError(w, http.StatusNotFound, "result not found")
+		return
+	}
+
+	type ResultResponse struct {
+		ID               string          `json:"id"`
+		RunID            string          `json:"run_id"`
+		ProjectID        string          `json:"project_id"`
+		VersionID        *string         `json:"version_id"`
+		Summary          *string         `json:"summary"`
+		Artifacts        json.RawMessage `json:"artifacts"`
+		Deliverables     json.RawMessage `json:"deliverables"`
+		AcceptanceStatus string          `json:"acceptance_status"`
+		AcceptedBy       *string         `json:"accepted_by"`
+		CreatedAt        string          `json:"created_at"`
+	}
+
+	resp := ResultResponse{
+		ID:               uuidToString(result.ID),
+		RunID:            uuidToString(result.RunID),
+		ProjectID:        uuidToString(result.ProjectID),
+		VersionID:        ptrFromUUID(result.VersionID),
+		Summary:          textToPtr(result.Summary),
+		Artifacts:        result.Artifacts,
+		Deliverables:     result.Deliverables,
+		AcceptanceStatus: result.AcceptanceStatus,
+		AcceptedBy:       ptrFromUUID(result.AcceptedBy),
+		CreatedAt:        result.CreatedAt.Time.Format(time.RFC3339),
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
 // ApprovePlan is now in plan.go — moved there with actual DB implementation.
 
 // RejectPlan handles POST /api/projects/{projectID}/reject
