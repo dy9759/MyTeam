@@ -45,6 +45,7 @@ import type {
   ProjectResult,
   ProjectContext,
   ProjectPR,
+  ProjectShare,
   CreateProjectFromChatRequest,
   FileIndex,
   SearchResponse,
@@ -965,5 +966,17 @@ export class ApiClient {
 
   async listProjectContexts(projectId: string): Promise<ProjectContext[]> {
     return this.fetch(`/api/projects/${projectId}/contexts`);
+  }
+
+  async shareProject(projectId: string, data: { owner_id: string; role: string; can_merge_pr?: boolean }): Promise<ProjectShare> {
+    return this.fetch(`/api/projects/${projectId}/share`, { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async listProjectShares(projectId: string): Promise<ProjectShare[]> {
+    return this.fetch(`/api/projects/${projectId}/shares`);
+  }
+
+  async removeProjectShare(projectId: string, ownerId: string): Promise<void> {
+    await this.fetch(`/api/projects/${projectId}/share/${ownerId}`, { method: 'DELETE' });
   }
 }

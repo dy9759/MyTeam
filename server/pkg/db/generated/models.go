@@ -537,6 +537,16 @@ type ProjectVersion struct {
 	BranchID         pgtype.UUID        `json:"branch_id"`
 }
 
+type ProjectShare struct {
+	ID        pgtype.UUID        `json:"id"`
+	ProjectID pgtype.UUID        `json:"project_id"`
+	OwnerID   pgtype.UUID        `json:"owner_id"`
+	Role      string             `json:"role"`
+	CanMergePr bool              `json:"can_merge_pr"`
+	GrantedBy pgtype.UUID        `json:"granted_by"`
+	GrantedAt pgtype.Timestamptz `json:"granted_at"`
+}
+
 type RemoteSession struct {
 	ID          pgtype.UUID        `json:"id"`
 	AgentID     pgtype.UUID        `json:"agent_id"`

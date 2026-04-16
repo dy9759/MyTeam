@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import type { Project, ProjectVersion, ProjectRun, ProjectBranch, ProjectResult, ProjectContext, ProjectPR, CreateProjectFromChatRequest } from "@/shared/types";
+import type { Project, ProjectVersion, ProjectRun, ProjectBranch, ProjectResult, ProjectContext, ProjectPR, ProjectShare, CreateProjectFromChatRequest } from "@/shared/types";
 import { toast } from "sonner";
 import { api } from "@/shared/api";
 import { createLogger } from "@/shared/logger";
@@ -17,6 +17,7 @@ interface ProjectState {
   currentResult: ProjectResult | null;
   contexts: ProjectContext[];
   prs: ProjectPR[];
+  shares: ProjectShare[];
   loading: boolean;
 }
 
@@ -40,6 +41,9 @@ interface ProjectActions {
   createPR: (projectId: string, data: { source_branch_id: string; target_branch_id: string; source_version_id: string; title: string; description?: string }) => Promise<ProjectPR>;
   mergePR: (projectId: string, prId: string) => Promise<void>;
   closePR: (projectId: string, prId: string) => Promise<void>;
+  fetchShares: (projectId: string) => Promise<void>;
+  shareProject: (projectId: string, data: { owner_id: string; role: string; can_merge_pr?: boolean }) => Promise<void>;
+  removeShare: (projectId: string, ownerId: string) => Promise<void>;
 }
 
 export const useProjectStore = create<ProjectState & ProjectActions>((set, get) => ({
@@ -51,6 +55,7 @@ export const useProjectStore = create<ProjectState & ProjectActions>((set, get) 
   currentResult: null,
   contexts: [],
   prs: [],
+  shares: [],
   loading: true,
 
   fetch: async () => {
@@ -227,5 +232,20 @@ export const useProjectStore = create<ProjectState & ProjectActions>((set, get) 
     set((s) => ({
       prs: s.prs.map((pr) => pr.id === prId ? { ...pr, status: 'closed' as const } : pr),
     }));
+  },
+
+  fetchShares: async (projectId: string) => {
+    const shares = await api.listProjectShares(projectId);
+    set({ shares });
+  },
+
+  shareProject: async (projectId: string, data: { owner_id: string; role: string; can_merge_pr?: boolean }) => {
+    const share = await api.shareProject(projectId, data);
+    set((s) => ({ shares: [...s.shares, share] }));
+  },
+
+  removeShare: async (projectId: string, ownerId: string) => {
+    await api.removeProjectShare(projectId, ownerId);
+    set((s) => ({ shares: s.shares.filter((sh) => sh.owner_id !== ownerId) }));
   },
 }));

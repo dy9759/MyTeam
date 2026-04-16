@@ -412,6 +412,9 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 					r.Get("/prs/{prID}", h.GetProjectPR)
 					r.Post("/prs/{prID}/merge", h.MergeProjectPR)
 					r.Post("/prs/{prID}/close", h.CloseProjectPR)
+					r.Post("/share", h.ShareProject)
+					r.Get("/shares", h.ListProjectShares)
+					r.Delete("/share/{ownerID}", h.RemoveProjectShare)
 				})
 			})
 

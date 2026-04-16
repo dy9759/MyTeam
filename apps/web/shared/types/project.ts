@@ -155,5 +155,15 @@ export interface TaskBrief {
   timeline?: string;
 }
 
+export interface ProjectShare {
+  id: string;
+  project_id: string;
+  owner_id: string;
+  role: 'viewer' | 'editor';
+  can_merge_pr: boolean;
+  granted_by: string;
+  granted_at: string;
+}
+
 import type { Plan } from './workflow';
 export type { Plan };
