@@ -3,9 +3,11 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -39,11 +41,12 @@ func setEnvVars(t *testing.T, vals map[string]string) {
 func createTestWorkspace(t *testing.T, q *db.Queries) pgtype.UUID {
 	t.Helper()
 	slugSuffix := strings.ReplaceAll(strings.ToLower(t.Name()), "/", "-")
-	// Keep slug unique-ish across runs by also tacking on process pid-time lexeme.
 	slugSuffix = strings.ReplaceAll(slugSuffix, "_", "-")
+	// Append nanosecond timestamp so re-runs against a persistent dev DB don't collide.
+	uniq := fmt.Sprintf("%d", time.Now().UnixNano())
 	ws, err := q.CreateWorkspace(context.Background(), db.CreateWorkspaceParams{
 		Name:        "Test Workspace " + t.Name(),
-		Slug:        "test-" + slugSuffix,
+		Slug:        "test-" + slugSuffix + "-" + uniq,
 		Description: pgtype.Text{},
 		Context:     pgtype.Text{},
 		IssuePrefix: "TST",
@@ -56,6 +59,11 @@ func createTestWorkspace(t *testing.T, q *db.Queries) pgtype.UUID {
 
 func createTestUser(t *testing.T, q *db.Queries, email, name string) pgtype.UUID {
 	t.Helper()
+	// Dedupe email across runs against persistent dev DB.
+	at := strings.Index(email, "@")
+	if at > 0 {
+		email = email[:at] + fmt.Sprintf("+%d", time.Now().UnixNano()) + email[at:]
+	}
 	u, err := q.CreateUser(context.Background(), db.CreateUserParams{
 		Name:      name,
 		Email:     email,
