@@ -38,8 +38,11 @@ export function SessionRoute() {
   const [typingAgent, setTypingAgent] = useState<string | null>(null);
 
   const mentionCandidates = useMemo(() => {
+    const personalAgents = agents.filter(
+      (a) => !((a as any).agent_type === "system_agent" || (a as any).agent_type === "page_system_agent" || (a as any).is_system)
+    );
     return [
-      ...agents.map((a) => ({
+      ...personalAgents.map((a) => ({
         id: a.id,
         name: a.name,
         kind: "agent" as const,
