@@ -158,6 +158,11 @@ export function SessionRoute() {
                 ? selection.conversation.peer_name ?? selection.conversation.peer_id
                 : "Select a conversation"}
             </h3>
+            {selection?.kind === "dm" && selection.conversation.peer_type === "agent" && (
+              <p className="mt-2 rounded-xl bg-amber-500/10 px-3 py-1.5 text-xs text-amber-300">
+                跨 owner 对话对双方 owner 可见
+              </p>
+            )}
           </div>
           <div className="flex-1 overflow-hidden py-4">
             {selection ? (
