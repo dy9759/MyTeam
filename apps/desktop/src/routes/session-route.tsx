@@ -7,6 +7,7 @@ import {
   MessageList,
   NewChannelDialog,
   NewDMDialog,
+  TypingIndicator,
   useDesktopMessagingStore,
   type DMCandidate,
 } from "@/features/messaging";
@@ -34,10 +35,14 @@ export function SessionRoute() {
   const [selection, setSelection] = useState<Selection | null>(null);
   const [showNewDM, setShowNewDM] = useState(false);
   const [showNewChannel, setShowNewChannel] = useState(false);
+  const [typingAgent, setTypingAgent] = useState<string | null>(null);
 
   const mentionCandidates = useMemo(() => {
+    const personalAgents = agents.filter(
+      (a) => !((a as any).agent_type === "system_agent" || (a as any).agent_type === "page_system_agent" || (a as any).is_system)
+    );
     return [
-      ...agents.map((a) => ({
+      ...personalAgents.map((a) => ({
         id: a.id,
         name: a.name,
         kind: "agent" as const,
@@ -82,6 +87,10 @@ export function SessionRoute() {
 
   const handleSend = async (text: string) => {
     if (!selection) return;
+    // Set typing indicator for agent DMs
+    if (selection.kind === "dm" && selection.conversation.peer_type === "agent") {
+      setTypingAgent(selection.conversation.peer_name ?? "Agent");
+    }
     if (selection.kind === "channel") {
       await sendMessage({ channel_id: selection.channel.id, content: text });
     } else {
@@ -92,6 +101,14 @@ export function SessionRoute() {
       });
     }
   };
+
+  useEffect(() => {
+    if (!typingAgent) return;
+    const lastMsg = currentMessages[currentMessages.length - 1];
+    if (lastMsg && lastMsg.sender_type === "agent") {
+      setTypingAgent(null);
+    }
+  }, [currentMessages, typingAgent]);
 
   return (
     <RouteShell
@@ -158,6 +175,11 @@ export function SessionRoute() {
                 ? selection.conversation.peer_name ?? selection.conversation.peer_id
                 : "Select a conversation"}
             </h3>
+            {selection?.kind === "dm" && selection.conversation.peer_type === "agent" && (
+              <p className="mt-2 rounded-xl bg-amber-500/10 px-3 py-1.5 text-xs text-amber-300">
+                跨 owner 对话对双方 owner 可见
+              </p>
+            )}
           </div>
           <div className="flex-1 overflow-hidden py-4">
             {selection ? (
@@ -166,6 +188,7 @@ export function SessionRoute() {
               <EmptyPane message="Pick a channel or DM on the left, or start a new one." />
             )}
           </div>
+          {typingAgent ? <TypingIndicator agentName={typingAgent} /> : null}
           {selection ? (
             <MessageInput
               placeholder={placeholder}

@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/protocol"
 )
@@ -353,6 +354,48 @@ func (h *Handler) UpgradeDMToChannel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, channelToResponse(updatedCh))
+}
+
+// POST /api/channels/{channelID}/transfer-founder
+func (h *Handler) TransferFounder(w http.ResponseWriter, r *http.Request) {
+	userID, ok := requireUserID(w, r)
+	if !ok {
+		return
+	}
+	channelID := chi.URLParam(r, "channelID")
+
+	var req struct {
+		NewFounderID string `json:"new_founder_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.NewFounderID == "" {
+		writeError(w, http.StatusBadRequest, "new_founder_id is required")
+		return
+	}
+
+	var currentFounder pgtype.UUID
+	err := h.DB.QueryRow(r.Context(),
+		`SELECT COALESCE(founder_id, created_by) FROM channel WHERE id = $1`,
+		parseUUID(channelID),
+	).Scan(&currentFounder)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "channel not found")
+		return
+	}
+	if uuidToString(currentFounder) != userID {
+		writeError(w, http.StatusForbidden, "only the founder can transfer ownership")
+		return
+	}
+
+	_, err = h.DB.Exec(r.Context(),
+		`UPDATE channel SET founder_id = $1 WHERE id = $2`,
+		parseUUID(req.NewFounderID), parseUUID(channelID),
+	)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to transfer founder")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "transferred"})
 }
 
 func channelToResponse(ch db.Channel) map[string]any {

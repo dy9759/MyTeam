@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"log/slog"
 	"net/http"
 
@@ -89,18 +90,79 @@ func (h *Handler) ListFiles(w http.ResponseWriter, r *http.Request) {
 		"owner_id", ownerID,
 	)
 
-	// TODO: Replace with sqlc query once file_index table migration exists:
-	//   rows, err := h.Queries.ListFileIndex(r.Context(), db.ListFileIndexParams{
-	//       WorkspaceID: parseUUID(workspaceID),
-	//       SourceType:  sourceType,
-	//       ProjectID:   parseUUID(projectID),
-	//       ChannelID:   parseUUID(channelID),
-	//       OwnerID:     parseUUID(ownerID),
-	//   })
-	//   if err != nil { ... }
+	// Build a dynamic query with optional filters.
+	query := `SELECT id, workspace_id, uploader_identity_id, uploader_identity_type, owner_id,
+		source_type, source_id, file_name, file_size, content_type, storage_path,
+		channel_id, project_id, created_at
+		FROM file_index
+		WHERE workspace_id = $1`
+	args := []any{parseUUID(workspaceID)}
+	argIdx := 2
 
-	// Return empty array until file_index table exists.
-	writeJSON(w, http.StatusOK, []FileIndexResponse{})
+	if sourceType != "" {
+		query += fmt.Sprintf(" AND source_type = $%d", argIdx)
+		args = append(args, sourceType)
+		argIdx++
+	}
+	if channelID != "" {
+		query += fmt.Sprintf(" AND channel_id = $%d", argIdx)
+		args = append(args, parseUUID(channelID))
+		argIdx++
+	}
+	if projectID != "" {
+		query += fmt.Sprintf(" AND project_id = $%d", argIdx)
+		args = append(args, parseUUID(projectID))
+		argIdx++
+	}
+	if ownerID != "" {
+		query += fmt.Sprintf(" AND owner_id = $%d", argIdx)
+		args = append(args, parseUUID(ownerID))
+		argIdx++
+	}
+	_ = argIdx // suppress unused variable warning
+
+	query += " ORDER BY created_at DESC LIMIT 200"
+
+	rows, err := h.DB.Query(r.Context(), query, args...)
+	if err != nil {
+		slog.Error("failed to query file_index", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to list files")
+		return
+	}
+	defer rows.Close()
+
+	results := []FileIndexResponse{}
+	for rows.Next() {
+		var f db.FileIndex
+		if err := rows.Scan(
+			&f.ID,
+			&f.WorkspaceID,
+			&f.UploaderIdentityID,
+			&f.UploaderIdentityType,
+			&f.OwnerID,
+			&f.SourceType,
+			&f.SourceID,
+			&f.FileName,
+			&f.FileSize,
+			&f.ContentType,
+			&f.StoragePath,
+			&f.ChannelID,
+			&f.ProjectID,
+			&f.CreatedAt,
+		); err != nil {
+			slog.Error("failed to scan file_index row", "error", err)
+			writeError(w, http.StatusInternalServerError, "failed to list files")
+			return
+		}
+		results = append(results, fileIndexToResponse(f))
+	}
+	if err := rows.Err(); err != nil {
+		slog.Error("file_index rows error", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to list files")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, results)
 }
 
 // ---------------------------------------------------------------------------
