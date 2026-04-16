@@ -426,7 +426,7 @@ type Plan struct {
 	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
 	ProjectID      pgtype.UUID        `json:"project_id"`
 	VersionID      pgtype.UUID        `json:"version_id"`
-	TaskBrief      pgtype.Text        `json:"task_brief"`
+	TaskBrief      []byte             `json:"task_brief"`
 	AssignedAgents []byte             `json:"assigned_agents"`
 	RiskPoints     pgtype.Text        `json:"risk_points"`
 	ApprovalStatus string             `json:"approval_status"`
@@ -458,6 +458,21 @@ type ProjectBranch struct {
 	Status         string             `json:"status"`
 	CreatedBy      pgtype.UUID        `json:"created_by"`
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
+type ProjectContext struct {
+	ID                pgtype.UUID        `json:"id"`
+	ProjectID         pgtype.UUID        `json:"project_id"`
+	VersionID         pgtype.UUID        `json:"version_id"`
+	SourceType        string             `json:"source_type"`
+	SourceID          pgtype.UUID        `json:"source_id"`
+	SourceName        pgtype.Text        `json:"source_name"`
+	MessageRangeStart pgtype.Timestamptz `json:"message_range_start"`
+	MessageRangeEnd   pgtype.Timestamptz `json:"message_range_end"`
+	SnapshotMd        string             `json:"snapshot_md"`
+	MessageCount      int32              `json:"message_count"`
+	ImportedBy        pgtype.UUID        `json:"imported_by"`
+	ImportedAt        pgtype.Timestamptz `json:"imported_at"`
 }
 
 type ProjectResult struct {

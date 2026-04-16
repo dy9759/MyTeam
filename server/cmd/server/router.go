@@ -405,6 +405,8 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 					r.Post("/approve", h.ApprovePlan)
 					r.Post("/reject", h.RejectPlan)
 					r.Get("/files", h.GetFilesByProject)
+					r.Post("/import-context", h.ImportProjectContext)
+					r.Get("/contexts", h.ListProjectContexts)
 				})
 			})
 
