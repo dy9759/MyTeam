@@ -83,6 +83,26 @@ func (s *AutoReplyService) replyAsMentionedAgent(ctx context.Context, agentName 
 		return nil
 	}
 
+	// If agent is offline, notify its owner and stop.
+	if agent.OnlineStatus == "offline" {
+		ownerID := util.UUIDToString(agent.OwnerID)
+		if ownerID != "" {
+			notifContent := fmt.Sprintf("Your agent %s was mentioned but is offline. Please bring it online or respond manually.", agent.Name)
+			_, _ = s.Queries.CreateMessage(ctx, db.CreateMessageParams{
+				WorkspaceID:   util.ParseUUID(workspaceID),
+				SenderID:      agent.ID,
+				SenderType:    "agent",
+				RecipientID:   agent.OwnerID,
+				RecipientType: util.StrToText("member"),
+				Content:       notifContent,
+				ContentType:   "text",
+				Type:          "system_notification",
+			})
+			slog.Info("auto-reply: agent offline, notified owner", "agent", agent.Name)
+		}
+		return nil
+	}
+
 	// Respect on_mention trigger.
 	if !agentHasTriggerEnabled(agent.Triggers, "on_mention") {
 		slog.Debug("auto-reply: on_mention disabled", "agent", agentName)
@@ -238,6 +258,26 @@ func (s *AutoReplyService) ReplyToDM(ctx context.Context, agentID string, worksp
 	agent, err := s.Queries.GetAgent(ctx, util.ParseUUID(agentID))
 	if err != nil {
 		slog.Debug("dm-reply: agent not found", "id", agentID, "error", err)
+		return
+	}
+
+	// If agent is offline, notify its owner and stop.
+	if agent.OnlineStatus == "offline" {
+		ownerID := util.UUIDToString(agent.OwnerID)
+		if ownerID != "" {
+			notifContent := fmt.Sprintf("Your agent %s was mentioned but is offline. Please bring it online or respond manually.", agent.Name)
+			_, _ = s.Queries.CreateMessage(ctx, db.CreateMessageParams{
+				WorkspaceID:   util.ParseUUID(workspaceID),
+				SenderID:      agent.ID,
+				SenderType:    "agent",
+				RecipientID:   agent.OwnerID,
+				RecipientType: util.StrToText("member"),
+				Content:       notifContent,
+				ContentType:   "text",
+				Type:          "system_notification",
+			})
+			slog.Info("auto-reply: agent offline, notified owner", "agent", agent.Name)
+		}
 		return
 	}
 
