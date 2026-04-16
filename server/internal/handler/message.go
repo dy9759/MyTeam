@@ -162,6 +162,11 @@ func (h *Handler) CreateMessage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// DM to agent: trigger auto-reply for direct messages sent to an agent.
+	if h.AutoReplyService != nil && req.RecipientType != nil && *req.RecipientType == "agent" && req.RecipientID != nil && *req.RecipientID != "" {
+		go h.AutoReplyService.ReplyToDM(context.Background(), *req.RecipientID, workspaceID, senderID, msg)
+	}
+
 	writeJSON(w, http.StatusCreated, messageToResponse(msg))
 }
 

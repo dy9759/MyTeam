@@ -2,6 +2,8 @@ package realtime
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -16,6 +18,12 @@ import (
 // MembershipChecker verifies a user belongs to a workspace.
 type MembershipChecker interface {
 	IsMember(ctx context.Context, userID, workspaceID string) bool
+}
+
+// PATResolver resolves a Personal Access Token hash to a user ID.
+// Nil is acceptable — PAT auth is simply skipped when no resolver is provided.
+type PATResolver interface {
+	ResolveUserIDFromPATHash(ctx context.Context, hash string) (string, error)
 }
 
 var upgrader = websocket.Upgrader{
@@ -255,38 +263,56 @@ func (h *Hub) PushSessionUpdate(workspaceID string, payload map[string]any) {
 	h.BroadcastToWorkspace(workspaceID, data)
 }
 
-// HandleWebSocket upgrades an HTTP connection to WebSocket with JWT auth.
-func HandleWebSocket(hub *Hub, mc MembershipChecker, w http.ResponseWriter, r *http.Request) {
+// HandleWebSocket upgrades an HTTP connection to WebSocket with JWT or PAT auth.
+func HandleWebSocket(hub *Hub, mc MembershipChecker, pr PATResolver, w http.ResponseWriter, r *http.Request) {
 	tokenStr := r.URL.Query().Get("token")
 	workspaceID := r.URL.Query().Get("workspace_id")
 
 	if tokenStr == "" || workspaceID == "" {
+		slog.Warn("ws: missing auth params", "has_token", tokenStr != "", "has_workspace", workspaceID != "")
 		http.Error(w, `{"error":"token and workspace_id required"}`, http.StatusUnauthorized)
 		return
 	}
 
-	// Validate JWT
-	token, err := jwt.Parse(tokenStr, func(token *jwt.Token) (any, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, jwt.ErrSignatureInvalid
+	var userID string
+
+	if strings.HasPrefix(tokenStr, "mul_") && pr != nil {
+		// PAT authentication (desktop clients use PATs stored in keychain).
+		h := sha256.Sum256([]byte(tokenStr))
+		hash := hex.EncodeToString(h[:])
+		uid, err := pr.ResolveUserIDFromPATHash(r.Context(), hash)
+		if err != nil {
+			slog.Warn("ws: PAT invalid", "error", err)
+			http.Error(w, `{"error":"invalid token"}`, http.StatusUnauthorized)
+			return
 		}
-		return auth.JWTSecret(), nil
-	})
-	if err != nil || !token.Valid {
-		http.Error(w, `{"error":"invalid token"}`, http.StatusUnauthorized)
-		return
-	}
+		userID = uid
+	} else {
+		// JWT authentication (web clients).
+		token, err := jwt.Parse(tokenStr, func(token *jwt.Token) (any, error) {
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, jwt.ErrSignatureInvalid
+			}
+			return auth.JWTSecret(), nil
+		})
+		if err != nil || !token.Valid {
+			slog.Warn("ws: JWT invalid", "error", err)
+			http.Error(w, `{"error":"invalid token"}`, http.StatusUnauthorized)
+			return
+		}
 
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok {
-		http.Error(w, `{"error":"invalid claims"}`, http.StatusUnauthorized)
-		return
-	}
+		claims, ok := token.Claims.(jwt.MapClaims)
+		if !ok {
+			http.Error(w, `{"error":"invalid claims"}`, http.StatusUnauthorized)
+			return
+		}
 
-	userID, ok := claims["sub"].(string)
-	if !ok || strings.TrimSpace(userID) == "" {
-		http.Error(w, `{"error":"invalid claims"}`, http.StatusUnauthorized)
-		return
+		uid, ok := claims["sub"].(string)
+		if !ok || strings.TrimSpace(uid) == "" {
+			http.Error(w, `{"error":"invalid claims"}`, http.StatusUnauthorized)
+			return
+		}
+		userID = uid
 	}
 
 	// Verify user is a member of the workspace

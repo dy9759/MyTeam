@@ -41,6 +41,7 @@ function createMainWindow() {
     trafficLightPosition: { x: 16, y: 18 },
     webPreferences: {
       preload: path.join(moduleDir, "preload.mjs"),
+      webSecurity: !VITE_DEV_SERVER_URL, // disable CORS in dev mode only
     },
   });
 

@@ -57,6 +57,21 @@ export class WSClient {
 
   connect() {
     this.intentionallyClosed = false;
+
+    // Cancel any pending reconnect timer from a prior failed attempt.
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    // Close any existing socket to avoid duplicates.
+    if (this.ws) {
+      const old = this.ws;
+      this.ws = null;
+      old.onclose = null;
+      old.onerror = null;
+      old.close();
+    }
+
     this.setStatus(this.retryIndex === 0 ? "connecting" : "reconnecting");
 
     const url = new URL(this.baseUrl);

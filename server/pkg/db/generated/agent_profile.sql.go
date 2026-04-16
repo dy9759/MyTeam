@@ -88,18 +88,19 @@ func (q *Queries) CreatePersonalAgent(ctx context.Context, arg CreatePersonalAge
 }
 
 const createSystemAgent = `-- name: CreateSystemAgent :one
-INSERT INTO agent (workspace_id, name, description, status, is_system, owner_id, visibility)
-VALUES ($1, 'System Agent', 'Workspace system agent - manages defaults and automation', 'idle', TRUE, $2, 'workspace')
+INSERT INTO agent (workspace_id, name, description, status, is_system, owner_id, visibility, runtime_mode, runtime_id)
+VALUES ($1, 'System Agent', 'Workspace system agent - manages defaults and automation', 'idle', TRUE, $2, 'workspace', 'cloud', $3)
 RETURNING id, workspace_id, name, avatar_url, runtime_mode, runtime_config, visibility, status, max_concurrent_tasks, owner_id, created_at, updated_at, description, tools, triggers, runtime_id, instructions, archived_at, archived_by, capabilities, auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags, agent_metadata, trigger_on_channel_mention, is_system, system_config, cloud_llm_config, agent_type, online_status, workload_status, identity_card, accessible_files_scope, allowed_channels_scope, last_active_at, page_scope, needs_attention, needs_attention_reason
 `
 
 type CreateSystemAgentParams struct {
 	WorkspaceID pgtype.UUID `json:"workspace_id"`
 	OwnerID     pgtype.UUID `json:"owner_id"`
+	RuntimeID   pgtype.UUID `json:"runtime_id"`
 }
 
 func (q *Queries) CreateSystemAgent(ctx context.Context, arg CreateSystemAgentParams) (Agent, error) {
-	row := q.db.QueryRow(ctx, createSystemAgent, arg.WorkspaceID, arg.OwnerID)
+	row := q.db.QueryRow(ctx, createSystemAgent, arg.WorkspaceID, arg.OwnerID, arg.RuntimeID)
 	var i Agent
 	err := row.Scan(
 		&i.ID,
@@ -532,8 +533,8 @@ func (q *Queries) UpdateAgentProfile(ctx context.Context, arg UpdateAgentProfile
 }
 
 const createPageSystemAgent = `-- name: CreatePageSystemAgent :one
-INSERT INTO agent (workspace_id, name, description, instructions, status, is_system, owner_id, visibility, agent_type, page_scope)
-VALUES ($1, $2, $3, $4, 'idle', TRUE, $5, 'workspace', 'page_system_agent', $6)
+INSERT INTO agent (workspace_id, name, description, instructions, status, is_system, owner_id, visibility, agent_type, page_scope, runtime_mode, runtime_id)
+VALUES ($1, $2, $3, $4, 'idle', TRUE, $5, 'workspace', 'page_system_agent', $6, 'cloud', $7)
 RETURNING id, workspace_id, name, avatar_url, runtime_mode, runtime_config, visibility, status, max_concurrent_tasks, owner_id, created_at, updated_at, description, tools, triggers, runtime_id, instructions, archived_at, archived_by, capabilities, auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags, agent_metadata, trigger_on_channel_mention, is_system, system_config, cloud_llm_config, agent_type, online_status, workload_status, identity_card, accessible_files_scope, allowed_channels_scope, last_active_at, page_scope, needs_attention, needs_attention_reason
 `
 
@@ -544,6 +545,7 @@ type CreatePageSystemAgentParams struct {
 	Instructions string      `json:"instructions"`
 	OwnerID      pgtype.UUID `json:"owner_id"`
 	PageScope    pgtype.Text `json:"page_scope"`
+	RuntimeID    pgtype.UUID `json:"runtime_id"`
 }
 
 func (q *Queries) CreatePageSystemAgent(ctx context.Context, arg CreatePageSystemAgentParams) (Agent, error) {
@@ -554,6 +556,7 @@ func (q *Queries) CreatePageSystemAgent(ctx context.Context, arg CreatePageSyste
 		arg.Instructions,
 		arg.OwnerID,
 		arg.PageScope,
+		arg.RuntimeID,
 	)
 	var i Agent
 	err := row.Scan(

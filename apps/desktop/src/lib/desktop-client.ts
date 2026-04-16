@@ -112,14 +112,25 @@ export const useDesktopMessagingStore = createMessagingStore({
   },
 });
 
-// Auto-connect WS when a user is authenticated; disconnect on logout.
-// This covers first-login flow (where bootstrapDesktopApp has already finished
-// without a user) and switch-account transitions.
+// Auto-disconnect WS on logout.
 useDesktopAuthStore.subscribe((state, prevState) => {
-  if (state.user && !prevState.user) {
-    ensureWSClient().connect();
-  } else if (!state.user && prevState.user) {
+  if (!state.user && prevState.user) {
     disconnectWS();
+  }
+});
+
+// When workspace loads (first login OR resume), connect WS and provision the personal agent.
+// This is the single trigger for both — it fires AFTER workspace.bootstrap() sets workspace,
+// which means getWorkspaceId() returns a real value for the WS URL query string.
+useDesktopWorkspaceStore.subscribe((state, prevState) => {
+  if (state.workspace && !prevState.workspace) {
+    // WS connect (or reconnect with correct workspace_id).
+    ensureWSClient().connect();
+    // Ensure personal agent exists on the server (fire-and-forget).
+    void desktopApi.getOrCreateSystemAgent().catch((err) => {
+      // eslint-disable-next-line no-console
+      console.warn("[bootstrap] ensure system agent failed:", err);
+    });
   }
 });
 

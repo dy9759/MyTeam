@@ -231,6 +231,78 @@ func messageToMap(m db.Message) map[string]any {
 	}
 }
 
+// ReplyToDM handles auto-reply for direct messages sent to an agent.
+// Unlike @mention replies (which go to a channel), DM replies are sent back
+// to the original sender as a DM from the agent.
+func (s *AutoReplyService) ReplyToDM(ctx context.Context, agentID string, workspaceID string, senderID string, trigger db.Message) {
+	agent, err := s.Queries.GetAgent(ctx, util.ParseUUID(agentID))
+	if err != nil {
+		slog.Debug("dm-reply: agent not found", "id", agentID, "error", err)
+		return
+	}
+
+	// Load per-agent config from cloud_llm_config.
+	var cfg CloudLLMConfig
+	if len(agent.CloudLlmConfig) > 0 {
+		if err := json.Unmarshal(agent.CloudLlmConfig, &cfg); err != nil {
+			slog.Warn("dm-reply: bad config", "agent", agent.Name, "error", err)
+			return
+		}
+	}
+	if cfg.APIKey == "" {
+		slog.Info("dm-reply: agent not configured (no API key)", "agent", agent.Name)
+		return
+	}
+
+	// Build prompt from the trigger message.
+	prompt := fmt.Sprintf("User message: %s\n\nReply as %s:", trigger.Content, agent.Name)
+
+	runnerCfg := agent_runner.Config{
+		Kernel:       cfg.Kernel,
+		BaseURL:      cfg.BaseURL,
+		APIKey:       cfg.APIKey,
+		Model:        cfg.Model,
+		SystemPrompt: cfg.SystemPrompt,
+	}
+	if runnerCfg.SystemPrompt == "" {
+		runnerCfg.SystemPrompt = fmt.Sprintf("You are %s, an AI assistant on MyTeam. Reply concisely and helpfully.", agent.Name)
+	}
+
+	slog.Info("dm-reply dispatching", "agent", agent.Name, "sender", senderID)
+
+	reply, err := s.Runner.Run(ctx, prompt, runnerCfg)
+	if err != nil {
+		slog.Warn("dm-reply runner failed", "agent", agent.Name, "error", err)
+		return
+	}
+	if reply == "" {
+		return
+	}
+
+	// Send reply as DM from agent to the original sender.
+	replyMsg, err := s.Queries.CreateMessage(ctx, db.CreateMessageParams{
+		WorkspaceID:   util.ParseUUID(workspaceID),
+		SenderID:      agent.ID,
+		SenderType:    "agent",
+		RecipientID:   util.ParseUUID(senderID),
+		RecipientType: util.StrToText("member"),
+		Content:       reply,
+		ContentType:   "text",
+		Type:          "agent_reply",
+	})
+	if err != nil {
+		slog.Warn("dm-reply: failed to insert reply", "error", err)
+		return
+	}
+
+	if s.Hub != nil {
+		data, _ := json.Marshal(map[string]any{"type": "message:created", "payload": messageToMap(replyMsg)})
+		s.Hub.BroadcastToWorkspace(workspaceID, data)
+	}
+
+	slog.Info("dm-reply sent", "agent", agent.Name, "sender", senderID)
+}
+
 // StartPollDaemon starts a background loop that checks for unread messages every 5 seconds
 // and triggers auto-reply for agents with auto_reply_enabled.
 func (s *AutoReplyService) StartPollDaemon(ctx context.Context) {

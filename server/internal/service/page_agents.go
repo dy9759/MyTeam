@@ -49,6 +49,13 @@ var PageAgentDefs = []PageAgentDef{
 // EnsurePageAgents idempotently creates all page system agents for a workspace.
 // Safe to call repeatedly — existing agents are left untouched.
 func EnsurePageAgents(ctx context.Context, q *db.Queries, workspaceID pgtype.UUID, ownerID pgtype.UUID) {
+	// Ensure cloud runtime to use as FK for page system agents.
+	cloudRuntime, rterr := q.EnsureCloudRuntime(ctx, workspaceID)
+	if rterr != nil {
+		slog.Warn("page agents: ensure cloud runtime failed", "error", rterr)
+		return
+	}
+
 	for _, def := range PageAgentDefs {
 		_, err := q.GetPageSystemAgent(ctx, db.GetPageSystemAgentParams{
 			WorkspaceID: workspaceID,
@@ -69,6 +76,7 @@ func EnsurePageAgents(ctx context.Context, q *db.Queries, workspaceID pgtype.UUI
 			Instructions: def.Instructions,
 			OwnerID:      ownerID,
 			PageScope:    pgtype.Text{String: def.Scope, Valid: true},
+			RuntimeID:    cloudRuntime.ID,
 		})
 		if err != nil {
 			slog.Warn("failed to create page agent", "scope", def.Scope, "error", err)

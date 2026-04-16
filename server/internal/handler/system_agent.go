@@ -43,10 +43,19 @@ func (h *Handler) GetOrCreateSystemAgent(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// Ensure cloud runtime exists for this workspace (needed as FK on agent row).
+	cloudRuntime, rterr := h.Queries.EnsureCloudRuntime(r.Context(), wsUUID)
+	if rterr != nil {
+		slog.Warn("ensure cloud runtime failed", "error", rterr)
+		writeError(w, http.StatusInternalServerError, "failed to ensure cloud runtime")
+		return
+	}
+
 	// Create system agent
 	agent, err = h.Queries.CreateSystemAgent(r.Context(), db.CreateSystemAgentParams{
 		WorkspaceID: wsUUID,
 		OwnerID:     ownerUUID,
+		RuntimeID:   cloudRuntime.ID,
 	})
 	if err != nil {
 		slog.Warn("create system agent failed", "error", err)
