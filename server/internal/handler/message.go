@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -340,6 +341,77 @@ func (h *Handler) ListThread(w http.ResponseWriter, r *http.Request) {
 		resp[i] = messageToResponse(m)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"messages": resp})
+}
+
+// POST /api/threads/{threadID}/promote
+func (h *Handler) PromoteThread(w http.ResponseWriter, r *http.Request) {
+	userID, ok := requireUserID(w, r)
+	if !ok {
+		return
+	}
+	workspaceID := resolveWorkspaceID(r)
+	threadID := chi.URLParam(r, "threadID")
+
+	var req struct {
+		ChannelName string `json:"channel_name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ChannelName == "" {
+		writeError(w, http.StatusBadRequest, "channel_name is required")
+		return
+	}
+
+	// Get thread messages.
+	threadMessages, err := h.Queries.ListThreadMessages(r.Context(), db.ListThreadMessagesParams{
+		ParentID: parseUUID(threadID),
+		Limit:    1000,
+		Offset:   0,
+	})
+	if err != nil || len(threadMessages) == 0 {
+		writeError(w, http.StatusNotFound, "thread not found or empty")
+		return
+	}
+
+	// Create new channel.
+	newCh, err := h.Queries.CreateChannel(r.Context(), db.CreateChannelParams{
+		WorkspaceID:   parseUUID(workspaceID),
+		Name:          req.ChannelName,
+		Description:   pgtype.Text{String: "Promoted from thread", Valid: true},
+		CreatedBy:     parseUUID(userID),
+		CreatedByType: "member",
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to create channel")
+		return
+	}
+
+	// Copy messages to new channel.
+	for _, msg := range threadMessages {
+		_, _ = h.DB.Exec(r.Context(), `
+			INSERT INTO message (workspace_id, sender_id, sender_type, channel_id, content, content_type, type, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		`, msg.WorkspaceID, msg.SenderID, msg.SenderType, newCh.ID,
+			msg.Content, msg.ContentType, msg.Type, msg.CreatedAt)
+	}
+
+	// Post system notification in original channel.
+	var origChannelID pgtype.UUID
+	_ = h.DB.QueryRow(r.Context(),
+		`SELECT channel_id FROM message WHERE id = $1`, parseUUID(threadID),
+	).Scan(&origChannelID)
+
+	if origChannelID.Valid {
+		_, _ = h.DB.Exec(r.Context(), `
+			INSERT INTO message (workspace_id, sender_id, sender_type, channel_id, content, content_type, type)
+			VALUES ($1, $2, 'member', $3, $4, 'text', 'system_notification')
+		`, parseUUID(workspaceID), parseUUID(userID), origChannelID,
+			fmt.Sprintf("Thread promoted to channel #%s", req.ChannelName))
+	}
+
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"channel_id":      uuidToString(newCh.ID),
+		"channel_name":    newCh.Name,
+		"copied_messages": len(threadMessages),
+	})
 }
 
 func messageToResponse(m db.Message) map[string]any {
