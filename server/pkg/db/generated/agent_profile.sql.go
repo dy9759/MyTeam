@@ -88,19 +88,20 @@ func (q *Queries) CreatePersonalAgent(ctx context.Context, arg CreatePersonalAge
 }
 
 const createSystemAgent = `-- name: CreateSystemAgent :one
-INSERT INTO agent (workspace_id, name, description, status, is_system, owner_id, visibility, runtime_mode, runtime_id)
-VALUES ($1, 'System Agent', 'Workspace system agent - manages defaults and automation', 'idle', TRUE, $2, 'workspace', 'cloud', $3)
+INSERT INTO agent (workspace_id, name, description, status, is_system, owner_id, visibility, runtime_mode, runtime_id, cloud_llm_config)
+VALUES ($1, 'System Agent', 'Workspace system agent - manages defaults and automation', 'idle', TRUE, $2, 'workspace', 'cloud', $3, $4)
 RETURNING id, workspace_id, name, avatar_url, runtime_mode, runtime_config, visibility, status, max_concurrent_tasks, owner_id, created_at, updated_at, description, tools, triggers, runtime_id, instructions, archived_at, archived_by, capabilities, auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags, agent_metadata, trigger_on_channel_mention, is_system, system_config, cloud_llm_config, agent_type, online_status, workload_status, identity_card, accessible_files_scope, allowed_channels_scope, last_active_at, page_scope, needs_attention, needs_attention_reason
 `
 
 type CreateSystemAgentParams struct {
-	WorkspaceID pgtype.UUID `json:"workspace_id"`
-	OwnerID     pgtype.UUID `json:"owner_id"`
-	RuntimeID   pgtype.UUID `json:"runtime_id"`
+	WorkspaceID    pgtype.UUID `json:"workspace_id"`
+	OwnerID        pgtype.UUID `json:"owner_id"`
+	RuntimeID      pgtype.UUID `json:"runtime_id"`
+	CloudLlmConfig []byte      `json:"cloud_llm_config"`
 }
 
 func (q *Queries) CreateSystemAgent(ctx context.Context, arg CreateSystemAgentParams) (Agent, error) {
-	row := q.db.QueryRow(ctx, createSystemAgent, arg.WorkspaceID, arg.OwnerID, arg.RuntimeID)
+	row := q.db.QueryRow(ctx, createSystemAgent, arg.WorkspaceID, arg.OwnerID, arg.RuntimeID, arg.CloudLlmConfig)
 	var i Agent
 	err := row.Scan(
 		&i.ID,

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"log/slog"
 	"net/http"
 
@@ -51,11 +52,16 @@ func (h *Handler) GetOrCreateSystemAgent(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// Snapshot LLM config from server env (same as personal agent).
+	llmCfg := service.LoadCloudLLMConfigFromEnv()
+	llmJSON, _ := json.Marshal(llmCfg)
+
 	// Create system agent
 	agent, err = h.Queries.CreateSystemAgent(r.Context(), db.CreateSystemAgentParams{
-		WorkspaceID: wsUUID,
-		OwnerID:     ownerUUID,
-		RuntimeID:   cloudRuntime.ID,
+		WorkspaceID:    wsUUID,
+		OwnerID:        ownerUUID,
+		RuntimeID:      cloudRuntime.ID,
+		CloudLlmConfig: llmJSON,
 	})
 	if err != nil {
 		slog.Warn("create system agent failed", "error", err)
