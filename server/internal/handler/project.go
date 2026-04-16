@@ -2,17 +2,34 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/protocol"
 )
 
 // ---------- Response types ----------
+
+// PlanSummary is an embedded plan summary in a ProjectResponse.
+type PlanSummary struct {
+	ID             string `json:"id"`
+	Title          string `json:"title"`
+	ApprovalStatus string `json:"approval_status"`
+}
+
+// RunSummary is an embedded active-run summary in a ProjectResponse.
+type RunSummary struct {
+	ID      string  `json:"id"`
+	Status  string  `json:"status"`
+	StartAt *string `json:"start_at"`
+}
 
 // ProjectResponse is the JSON response for a project.
 type ProjectResponse struct {
@@ -28,6 +45,8 @@ type ProjectResponse struct {
 	CreatorOwnerID      string          `json:"creator_owner_id"`
 	CreatedAt           string          `json:"created_at"`
 	UpdatedAt           string          `json:"updated_at"`
+	Plan                *PlanSummary    `json:"plan,omitempty"`
+	ActiveRun           *RunSummary     `json:"active_run,omitempty"`
 }
 
 // ProjectVersionResponse is the JSON response for a project version.
@@ -63,22 +82,26 @@ type ProjectRunResponse struct {
 // ---------- Valid project statuses ----------
 
 var validProjectStatuses = map[string]bool{
-	"not_started": true,
-	"running":     true,
-	"paused":      true,
-	"completed":   true,
-	"failed":      true,
-	"archived":    true,
+	"draft":     true,
+	"scheduled": true,
+	"running":   true,
+	"paused":    true,
+	"completed": true,
+	"failed":    true,
+	"stopped":   true,
+	"archived":  true,
 }
 
 // validProjectStatusTransitions defines which status transitions are allowed.
 var validProjectStatusTransitions = map[string][]string{
-	"not_started": {"running", "archived"},
-	"running":     {"paused", "completed", "failed"},
-	"paused":      {"running", "archived"},
-	"completed":   {"archived"},
-	"failed":      {"not_started", "archived"},
-	"archived":    {},
+	"draft":     {"scheduled", "running", "archived"},
+	"scheduled": {"running", "paused", "archived"},
+	"running":   {"paused", "completed", "failed", "stopped"},
+	"paused":    {"running", "stopped", "archived"},
+	"completed": {"archived"},
+	"failed":    {"draft", "archived"},
+	"stopped":   {"draft", "archived"},
+	"archived":  {},
 }
 
 func isValidStatusTransition(from, to string) bool {
@@ -92,6 +115,45 @@ func isValidStatusTransition(from, to string) bool {
 		}
 	}
 	return false
+}
+
+// ---------- Conversion helpers ----------
+
+func projectToResponse(p db.Project) ProjectResponse {
+	return ProjectResponse{
+		ID:                  uuidToString(p.ID),
+		WorkspaceID:         uuidToString(p.WorkspaceID),
+		Title:               p.Title,
+		Description:         textToPtr(p.Description),
+		Status:              p.Status,
+		ScheduleType:        p.ScheduleType,
+		CronExpr:            textToPtr(p.CronExpr),
+		SourceConversations: p.SourceConversations,
+		ChannelID:           uuidToPtr(p.ChannelID),
+		CreatorOwnerID:      uuidToString(p.CreatorOwnerID),
+		CreatedAt:           p.CreatedAt.Time.Format(time.RFC3339),
+		UpdatedAt:           p.UpdatedAt.Time.Format(time.RFC3339),
+	}
+}
+
+func planToResponsePtr(p db.Plan) *PlanSummary {
+	return &PlanSummary{
+		ID:             uuidToString(p.ID),
+		Title:          p.Title,
+		ApprovalStatus: p.ApprovalStatus,
+	}
+}
+
+func runToResponsePtr(r db.ProjectRun) *RunSummary {
+	return &RunSummary{
+		ID:      uuidToString(r.ID),
+		Status:  r.Status,
+		StartAt: timestampToPtr(r.StartAt),
+	}
+}
+
+func ptrFromUUID(u pgtype.UUID) *string {
+	return uuidToPtr(u)
 }
 
 // ---------- Helpers ----------
@@ -184,18 +246,7 @@ func (h *Handler) ListProjects(w http.ResponseWriter, r *http.Request) {
 
 	result := make([]ProjectResponse, 0, len(projects))
 	for _, p := range projects {
-		result = append(result, ProjectResponse{
-			ID:                  uuidToString(p.ID),
-			WorkspaceID:         uuidToString(p.WorkspaceID),
-			Title:               p.Title,
-			Description:         textToPtr(p.Description),
-			Status:              p.Status,
-			ScheduleType:        p.ScheduleType,
-			SourceConversations: p.SourceConversations,
-			CreatorOwnerID:      uuidToString(p.CreatorOwnerID),
-			CreatedAt:           p.CreatedAt.Time.Format(time.RFC3339),
-			UpdatedAt:           p.UpdatedAt.Time.Format(time.RFC3339),
-		})
+		result = append(result, projectToResponse(p))
 	}
 	writeJSON(w, http.StatusOK, result)
 }
@@ -212,21 +263,32 @@ func (h *Handler) GetProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_ = resolveWorkspaceID(r) // Used for workspace-scoped query
+	project, err := h.Queries.GetProject(r.Context(), parseUUID(projectID))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "project not found")
+		} else {
+			slog.Error("get project failed", "error", err)
+			writeError(w, http.StatusInternalServerError, "failed to get project")
+		}
+		return
+	}
 
-	// TODO: Use h.Queries.GetProject() once sqlc query is generated.
-	// The query should join project + plan (by project_id) + active run (by project_id).
-	// project, err := h.Queries.GetProject(r.Context(), db.GetProjectParams{
-	//     ID:          parseUUID(projectID),
-	//     WorkspaceID: parseUUID(workspaceID),
-	// })
-	// if err != nil {
-	//     writeError(w, http.StatusNotFound, "project not found")
-	//     return
-	// }
+	resp := projectToResponse(project)
 
-	_ = projectID
-	writeError(w, http.StatusNotFound, "project not found")
+	// Optionally join plan.
+	plan, err := h.Queries.GetPlanByProject(r.Context(), project.ID)
+	if err == nil {
+		resp.Plan = planToResponsePtr(plan)
+	}
+
+	// Optionally join active run.
+	activeRun, err := h.Queries.GetActiveProjectRun(r.Context(), project.ID)
+	if err == nil {
+		resp.ActiveRun = runToResponsePtr(activeRun)
+	}
+
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // CreateProject handles POST /api/projects
@@ -266,10 +328,10 @@ func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
 
 	// Validate schedule_type
 	switch scheduleType {
-	case "one_time", "scheduled", "recurring":
+	case "one_time", "scheduled", "recurring", "scheduled_once":
 		// valid
 	default:
-		writeError(w, http.StatusBadRequest, "invalid schedule_type: must be one_time, scheduled, or recurring")
+		writeError(w, http.StatusBadRequest, "invalid schedule_type: must be one_time, scheduled, recurring, or scheduled_once")
 		return
 	}
 
@@ -287,34 +349,35 @@ func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: Create project record once sqlc query is generated.
-	// project, err := h.Queries.CreateProject(r.Context(), db.CreateProjectParams{
-	//     WorkspaceID:         parseUUID(workspaceID),
-	//     Title:               req.Title,
-	//     Description:         strToText(req.Description),
-	//     Status:              "not_started",
-	//     ScheduleType:        scheduleType,
-	//     CronExpr:            ptrToText(req.CronExpr),
-	//     SourceConversations: []byte("[]"),
-	//     ChannelID:           ch.ID,
-	//     CreatorOwnerID:      parseUUID(userID),
-	// })
-
-	channelIDStr := uuidToString(ch.ID)
-	resp := ProjectResponse{
-		ID:                  "", // TODO: from created project
-		WorkspaceID:         workspaceID,
+	project, err := h.Queries.CreateProject(r.Context(), db.CreateProjectParams{
+		WorkspaceID:         parseUUID(workspaceID),
 		Title:               req.Title,
-		Description:         &req.Description,
-		Status:              "not_started",
+		Description:         strToText(req.Description),
+		Status:              "draft",
 		ScheduleType:        scheduleType,
-		CronExpr:            req.CronExpr,
-		SourceConversations: json.RawMessage("[]"),
-		ChannelID:           &channelIDStr,
-		CreatorOwnerID:      userID,
-		CreatedAt:           time.Now().UTC().Format(time.RFC3339),
-		UpdatedAt:           time.Now().UTC().Format(time.RFC3339),
+		CronExpr:            ptrToText(req.CronExpr),
+		SourceConversations: []byte("[]"),
+		ChannelID:           ch.ID,
+		CreatorOwnerID:      parseUUID(userID),
+	})
+	if err != nil {
+		slog.Error("create project failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to create project")
+		return
 	}
+
+	// Create default "main" branch.
+	_, err = h.Queries.CreateProjectBranch(r.Context(), db.CreateProjectBranchParams{
+		ProjectID: project.ID,
+		Name:      "main",
+		IsDefault: true,
+		CreatedBy: parseUUID(userID),
+	})
+	if err != nil {
+		slog.Warn("failed to create default branch for project", "project_id", uuidToString(project.ID), "error", err)
+	}
+
+	resp := projectToResponse(project)
 
 	h.publish(protocol.EventProjectCreated, workspaceID, "member", userID, map[string]any{
 		"project": resp,
@@ -336,6 +399,7 @@ func (h *Handler) UpdateProject(w http.ResponseWriter, r *http.Request) {
 		Description  *string `json:"description"`
 		Status       *string `json:"status"`
 		ScheduleType *string `json:"schedule_type"`
+		CronExpr     *string `json:"cron_expr"`
 	}
 
 	var req UpdateProjectRequest
@@ -350,19 +414,34 @@ func (h *Handler) UpdateProject(w http.ResponseWriter, r *http.Request) {
 	}
 	workspaceID := resolveWorkspaceID(r)
 
-	// Validate status transition if status is being updated
+	// Load current project to validate status transition.
+	current, err := h.Queries.GetProject(r.Context(), parseUUID(projectID))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "project not found")
+		} else {
+			slog.Error("get project for update failed", "error", err)
+			writeError(w, http.StatusInternalServerError, "failed to get project")
+		}
+		return
+	}
+
+	// Validate status transition if status is being updated.
 	if req.Status != nil {
 		if !validProjectStatuses[*req.Status] {
 			writeError(w, http.StatusBadRequest, "invalid status")
 			return
 		}
-		// TODO: Load current project status and validate transition using isValidStatusTransition()
+		if !isValidStatusTransition(current.Status, *req.Status) {
+			writeError(w, http.StatusBadRequest, "invalid status transition from "+current.Status+" to "+*req.Status)
+			return
+		}
 	}
 
-	// Validate schedule_type if provided
+	// Validate schedule_type if provided.
 	if req.ScheduleType != nil {
 		switch *req.ScheduleType {
-		case "one_time", "scheduled", "recurring":
+		case "one_time", "scheduled", "recurring", "scheduled_once":
 			// valid
 		default:
 			writeError(w, http.StatusBadRequest, "invalid schedule_type")
@@ -370,14 +449,27 @@ func (h *Handler) UpdateProject(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// TODO: Use h.Queries.UpdateProject() once sqlc query is generated.
-	// err := h.Queries.UpdateProject(r.Context(), db.UpdateProjectParams{...})
+	updated, err := h.Queries.UpdateProject(r.Context(), db.UpdateProjectParams{
+		ID:           parseUUID(projectID),
+		Title:        ptrToText(req.Title),
+		Description:  ptrToText(req.Description),
+		Status:       ptrToText(req.Status),
+		ScheduleType: ptrToText(req.ScheduleType),
+		CronExpr:     ptrToText(req.CronExpr),
+	})
+	if err != nil {
+		slog.Error("update project failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to update project")
+		return
+	}
 
-	h.publish(protocol.EventProjectUpdated, workspaceID, "member", userID, map[string]string{
-		"project_id": projectID,
+	resp := projectToResponse(updated)
+
+	h.publish(protocol.EventProjectUpdated, workspaceID, "member", userID, map[string]any{
+		"project": resp,
 	})
 
-	writeJSON(w, http.StatusOK, map[string]string{"status": "updated"})
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // DeleteProject handles DELETE /api/projects/{projectID}
@@ -394,14 +486,34 @@ func (h *Handler) DeleteProject(w http.ResponseWriter, r *http.Request) {
 	}
 	workspaceID := resolveWorkspaceID(r)
 
-	// TODO: Use h.Queries.DeleteProject() once sqlc query is generated.
-	// Verify the user is the creator or has admin/owner role.
+	// Load project to verify ownership.
+	project, err := h.Queries.GetProject(r.Context(), parseUUID(projectID))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "project not found")
+		} else {
+			slog.Error("get project for delete failed", "error", err)
+			writeError(w, http.StatusInternalServerError, "failed to get project")
+		}
+		return
+	}
+
+	if uuidToString(project.CreatorOwnerID) != userID {
+		writeError(w, http.StatusForbidden, "only the project creator can delete this project")
+		return
+	}
+
+	if err := h.Queries.DeleteProject(r.Context(), parseUUID(projectID)); err != nil {
+		slog.Error("delete project failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to delete project")
+		return
+	}
 
 	h.publish(protocol.EventProjectDeleted, workspaceID, "member", userID, map[string]string{
 		"project_id": projectID,
 	})
 
-	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // ForkProject handles POST /api/projects/{projectID}/fork
@@ -429,33 +541,101 @@ func (h *Handler) ForkProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: Implement fork logic once sqlc queries are generated.
-	// 1. Get current plan for the project
-	// 2. Serialize plan to plan_snapshot JSONB
-	// 3. Get current workflow for the project
-	// 4. Serialize workflow to workflow_snapshot JSONB
-	// 5. Get latest version_number and increment
-	// 6. Create new project_version row
-	//
-	// plan, err := h.Queries.GetPlanByProjectID(r.Context(), parseUUID(projectID))
-	// workflow, err := h.Queries.GetWorkflowByPlanID(r.Context(), plan.ID)
-	// latestVersion, err := h.Queries.GetLatestProjectVersion(r.Context(), parseUUID(projectID))
-	// newVersion, err := h.Queries.CreateProjectVersion(r.Context(), db.CreateProjectVersionParams{...})
-
-	resp := ProjectVersionResponse{
-		ID:            "", // TODO: from created version
-		ProjectID:     projectID,
-		VersionNumber: 0,  // TODO: from created version
-		BranchName:    &req.BranchName,
-		ForkReason:    &req.ForkReason,
-		VersionStatus: "active",
-		CreatedBy:     &userID,
-		CreatedAt:     time.Now().UTC().Format(time.RFC3339),
+	// Get the latest version to copy snapshots from and determine next version number.
+	latestVersion, err := h.Queries.GetLatestProjectVersion(r.Context(), parseUUID(projectID))
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		slog.Error("get latest project version failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to get latest project version")
+		return
 	}
 
-	slog.Info("project forked", "project_id", projectID, "user_id", userID, "branch_name", req.BranchName)
+	var (
+		nextVersionNumber int32          = 1
+		planSnapshot      []byte         = []byte("{}")
+		workflowSnapshot  []byte         = []byte("{}")
+		parentVersionID   pgtype.UUID
+	)
+
+	if err == nil {
+		// latestVersion was found
+		nextVersionNumber = latestVersion.VersionNumber + 1
+		parentVersionID = latestVersion.ID
+		if len(latestVersion.PlanSnapshot) > 0 {
+			planSnapshot = latestVersion.PlanSnapshot
+		}
+		if len(latestVersion.WorkflowSnapshot) > 0 {
+			workflowSnapshot = latestVersion.WorkflowSnapshot
+		}
+	}
+
+	// Create a new branch for the fork.
+	branchName := req.BranchName
+	if branchName == "" {
+		branchName = "branch-v" + itoa(nextVersionNumber)
+	}
+
+	branch, err := h.Queries.CreateProjectBranch(r.Context(), db.CreateProjectBranchParams{
+		ProjectID: parseUUID(projectID),
+		Name:      branchName,
+		IsDefault: false,
+		CreatedBy: parseUUID(userID),
+	})
+	if err != nil {
+		slog.Error("create project branch for fork failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to create project branch")
+		return
+	}
+
+	newVersion, err := h.Queries.CreateProjectVersion(r.Context(), db.CreateProjectVersionParams{
+		ProjectID:        parseUUID(projectID),
+		ParentVersionID:  parentVersionID,
+		VersionNumber:    nextVersionNumber,
+		BranchName:       strToText(branchName),
+		ForkReason:       strToText(req.ForkReason),
+		PlanSnapshot:     planSnapshot,
+		WorkflowSnapshot: workflowSnapshot,
+		CreatedBy:        parseUUID(userID),
+	})
+	if err != nil {
+		slog.Error("create project version for fork failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to create project version")
+		return
+	}
+
+	_ = branch // branch is created but the version carries the branch name
+
+	resp := ProjectVersionResponse{
+		ID:               uuidToString(newVersion.ID),
+		ProjectID:        uuidToString(newVersion.ProjectID),
+		ParentVersionID:  ptrFromUUID(newVersion.ParentVersionID),
+		VersionNumber:    newVersion.VersionNumber,
+		BranchName:       textToPtr(newVersion.BranchName),
+		ForkReason:       textToPtr(newVersion.ForkReason),
+		PlanSnapshot:     newVersion.PlanSnapshot,
+		WorkflowSnapshot: newVersion.WorkflowSnapshot,
+		VersionStatus:    newVersion.VersionStatus,
+		CreatedBy:        ptrFromUUID(newVersion.CreatedBy),
+		CreatedAt:        newVersion.CreatedAt.Time.Format(time.RFC3339),
+	}
+
+	slog.Info("project forked", "project_id", projectID, "user_id", userID, "branch_name", branchName)
 
 	writeJSON(w, http.StatusCreated, resp)
+}
+
+// itoa converts an int32 to a decimal string without importing strconv.
+func itoa(n int32) string {
+	if n == 0 {
+		return "0"
+	}
+	buf := [10]byte{}
+	pos := len(buf)
+	for n > 0 {
+		pos--
+		buf[pos] = byte('0' + n%10)
+		n /= 10
+	}
+	return string(buf[pos:])
 }
 
 // ListProjectVersions handles GET /api/projects/{projectID}/versions
@@ -470,11 +650,31 @@ func (h *Handler) ListProjectVersions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: Use h.Queries.ListProjectVersions() once sqlc query is generated.
+	versions, err := h.Queries.ListProjectVersions(r.Context(), parseUUID(projectID))
+	if err != nil {
+		slog.Error("list project versions failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to list project versions")
+		return
+	}
 
-	_ = projectID
+	result := make([]ProjectVersionResponse, 0, len(versions))
+	for _, v := range versions {
+		result = append(result, ProjectVersionResponse{
+			ID:               uuidToString(v.ID),
+			ProjectID:        uuidToString(v.ProjectID),
+			ParentVersionID:  ptrFromUUID(v.ParentVersionID),
+			VersionNumber:    v.VersionNumber,
+			BranchName:       textToPtr(v.BranchName),
+			ForkReason:       textToPtr(v.ForkReason),
+			PlanSnapshot:     v.PlanSnapshot,
+			WorkflowSnapshot: v.WorkflowSnapshot,
+			VersionStatus:    v.VersionStatus,
+			CreatedBy:        ptrFromUUID(v.CreatedBy),
+			CreatedAt:        v.CreatedAt.Time.Format(time.RFC3339),
+		})
+	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"versions": []ProjectVersionResponse{}, "total": 0})
+	writeJSON(w, http.StatusOK, map[string]any{"versions": result, "total": len(result)})
 }
 
 // GetProjectRuns handles GET /api/projects/{projectID}/runs
@@ -489,11 +689,31 @@ func (h *Handler) GetProjectRuns(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: Use h.Queries.ListProjectRuns() once sqlc query is generated.
+	runs, err := h.Queries.ListProjectRuns(r.Context(), parseUUID(projectID))
+	if err != nil {
+		slog.Error("list project runs failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to list project runs")
+		return
+	}
 
-	_ = projectID
+	result := make([]ProjectRunResponse, 0, len(runs))
+	for _, run := range runs {
+		result = append(result, ProjectRunResponse{
+			ID:            uuidToString(run.ID),
+			PlanID:        uuidToString(run.PlanID),
+			ProjectID:     uuidToString(run.ProjectID),
+			Status:        run.Status,
+			StartAt:       timestampToPtr(run.StartAt),
+			EndAt:         timestampToPtr(run.EndAt),
+			StepLogs:      run.StepLogs,
+			OutputRefs:    run.OutputRefs,
+			FailureReason: textToPtr(run.FailureReason),
+			RetryCount:    run.RetryCount,
+			CreatedAt:     run.CreatedAt.Time.Format(time.RFC3339),
+		})
+	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"runs": []ProjectRunResponse{}, "total": 0})
+	writeJSON(w, http.StatusOK, map[string]any{"runs": result, "total": len(result)})
 }
 
 // ApprovePlan is now in plan.go — moved there with actual DB implementation.
