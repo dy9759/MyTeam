@@ -225,6 +225,23 @@ func (q *Queries) CompleteAgentTask(ctx context.Context, arg CompleteAgentTaskPa
 	return i, err
 }
 
+const countInflightCloudExecutions = `-- name: CountInflightCloudExecutions :one
+SELECT count(*) FROM agent_task_queue atq
+JOIN agent_runtime ar ON ar.id = atq.runtime_id
+WHERE ar.workspace_id = $1
+  AND ar.mode = 'cloud'
+  AND atq.status IN ('dispatched', 'running')
+`
+
+// Counts cloud-mode tasks currently dispatched or running for a workspace.
+// Used by QuotaService.CheckBeforeClaim to enforce max_concurrent_cloud_exec.
+func (q *Queries) CountInflightCloudExecutions(ctx context.Context, workspaceID pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countInflightCloudExecutions, workspaceID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countRunningTasks = `-- name: CountRunningTasks :one
 SELECT count(*) FROM agent_task_queue
 WHERE agent_id = $1 AND status IN ('dispatched', 'running')

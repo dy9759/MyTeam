@@ -3,10 +3,12 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/events"
 	"github.com/multica-ai/multica/server/internal/realtime"
@@ -23,6 +25,7 @@ type CloudExecutorService struct {
 	Hub         *realtime.Hub
 	Bus         *events.Bus
 	TaskService *TaskService
+	Quota       *QuotaService
 }
 
 // NewCloudExecutorService creates a new CloudExecutorService.
@@ -32,6 +35,7 @@ func NewCloudExecutorService(queries *db.Queries, hub *realtime.Hub, bus *events
 		Hub:         hub,
 		Bus:         bus,
 		TaskService: taskService,
+		Quota:       NewQuotaService(queries),
 	}
 }
 
@@ -83,6 +87,11 @@ func (s *CloudExecutorService) handleDispatch(ctx context.Context, e events.Even
 		return
 	}
 
+	// Quota gate before executing a dispatched task.
+	if err := s.enforceQuota(ctx, task, runtime.WorkspaceID); err != nil {
+		return
+	}
+
 	s.executeTask(ctx, task, agentRow, runtime)
 }
 
@@ -109,6 +118,23 @@ func (s *CloudExecutorService) pollAndExecute(ctx context.Context) {
 	}
 
 	for _, task := range tasks {
+		// Resolve workspace via the task's runtime so the quota check can
+		// reference the correct workspace_quota row regardless of whether
+		// the task is still queued.
+		runtime, err := s.Queries.GetAgentRuntime(ctx, task.RuntimeID)
+		if err != nil {
+			continue
+		}
+		if runtime.Mode.String != "cloud" {
+			continue
+		}
+
+		// Workspace-level quota gate per PRD §12: enforce monthly USD
+		// ceiling and concurrent cloud-exec cap before consuming a slot.
+		if err := s.enforceQuota(ctx, task, runtime.WorkspaceID); err != nil {
+			continue
+		}
+
 		if task.Status == "queued" {
 			// Claim the task first.
 			claimed, err := s.TaskService.ClaimTask(ctx, task.AgentID)
@@ -123,15 +149,73 @@ func (s *CloudExecutorService) pollAndExecute(ctx context.Context) {
 			continue
 		}
 
-		runtime, err := s.Queries.GetAgentRuntime(ctx, agentRow.RuntimeID)
-		if err != nil {
-			continue
-		}
-		if runtime.Mode.String != "cloud" {
-			continue
-		}
-
 		go s.executeTask(ctx, task, agentRow, runtime)
+	}
+}
+
+// enforceQuota wraps QuotaService.CheckBeforeClaim and, on quota failure,
+// fails the task with the corresponding error code so the queue does not
+// stay forever pending. Returns nil on pass, non-nil if the caller should
+// skip this task.
+func (s *CloudExecutorService) enforceQuota(ctx context.Context, task db.AgentTaskQueue, workspaceID pgtype.UUID) error {
+	if s.Quota == nil || !workspaceID.Valid {
+		return nil
+	}
+
+	wsUUID, err := uuid.FromBytes(workspaceID.Bytes[:])
+	if err != nil {
+		return nil
+	}
+
+	inflight, err := s.Queries.CountInflightCloudExecutions(ctx, workspaceID)
+	if err != nil {
+		slog.Warn("[cloud-executor] count inflight failed", "ws", wsUUID.String(), "error", err)
+		return nil
+	}
+
+	if err := s.Quota.CheckBeforeClaim(ctx, wsUUID, int(inflight)); err != nil {
+		switch {
+		case errors.Is(err, ErrQuotaExceeded):
+			slog.Info("[cloud-executor] quota exceeded; failing task",
+				"task_id", util.UUIDToString(task.ID),
+				"workspace_id", wsUUID.String())
+			s.failTaskForQuota(ctx, task, "QUOTA_EXCEEDED: "+err.Error())
+		case errors.Is(err, ErrQuotaConcurrentLimit):
+			// Concurrent-limit is transient — leave the task queued so a
+			// future poll cycle picks it up once a slot frees. Log only.
+			slog.Debug("[cloud-executor] concurrent limit reached; skipping",
+				"task_id", util.UUIDToString(task.ID),
+				"workspace_id", wsUUID.String(),
+				"inflight", inflight)
+		default:
+			slog.Warn("[cloud-executor] quota check error",
+				"task_id", util.UUIDToString(task.ID),
+				"workspace_id", wsUUID.String(),
+				"error", err)
+		}
+		return err
+	}
+	return nil
+}
+
+// failTaskForQuota fails a task that hit a hard quota limit so it doesn't
+// stay perpetually queued. Best-effort; failures are logged.
+func (s *CloudExecutorService) failTaskForQuota(ctx context.Context, task db.AgentTaskQueue, reason string) {
+	// FailAgentTask only matches dispatched/running rows. For queued tasks we
+	// have to claim first so the row enters the dispatched state, then fail.
+	current := task
+	if current.Status == "queued" {
+		claimed, err := s.TaskService.ClaimTask(ctx, current.AgentID)
+		if err != nil || claimed == nil {
+			slog.Debug("[cloud-executor] could not claim task to fail-on-quota",
+				"task_id", util.UUIDToString(current.ID), "err", err)
+			return
+		}
+		current = *claimed
+	}
+	if _, err := s.TaskService.FailTask(ctx, current.ID, reason); err != nil {
+		slog.Warn("[cloud-executor] fail-on-quota failed",
+			"task_id", util.UUIDToString(current.ID), "err", err)
 	}
 }
 

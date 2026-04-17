@@ -253,6 +253,15 @@ WHERE atq.status IN ('queued', 'dispatched')
 ORDER BY atq.priority DESC, atq.created_at ASC
 LIMIT 20;
 
+-- name: CountInflightCloudExecutions :one
+-- Counts cloud-mode tasks currently dispatched or running for a workspace.
+-- Used by QuotaService.CheckBeforeClaim to enforce max_concurrent_cloud_exec.
+SELECT count(*) FROM agent_task_queue atq
+JOIN agent_runtime ar ON ar.id = atq.runtime_id
+WHERE ar.workspace_id = @workspace_id
+  AND ar.mode = 'cloud'
+  AND atq.status IN ('dispatched', 'running');
+
 -- name: SetAgentScope :exec
 UPDATE agent
 SET scope      = sqlc.narg('scope'),

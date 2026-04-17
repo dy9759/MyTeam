@@ -453,6 +453,9 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 			// Metrics (Phase 5)
 			r.Get("/api/metrics", h.GetWorkspaceMetrics)
 
+			// Activity log (Plan 4 — PRD §3)
+			r.Get("/api/activity-log", h.ListActivityLog)
+
 			// Inbox
 			r.Route("/api/inbox", func(r chi.Router) {
 				r.Get("/", h.ListInbox)

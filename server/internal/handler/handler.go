@@ -48,6 +48,7 @@ type Handler struct {
 	PlanGenerator     *service.PlanGeneratorService
 	Scheduler         *service.SchedulerService
 	IdentityGenerator *service.IdentityGeneratorService
+	Activity          *service.ActivityWriter
 }
 
 func New(queries *db.Queries, txStarter txStarter, hub *realtime.Hub, bus *events.Bus, emailService *service.EmailService, s3 *storage.S3Storage, cfSigner *auth.CloudFrontSigner) *Handler {
@@ -69,6 +70,7 @@ func New(queries *db.Queries, txStarter txStarter, hub *realtime.Hub, bus *event
 		Storage:      s3,
 		CFSigner:     cfSigner,
 		Guards:       auth.NewGuards(queries),
+		Activity:     service.NewActivityWriter(queries),
 	}
 }
 
