@@ -1,56 +1,109 @@
+-- Common column list for agent SELECTs after Account Phase 2 drops:
+-- excludes is_system, page_scope, runtime_mode, runtime_config, cloud_llm_config,
+-- capabilities, tools, triggers, system_config, agent_metadata,
+-- accessible_files_scope, allowed_channels_scope, online_status, workload_status.
+
 -- name: ListAgents :many
-SELECT * FROM agent
+SELECT
+    id, workspace_id, name, avatar_url, visibility, status,
+    max_concurrent_tasks, owner_id, created_at, updated_at, description,
+    runtime_id, instructions, archived_at, archived_by,
+    auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags,
+    trigger_on_channel_mention, needs_attention, needs_attention_reason,
+    agent_type, identity_card, last_active_at, scope, owner_type
+FROM agent
 WHERE workspace_id = $1 AND archived_at IS NULL
 ORDER BY created_at ASC;
 
 -- name: ListAllAgents :many
-SELECT * FROM agent
+SELECT
+    id, workspace_id, name, avatar_url, visibility, status,
+    max_concurrent_tasks, owner_id, created_at, updated_at, description,
+    runtime_id, instructions, archived_at, archived_by,
+    auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags,
+    trigger_on_channel_mention, needs_attention, needs_attention_reason,
+    agent_type, identity_card, last_active_at, scope, owner_type
+FROM agent
 WHERE workspace_id = $1
 ORDER BY created_at ASC;
 
 -- name: GetAgent :one
-SELECT * FROM agent
+SELECT
+    id, workspace_id, name, avatar_url, visibility, status,
+    max_concurrent_tasks, owner_id, created_at, updated_at, description,
+    runtime_id, instructions, archived_at, archived_by,
+    auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags,
+    trigger_on_channel_mention, needs_attention, needs_attention_reason,
+    agent_type, identity_card, last_active_at, scope, owner_type
+FROM agent
 WHERE id = $1;
 
 -- name: GetAgentInWorkspace :one
-SELECT * FROM agent
+SELECT
+    id, workspace_id, name, avatar_url, visibility, status,
+    max_concurrent_tasks, owner_id, created_at, updated_at, description,
+    runtime_id, instructions, archived_at, archived_by,
+    auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags,
+    trigger_on_channel_mention, needs_attention, needs_attention_reason,
+    agent_type, identity_card, last_active_at, scope, owner_type
+FROM agent
 WHERE id = $1 AND workspace_id = $2;
 
 -- name: CreateAgent :one
 INSERT INTO agent (
-    workspace_id, name, description, avatar_url, runtime_mode,
-    runtime_config, runtime_id, visibility, max_concurrent_tasks, owner_id,
-    tools, triggers, instructions
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-RETURNING *;
+    workspace_id, name, description, avatar_url,
+    runtime_id, visibility, max_concurrent_tasks, owner_id,
+    instructions
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+RETURNING
+    id, workspace_id, name, avatar_url, visibility, status,
+    max_concurrent_tasks, owner_id, created_at, updated_at, description,
+    runtime_id, instructions, archived_at, archived_by,
+    auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags,
+    trigger_on_channel_mention, needs_attention, needs_attention_reason,
+    agent_type, identity_card, last_active_at, scope, owner_type;
 
 -- name: UpdateAgent :one
 UPDATE agent SET
     name = COALESCE(sqlc.narg('name'), name),
     description = COALESCE(sqlc.narg('description'), description),
     avatar_url = COALESCE(sqlc.narg('avatar_url'), avatar_url),
-    runtime_config = COALESCE(sqlc.narg('runtime_config'), runtime_config),
-    runtime_mode = COALESCE(sqlc.narg('runtime_mode'), runtime_mode),
     runtime_id = COALESCE(sqlc.narg('runtime_id'), runtime_id),
     visibility = COALESCE(sqlc.narg('visibility'), visibility),
     status = COALESCE(sqlc.narg('status'), status),
     max_concurrent_tasks = COALESCE(sqlc.narg('max_concurrent_tasks'), max_concurrent_tasks),
-    tools = COALESCE(sqlc.narg('tools'), tools),
-    triggers = COALESCE(sqlc.narg('triggers'), triggers),
     instructions = COALESCE(sqlc.narg('instructions'), instructions),
     updated_at = now()
 WHERE id = $1
-RETURNING *;
+RETURNING
+    id, workspace_id, name, avatar_url, visibility, status,
+    max_concurrent_tasks, owner_id, created_at, updated_at, description,
+    runtime_id, instructions, archived_at, archived_by,
+    auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags,
+    trigger_on_channel_mention, needs_attention, needs_attention_reason,
+    agent_type, identity_card, last_active_at, scope, owner_type;
 
 -- name: ArchiveAgent :one
 UPDATE agent SET archived_at = now(), archived_by = $2, updated_at = now()
 WHERE id = $1
-RETURNING *;
+RETURNING
+    id, workspace_id, name, avatar_url, visibility, status,
+    max_concurrent_tasks, owner_id, created_at, updated_at, description,
+    runtime_id, instructions, archived_at, archived_by,
+    auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags,
+    trigger_on_channel_mention, needs_attention, needs_attention_reason,
+    agent_type, identity_card, last_active_at, scope, owner_type;
 
 -- name: RestoreAgent :one
 UPDATE agent SET archived_at = NULL, archived_by = NULL, updated_at = now()
 WHERE id = $1
-RETURNING *;
+RETURNING
+    id, workspace_id, name, avatar_url, visibility, status,
+    max_concurrent_tasks, owner_id, created_at, updated_at, description,
+    runtime_id, instructions, archived_at, archived_by,
+    auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags,
+    trigger_on_channel_mention, needs_attention, needs_attention_reason,
+    agent_type, identity_card, last_active_at, scope, owner_type;
 
 -- name: ListAgentTasks :many
 SELECT * FROM agent_task_queue
@@ -180,20 +233,26 @@ ORDER BY created_at DESC;
 -- name: UpdateAgentStatus :one
 UPDATE agent SET status = $2, updated_at = now()
 WHERE id = $1
-RETURNING *;
+RETURNING
+    id, workspace_id, name, avatar_url, visibility, status,
+    max_concurrent_tasks, owner_id, created_at, updated_at, description,
+    runtime_id, instructions, archived_at, archived_by,
+    auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags,
+    trigger_on_channel_mention, needs_attention, needs_attention_reason,
+    agent_type, identity_card, last_active_at, scope, owner_type;
 
 -- name: ListCloudPendingTasks :many
 SELECT atq.* FROM agent_task_queue atq
 JOIN agent a ON a.id = atq.agent_id
+JOIN agent_runtime r ON r.id = a.runtime_id
 WHERE atq.status IN ('queued', 'dispatched')
-  AND a.runtime_mode = 'cloud'
+  AND r.mode = 'cloud'
 ORDER BY atq.priority DESC, atq.created_at ASC
 LIMIT 20;
 
 -- name: SetAgentScope :exec
 UPDATE agent
 SET scope      = sqlc.narg('scope'),
-    page_scope = sqlc.narg('page_scope'),
     updated_at = now()
 WHERE id = $1;
 

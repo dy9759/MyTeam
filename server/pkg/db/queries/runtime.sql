@@ -1,14 +1,36 @@
+-- Common column list for agent_runtime SELECTs after Account Phase 2 drops:
+-- excludes runtime_mode, last_seen_at. Reads of runtime_mode -> mode,
+-- reads of last_seen_at -> last_heartbeat_at.
+
 -- name: ListAgentRuntimes :many
-SELECT * FROM agent_runtime
+SELECT
+    id, workspace_id, daemon_id, name, provider, status,
+    device_info, metadata, created_at, updated_at,
+    server_host, working_dir, capabilities, last_heartbeat,
+    readiness, concurrency_limit, current_load, lease_expires_at,
+    last_heartbeat_at, mode
+FROM agent_runtime
 WHERE workspace_id = $1
 ORDER BY created_at ASC;
 
 -- name: GetAgentRuntime :one
-SELECT * FROM agent_runtime
+SELECT
+    id, workspace_id, daemon_id, name, provider, status,
+    device_info, metadata, created_at, updated_at,
+    server_host, working_dir, capabilities, last_heartbeat,
+    readiness, concurrency_limit, current_load, lease_expires_at,
+    last_heartbeat_at, mode
+FROM agent_runtime
 WHERE id = $1;
 
 -- name: GetAgentRuntimeForWorkspace :one
-SELECT * FROM agent_runtime
+SELECT
+    id, workspace_id, daemon_id, name, provider, status,
+    device_info, metadata, created_at, updated_at,
+    server_host, working_dir, capabilities, last_heartbeat,
+    readiness, concurrency_limit, current_load, lease_expires_at,
+    last_heartbeat_at, mode
+FROM agent_runtime
 WHERE id = $1 AND workspace_id = $2;
 
 -- name: UpsertAgentRuntime :one
@@ -16,29 +38,39 @@ INSERT INTO agent_runtime (
     workspace_id,
     daemon_id,
     name,
-    runtime_mode,
+    mode,
     provider,
     status,
     device_info,
     metadata,
-    last_seen_at
+    last_heartbeat_at
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())
 ON CONFLICT (workspace_id, daemon_id, provider)
 DO UPDATE SET
     name = EXCLUDED.name,
-    runtime_mode = EXCLUDED.runtime_mode,
+    mode = EXCLUDED.mode,
     status = EXCLUDED.status,
     device_info = EXCLUDED.device_info,
     metadata = EXCLUDED.metadata,
-    last_seen_at = now(),
+    last_heartbeat_at = now(),
     updated_at = now()
-RETURNING *;
+RETURNING
+    id, workspace_id, daemon_id, name, provider, status,
+    device_info, metadata, created_at, updated_at,
+    server_host, working_dir, capabilities, last_heartbeat,
+    readiness, concurrency_limit, current_load, lease_expires_at,
+    last_heartbeat_at, mode;
 
 -- name: UpdateAgentRuntimeHeartbeat :one
 UPDATE agent_runtime
-SET status = 'online', last_seen_at = now(), updated_at = now()
+SET status = 'online', last_heartbeat_at = now(), updated_at = now()
 WHERE id = $1
-RETURNING *;
+RETURNING
+    id, workspace_id, daemon_id, name, provider, status,
+    device_info, metadata, created_at, updated_at,
+    server_host, working_dir, capabilities, last_heartbeat,
+    readiness, concurrency_limit, current_load, lease_expires_at,
+    last_heartbeat_at, mode;
 
 -- name: SetAgentRuntimeOffline :exec
 UPDATE agent_runtime
@@ -49,24 +81,35 @@ WHERE id = $1;
 UPDATE agent_runtime
 SET status = 'offline', updated_at = now()
 WHERE status = 'online'
-  AND last_seen_at < now() - make_interval(secs => @stale_seconds::double precision)
+  AND last_heartbeat_at < now() - make_interval(secs => @stale_seconds::double precision)
 RETURNING id, workspace_id;
 
 -- name: GetCloudRuntime :one
-SELECT * FROM agent_runtime
-WHERE workspace_id = $1 AND runtime_mode = 'cloud' AND provider = 'cloud_llm'
+SELECT
+    id, workspace_id, daemon_id, name, provider, status,
+    device_info, metadata, created_at, updated_at,
+    server_host, working_dir, capabilities, last_heartbeat,
+    readiness, concurrency_limit, current_load, lease_expires_at,
+    last_heartbeat_at, mode
+FROM agent_runtime
+WHERE workspace_id = $1 AND mode = 'cloud' AND provider = 'cloud_llm'
 LIMIT 1;
 
 -- name: EnsureCloudRuntime :one
 INSERT INTO agent_runtime (
-    workspace_id, daemon_id, name, runtime_mode, provider, status, device_info, metadata, last_seen_at
+    workspace_id, daemon_id, name, mode, provider, status, device_info, metadata, last_heartbeat_at
 ) VALUES ($1, 'cloud', 'Cloud LLM', 'cloud', 'cloud_llm', 'online', 'cloud', '{}', now())
 ON CONFLICT (workspace_id, daemon_id, provider)
 DO UPDATE SET
     status = 'online',
-    last_seen_at = now(),
+    last_heartbeat_at = now(),
     updated_at = now()
-RETURNING *;
+RETURNING
+    id, workspace_id, daemon_id, name, provider, status,
+    device_info, metadata, created_at, updated_at,
+    server_host, working_dir, capabilities, last_heartbeat,
+    readiness, concurrency_limit, current_load, lease_expires_at,
+    last_heartbeat_at, mode;
 
 -- name: FailTasksForOfflineRuntimes :many
 -- Marks dispatched/running tasks as failed when their runtime is offline.
@@ -82,7 +125,6 @@ RETURNING id, agent_id, issue_id;
 -- name: UpdateRuntimeHeartbeat :exec
 UPDATE agent_runtime
 SET last_heartbeat_at = now(),
-    last_seen_at      = now(),
     status            = COALESCE(sqlc.narg('status'), status),
     updated_at        = now()
 WHERE id = $1;

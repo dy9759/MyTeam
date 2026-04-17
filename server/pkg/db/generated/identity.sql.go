@@ -29,7 +29,14 @@ func (q *Queries) GetAgentIdentityCard(ctx context.Context, id pgtype.UUID) (Get
 }
 
 const listAgentsByType = `-- name: ListAgentsByType :many
-SELECT id, workspace_id, name, avatar_url, runtime_mode, runtime_config, visibility, status, max_concurrent_tasks, owner_id, created_at, updated_at, description, tools, triggers, runtime_id, instructions, archived_at, archived_by, capabilities, auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags, agent_metadata, trigger_on_channel_mention, is_system, system_config, needs_attention, needs_attention_reason, agent_type, online_status, workload_status, identity_card, accessible_files_scope, allowed_channels_scope, last_active_at, page_scope, cloud_llm_config, scope, owner_type FROM agent
+SELECT
+    id, workspace_id, name, avatar_url, visibility, status,
+    max_concurrent_tasks, owner_id, created_at, updated_at, description,
+    runtime_id, instructions, archived_at, archived_by,
+    auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags,
+    trigger_on_channel_mention, needs_attention, needs_attention_reason,
+    agent_type, identity_card, last_active_at, scope, owner_type
+FROM agent
 WHERE workspace_id = $1 AND agent_type = $2 AND archived_at IS NULL
 ORDER BY created_at ASC
 `
@@ -53,8 +60,6 @@ func (q *Queries) ListAgentsByType(ctx context.Context, arg ListAgentsByTypePara
 			&i.WorkspaceID,
 			&i.Name,
 			&i.AvatarUrl,
-			&i.RuntimeMode,
-			&i.RuntimeConfig,
 			&i.Visibility,
 			&i.Status,
 			&i.MaxConcurrentTasks,
@@ -62,34 +67,22 @@ func (q *Queries) ListAgentsByType(ctx context.Context, arg ListAgentsByTypePara
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.Description,
-			&i.Tools,
-			&i.Triggers,
 			&i.RuntimeID,
 			&i.Instructions,
 			&i.ArchivedAt,
 			&i.ArchivedBy,
-			&i.Capabilities,
 			&i.AutoReplyEnabled,
 			&i.AutoReplyConfig,
 			&i.DisplayName,
 			&i.Avatar,
 			&i.Bio,
 			&i.Tags,
-			&i.AgentMetadata,
 			&i.TriggerOnChannelMention,
-			&i.IsSystem,
-			&i.SystemConfig,
 			&i.NeedsAttention,
 			&i.NeedsAttentionReason,
 			&i.AgentType,
-			&i.OnlineStatus,
-			&i.WorkloadStatus,
 			&i.IdentityCard,
-			&i.AccessibleFilesScope,
-			&i.AllowedChannelsScope,
 			&i.LastActiveAt,
-			&i.PageScope,
-			&i.CloudLlmConfig,
 			&i.Scope,
 			&i.OwnerType,
 		); err != nil {
@@ -125,35 +118,5 @@ WHERE id = $1
 
 func (q *Queries) UpdateAgentLastActiveAt(ctx context.Context, id pgtype.UUID) error {
 	_, err := q.db.Exec(ctx, updateAgentLastActiveAt, id)
-	return err
-}
-
-const updateAgentOnlineStatus = `-- name: UpdateAgentOnlineStatus :exec
-UPDATE agent SET online_status = $2, updated_at = NOW()
-WHERE id = $1
-`
-
-type UpdateAgentOnlineStatusParams struct {
-	ID           pgtype.UUID `json:"id"`
-	OnlineStatus string      `json:"online_status"`
-}
-
-func (q *Queries) UpdateAgentOnlineStatus(ctx context.Context, arg UpdateAgentOnlineStatusParams) error {
-	_, err := q.db.Exec(ctx, updateAgentOnlineStatus, arg.ID, arg.OnlineStatus)
-	return err
-}
-
-const updateAgentWorkloadStatus = `-- name: UpdateAgentWorkloadStatus :exec
-UPDATE agent SET workload_status = $2, updated_at = NOW()
-WHERE id = $1
-`
-
-type UpdateAgentWorkloadStatusParams struct {
-	ID             pgtype.UUID `json:"id"`
-	WorkloadStatus string      `json:"workload_status"`
-}
-
-func (q *Queries) UpdateAgentWorkloadStatus(ctx context.Context, arg UpdateAgentWorkloadStatusParams) error {
-	_, err := q.db.Exec(ctx, updateAgentWorkloadStatus, arg.ID, arg.WorkloadStatus)
 	return err
 }

@@ -24,8 +24,6 @@ type Agent struct {
 	WorkspaceID             pgtype.UUID        `json:"workspace_id"`
 	Name                    string             `json:"name"`
 	AvatarUrl               pgtype.Text        `json:"avatar_url"`
-	RuntimeMode             string             `json:"runtime_mode"`
-	RuntimeConfig           []byte             `json:"runtime_config"`
 	Visibility              string             `json:"visibility"`
 	Status                  string             `json:"status"`
 	MaxConcurrentTasks      int32              `json:"max_concurrent_tasks"`
@@ -33,36 +31,24 @@ type Agent struct {
 	CreatedAt               pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt               pgtype.Timestamptz `json:"updated_at"`
 	Description             string             `json:"description"`
-	Tools                   []byte             `json:"tools"`
-	Triggers                []byte             `json:"triggers"`
 	RuntimeID               pgtype.UUID        `json:"runtime_id"`
 	Instructions            string             `json:"instructions"`
 	ArchivedAt              pgtype.Timestamptz `json:"archived_at"`
 	ArchivedBy              pgtype.UUID        `json:"archived_by"`
-	Capabilities            []string           `json:"capabilities"`
 	AutoReplyEnabled        pgtype.Bool        `json:"auto_reply_enabled"`
 	AutoReplyConfig         []byte             `json:"auto_reply_config"`
 	DisplayName             pgtype.Text        `json:"display_name"`
 	Avatar                  pgtype.Text        `json:"avatar"`
 	Bio                     pgtype.Text        `json:"bio"`
 	Tags                    []string           `json:"tags"`
-	AgentMetadata           []byte             `json:"agent_metadata"`
 	TriggerOnChannelMention pgtype.Bool        `json:"trigger_on_channel_mention"`
-	IsSystem                bool               `json:"is_system"`
-	SystemConfig            []byte             `json:"system_config"`
 	NeedsAttention          bool               `json:"needs_attention"`
 	NeedsAttentionReason    pgtype.Text        `json:"needs_attention_reason"`
 	AgentType               string             `json:"agent_type"`
-	OnlineStatus            string             `json:"online_status"`
-	WorkloadStatus          string             `json:"workload_status"`
 	IdentityCard            []byte             `json:"identity_card"`
-	AccessibleFilesScope    []byte             `json:"accessible_files_scope"`
-	AllowedChannelsScope    []byte             `json:"allowed_channels_scope"`
 	LastActiveAt            pgtype.Timestamptz `json:"last_active_at"`
-	PageScope               pgtype.Text        `json:"page_scope"`
-	CloudLlmConfig          []byte             `json:"cloud_llm_config"`
 	Scope                   pgtype.Text        `json:"scope"`
-	OwnerType               pgtype.Text        `json:"owner_type"`
+	OwnerType               string             `json:"owner_type"`
 }
 
 type AgentRuntime struct {
@@ -70,12 +56,10 @@ type AgentRuntime struct {
 	WorkspaceID      pgtype.UUID        `json:"workspace_id"`
 	DaemonID         pgtype.Text        `json:"daemon_id"`
 	Name             string             `json:"name"`
-	RuntimeMode      string             `json:"runtime_mode"`
 	Provider         string             `json:"provider"`
 	Status           string             `json:"status"`
 	DeviceInfo       string             `json:"device_info"`
 	Metadata         []byte             `json:"metadata"`
-	LastSeenAt       pgtype.Timestamptz `json:"last_seen_at"`
 	CreatedAt        pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
 	ServerHost       string             `json:"server_host"`
