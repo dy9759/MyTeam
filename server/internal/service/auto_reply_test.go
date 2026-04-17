@@ -44,6 +44,15 @@ func insertTestAgent(t *testing.T, q *db.Queries, wsID, runtimeID, ownerID pgtyp
 	if err != nil {
 		t.Fatalf("insert agent: %v", err)
 	}
+	// Bring agent online so auto-reply's "agent offline → notify owner and stop"
+	// early-return branch doesn't fire in tests that exercise the post-eligibility path.
+	if err := q.UpdateAgentOnlineStatus(context.Background(), db.UpdateAgentOnlineStatusParams{
+		ID:           a.ID,
+		OnlineStatus: "online",
+	}); err != nil {
+		t.Fatalf("set agent online: %v", err)
+	}
+	a.OnlineStatus = "online"
 	return a
 }
 
