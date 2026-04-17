@@ -11,6 +11,23 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const acquireRuntimeLease = `-- name: AcquireRuntimeLease :exec
+UPDATE agent_runtime
+SET lease_expires_at = $2,
+    updated_at       = now()
+WHERE id = $1
+`
+
+type AcquireRuntimeLeaseParams struct {
+	ID             pgtype.UUID        `json:"id"`
+	LeaseExpiresAt pgtype.Timestamptz `json:"lease_expires_at"`
+}
+
+func (q *Queries) AcquireRuntimeLease(ctx context.Context, arg AcquireRuntimeLeaseParams) error {
+	_, err := q.db.Exec(ctx, acquireRuntimeLease, arg.ID, arg.LeaseExpiresAt)
+	return err
+}
+
 const ensureCloudRuntime = `-- name: EnsureCloudRuntime :one
 INSERT INTO agent_runtime (
     workspace_id, daemon_id, name, runtime_mode, provider, status, device_info, metadata, last_seen_at
@@ -20,7 +37,7 @@ DO UPDATE SET
     status = 'online',
     last_seen_at = now(),
     updated_at = now()
-RETURNING id, workspace_id, daemon_id, name, runtime_mode, provider, status, device_info, metadata, last_seen_at, created_at, updated_at
+RETURNING id, workspace_id, daemon_id, name, runtime_mode, provider, status, device_info, metadata, last_seen_at, created_at, updated_at, server_host, working_dir, capabilities, last_heartbeat, readiness, concurrency_limit, current_load, lease_expires_at, last_heartbeat_at, mode
 `
 
 func (q *Queries) EnsureCloudRuntime(ctx context.Context, workspaceID pgtype.UUID) (AgentRuntime, error) {
@@ -39,6 +56,16 @@ func (q *Queries) EnsureCloudRuntime(ctx context.Context, workspaceID pgtype.UUI
 		&i.LastSeenAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ServerHost,
+		&i.WorkingDir,
+		&i.Capabilities,
+		&i.LastHeartbeat,
+		&i.Readiness,
+		&i.ConcurrencyLimit,
+		&i.CurrentLoad,
+		&i.LeaseExpiresAt,
+		&i.LastHeartbeatAt,
+		&i.Mode,
 	)
 	return i, err
 }
@@ -82,7 +109,7 @@ func (q *Queries) FailTasksForOfflineRuntimes(ctx context.Context) ([]FailTasksF
 }
 
 const getAgentRuntime = `-- name: GetAgentRuntime :one
-SELECT id, workspace_id, daemon_id, name, runtime_mode, provider, status, device_info, metadata, last_seen_at, created_at, updated_at FROM agent_runtime
+SELECT id, workspace_id, daemon_id, name, runtime_mode, provider, status, device_info, metadata, last_seen_at, created_at, updated_at, server_host, working_dir, capabilities, last_heartbeat, readiness, concurrency_limit, current_load, lease_expires_at, last_heartbeat_at, mode FROM agent_runtime
 WHERE id = $1
 `
 
@@ -102,12 +129,22 @@ func (q *Queries) GetAgentRuntime(ctx context.Context, id pgtype.UUID) (AgentRun
 		&i.LastSeenAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ServerHost,
+		&i.WorkingDir,
+		&i.Capabilities,
+		&i.LastHeartbeat,
+		&i.Readiness,
+		&i.ConcurrencyLimit,
+		&i.CurrentLoad,
+		&i.LeaseExpiresAt,
+		&i.LastHeartbeatAt,
+		&i.Mode,
 	)
 	return i, err
 }
 
 const getAgentRuntimeForWorkspace = `-- name: GetAgentRuntimeForWorkspace :one
-SELECT id, workspace_id, daemon_id, name, runtime_mode, provider, status, device_info, metadata, last_seen_at, created_at, updated_at FROM agent_runtime
+SELECT id, workspace_id, daemon_id, name, runtime_mode, provider, status, device_info, metadata, last_seen_at, created_at, updated_at, server_host, working_dir, capabilities, last_heartbeat, readiness, concurrency_limit, current_load, lease_expires_at, last_heartbeat_at, mode FROM agent_runtime
 WHERE id = $1 AND workspace_id = $2
 `
 
@@ -132,12 +169,22 @@ func (q *Queries) GetAgentRuntimeForWorkspace(ctx context.Context, arg GetAgentR
 		&i.LastSeenAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ServerHost,
+		&i.WorkingDir,
+		&i.Capabilities,
+		&i.LastHeartbeat,
+		&i.Readiness,
+		&i.ConcurrencyLimit,
+		&i.CurrentLoad,
+		&i.LeaseExpiresAt,
+		&i.LastHeartbeatAt,
+		&i.Mode,
 	)
 	return i, err
 }
 
 const getCloudRuntime = `-- name: GetCloudRuntime :one
-SELECT id, workspace_id, daemon_id, name, runtime_mode, provider, status, device_info, metadata, last_seen_at, created_at, updated_at FROM agent_runtime
+SELECT id, workspace_id, daemon_id, name, runtime_mode, provider, status, device_info, metadata, last_seen_at, created_at, updated_at, server_host, working_dir, capabilities, last_heartbeat, readiness, concurrency_limit, current_load, lease_expires_at, last_heartbeat_at, mode FROM agent_runtime
 WHERE workspace_id = $1 AND runtime_mode = 'cloud' AND provider = 'cloud_llm'
 LIMIT 1
 `
@@ -158,12 +205,22 @@ func (q *Queries) GetCloudRuntime(ctx context.Context, workspaceID pgtype.UUID) 
 		&i.LastSeenAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ServerHost,
+		&i.WorkingDir,
+		&i.Capabilities,
+		&i.LastHeartbeat,
+		&i.Readiness,
+		&i.ConcurrencyLimit,
+		&i.CurrentLoad,
+		&i.LeaseExpiresAt,
+		&i.LastHeartbeatAt,
+		&i.Mode,
 	)
 	return i, err
 }
 
 const listAgentRuntimes = `-- name: ListAgentRuntimes :many
-SELECT id, workspace_id, daemon_id, name, runtime_mode, provider, status, device_info, metadata, last_seen_at, created_at, updated_at FROM agent_runtime
+SELECT id, workspace_id, daemon_id, name, runtime_mode, provider, status, device_info, metadata, last_seen_at, created_at, updated_at, server_host, working_dir, capabilities, last_heartbeat, readiness, concurrency_limit, current_load, lease_expires_at, last_heartbeat_at, mode FROM agent_runtime
 WHERE workspace_id = $1
 ORDER BY created_at ASC
 `
@@ -190,6 +247,16 @@ func (q *Queries) ListAgentRuntimes(ctx context.Context, workspaceID pgtype.UUID
 			&i.LastSeenAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ServerHost,
+			&i.WorkingDir,
+			&i.Capabilities,
+			&i.LastHeartbeat,
+			&i.Readiness,
+			&i.ConcurrencyLimit,
+			&i.CurrentLoad,
+			&i.LeaseExpiresAt,
+			&i.LastHeartbeatAt,
+			&i.Mode,
 		); err != nil {
 			return nil, err
 		}
@@ -245,11 +312,28 @@ func (q *Queries) SetAgentRuntimeOffline(ctx context.Context, id pgtype.UUID) er
 	return err
 }
 
+const setRuntimeLoad = `-- name: SetRuntimeLoad :exec
+UPDATE agent_runtime
+SET current_load = $2,
+    updated_at   = now()
+WHERE id = $1
+`
+
+type SetRuntimeLoadParams struct {
+	ID          pgtype.UUID `json:"id"`
+	CurrentLoad int32       `json:"current_load"`
+}
+
+func (q *Queries) SetRuntimeLoad(ctx context.Context, arg SetRuntimeLoadParams) error {
+	_, err := q.db.Exec(ctx, setRuntimeLoad, arg.ID, arg.CurrentLoad)
+	return err
+}
+
 const updateAgentRuntimeHeartbeat = `-- name: UpdateAgentRuntimeHeartbeat :one
 UPDATE agent_runtime
 SET status = 'online', last_seen_at = now(), updated_at = now()
 WHERE id = $1
-RETURNING id, workspace_id, daemon_id, name, runtime_mode, provider, status, device_info, metadata, last_seen_at, created_at, updated_at
+RETURNING id, workspace_id, daemon_id, name, runtime_mode, provider, status, device_info, metadata, last_seen_at, created_at, updated_at, server_host, working_dir, capabilities, last_heartbeat, readiness, concurrency_limit, current_load, lease_expires_at, last_heartbeat_at, mode
 `
 
 func (q *Queries) UpdateAgentRuntimeHeartbeat(ctx context.Context, id pgtype.UUID) (AgentRuntime, error) {
@@ -268,8 +352,37 @@ func (q *Queries) UpdateAgentRuntimeHeartbeat(ctx context.Context, id pgtype.UUI
 		&i.LastSeenAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ServerHost,
+		&i.WorkingDir,
+		&i.Capabilities,
+		&i.LastHeartbeat,
+		&i.Readiness,
+		&i.ConcurrencyLimit,
+		&i.CurrentLoad,
+		&i.LeaseExpiresAt,
+		&i.LastHeartbeatAt,
+		&i.Mode,
 	)
 	return i, err
+}
+
+const updateRuntimeHeartbeat = `-- name: UpdateRuntimeHeartbeat :exec
+UPDATE agent_runtime
+SET last_heartbeat_at = now(),
+    last_seen_at      = now(),
+    status            = COALESCE($2, status),
+    updated_at        = now()
+WHERE id = $1
+`
+
+type UpdateRuntimeHeartbeatParams struct {
+	ID     pgtype.UUID `json:"id"`
+	Status pgtype.Text `json:"status"`
+}
+
+func (q *Queries) UpdateRuntimeHeartbeat(ctx context.Context, arg UpdateRuntimeHeartbeatParams) error {
+	_, err := q.db.Exec(ctx, updateRuntimeHeartbeat, arg.ID, arg.Status)
+	return err
 }
 
 const upsertAgentRuntime = `-- name: UpsertAgentRuntime :one
@@ -293,7 +406,7 @@ DO UPDATE SET
     metadata = EXCLUDED.metadata,
     last_seen_at = now(),
     updated_at = now()
-RETURNING id, workspace_id, daemon_id, name, runtime_mode, provider, status, device_info, metadata, last_seen_at, created_at, updated_at
+RETURNING id, workspace_id, daemon_id, name, runtime_mode, provider, status, device_info, metadata, last_seen_at, created_at, updated_at, server_host, working_dir, capabilities, last_heartbeat, readiness, concurrency_limit, current_load, lease_expires_at, last_heartbeat_at, mode
 `
 
 type UpsertAgentRuntimeParams struct {
@@ -332,6 +445,16 @@ func (q *Queries) UpsertAgentRuntime(ctx context.Context, arg UpsertAgentRuntime
 		&i.LastSeenAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ServerHost,
+		&i.WorkingDir,
+		&i.Capabilities,
+		&i.LastHeartbeat,
+		&i.Readiness,
+		&i.ConcurrencyLimit,
+		&i.CurrentLoad,
+		&i.LeaseExpiresAt,
+		&i.LastHeartbeatAt,
+		&i.Mode,
 	)
 	return i, err
 }

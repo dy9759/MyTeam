@@ -14,7 +14,7 @@ import (
 const archiveAgent = `-- name: ArchiveAgent :one
 UPDATE agent SET archived_at = now(), archived_by = $2, updated_at = now()
 WHERE id = $1
-RETURNING id, workspace_id, name, avatar_url, runtime_mode, runtime_config, visibility, status, max_concurrent_tasks, owner_id, created_at, updated_at, description, tools, triggers, runtime_id, instructions, archived_at, archived_by, capabilities, auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags, agent_metadata, trigger_on_channel_mention, is_system, system_config, cloud_llm_config, agent_type, online_status, workload_status, identity_card, accessible_files_scope, allowed_channels_scope, last_active_at, page_scope, needs_attention, needs_attention_reason
+RETURNING id, workspace_id, name, avatar_url, runtime_mode, runtime_config, visibility, status, max_concurrent_tasks, owner_id, created_at, updated_at, description, tools, triggers, runtime_id, instructions, archived_at, archived_by, capabilities, auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags, agent_metadata, trigger_on_channel_mention, is_system, system_config, needs_attention, needs_attention_reason, agent_type, online_status, workload_status, identity_card, accessible_files_scope, allowed_channels_scope, last_active_at, page_scope, cloud_llm_config, scope, owner_type
 `
 
 type ArchiveAgentParams struct {
@@ -56,7 +56,8 @@ func (q *Queries) ArchiveAgent(ctx context.Context, arg ArchiveAgentParams) (Age
 		&i.TriggerOnChannelMention,
 		&i.IsSystem,
 		&i.SystemConfig,
-		&i.CloudLlmConfig,
+		&i.NeedsAttention,
+		&i.NeedsAttentionReason,
 		&i.AgentType,
 		&i.OnlineStatus,
 		&i.WorkloadStatus,
@@ -65,8 +66,9 @@ func (q *Queries) ArchiveAgent(ctx context.Context, arg ArchiveAgentParams) (Age
 		&i.AllowedChannelsScope,
 		&i.LastActiveAt,
 		&i.PageScope,
-		&i.NeedsAttention,
-		&i.NeedsAttentionReason,
+		&i.CloudLlmConfig,
+		&i.Scope,
+		&i.OwnerType,
 	)
 	return i, err
 }
@@ -237,7 +239,7 @@ INSERT INTO agent (
     runtime_config, runtime_id, visibility, max_concurrent_tasks, owner_id,
     tools, triggers, instructions
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-RETURNING id, workspace_id, name, avatar_url, runtime_mode, runtime_config, visibility, status, max_concurrent_tasks, owner_id, created_at, updated_at, description, tools, triggers, runtime_id, instructions, archived_at, archived_by, capabilities, auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags, agent_metadata, trigger_on_channel_mention, is_system, system_config, cloud_llm_config, agent_type, online_status, workload_status, identity_card, accessible_files_scope, allowed_channels_scope, last_active_at, page_scope, needs_attention, needs_attention_reason
+RETURNING id, workspace_id, name, avatar_url, runtime_mode, runtime_config, visibility, status, max_concurrent_tasks, owner_id, created_at, updated_at, description, tools, triggers, runtime_id, instructions, archived_at, archived_by, capabilities, auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags, agent_metadata, trigger_on_channel_mention, is_system, system_config, needs_attention, needs_attention_reason, agent_type, online_status, workload_status, identity_card, accessible_files_scope, allowed_channels_scope, last_active_at, page_scope, cloud_llm_config, scope, owner_type
 `
 
 type CreateAgentParams struct {
@@ -304,7 +306,8 @@ func (q *Queries) CreateAgent(ctx context.Context, arg CreateAgentParams) (Agent
 		&i.TriggerOnChannelMention,
 		&i.IsSystem,
 		&i.SystemConfig,
-		&i.CloudLlmConfig,
+		&i.NeedsAttention,
+		&i.NeedsAttentionReason,
 		&i.AgentType,
 		&i.OnlineStatus,
 		&i.WorkloadStatus,
@@ -313,8 +316,9 @@ func (q *Queries) CreateAgent(ctx context.Context, arg CreateAgentParams) (Agent
 		&i.AllowedChannelsScope,
 		&i.LastActiveAt,
 		&i.PageScope,
-		&i.NeedsAttention,
-		&i.NeedsAttentionReason,
+		&i.CloudLlmConfig,
+		&i.Scope,
+		&i.OwnerType,
 	)
 	return i, err
 }
@@ -446,7 +450,7 @@ func (q *Queries) FailStaleTasks(ctx context.Context, arg FailStaleTasksParams) 
 }
 
 const getAgent = `-- name: GetAgent :one
-SELECT id, workspace_id, name, avatar_url, runtime_mode, runtime_config, visibility, status, max_concurrent_tasks, owner_id, created_at, updated_at, description, tools, triggers, runtime_id, instructions, archived_at, archived_by, capabilities, auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags, agent_metadata, trigger_on_channel_mention, is_system, system_config, cloud_llm_config, agent_type, online_status, workload_status, identity_card, accessible_files_scope, allowed_channels_scope, last_active_at, page_scope, needs_attention, needs_attention_reason FROM agent
+SELECT id, workspace_id, name, avatar_url, runtime_mode, runtime_config, visibility, status, max_concurrent_tasks, owner_id, created_at, updated_at, description, tools, triggers, runtime_id, instructions, archived_at, archived_by, capabilities, auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags, agent_metadata, trigger_on_channel_mention, is_system, system_config, needs_attention, needs_attention_reason, agent_type, online_status, workload_status, identity_card, accessible_files_scope, allowed_channels_scope, last_active_at, page_scope, cloud_llm_config, scope, owner_type FROM agent
 WHERE id = $1
 `
 
@@ -484,7 +488,8 @@ func (q *Queries) GetAgent(ctx context.Context, id pgtype.UUID) (Agent, error) {
 		&i.TriggerOnChannelMention,
 		&i.IsSystem,
 		&i.SystemConfig,
-		&i.CloudLlmConfig,
+		&i.NeedsAttention,
+		&i.NeedsAttentionReason,
 		&i.AgentType,
 		&i.OnlineStatus,
 		&i.WorkloadStatus,
@@ -493,14 +498,15 @@ func (q *Queries) GetAgent(ctx context.Context, id pgtype.UUID) (Agent, error) {
 		&i.AllowedChannelsScope,
 		&i.LastActiveAt,
 		&i.PageScope,
-		&i.NeedsAttention,
-		&i.NeedsAttentionReason,
+		&i.CloudLlmConfig,
+		&i.Scope,
+		&i.OwnerType,
 	)
 	return i, err
 }
 
 const getAgentInWorkspace = `-- name: GetAgentInWorkspace :one
-SELECT id, workspace_id, name, avatar_url, runtime_mode, runtime_config, visibility, status, max_concurrent_tasks, owner_id, created_at, updated_at, description, tools, triggers, runtime_id, instructions, archived_at, archived_by, capabilities, auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags, agent_metadata, trigger_on_channel_mention, is_system, system_config, cloud_llm_config, agent_type, online_status, workload_status, identity_card, accessible_files_scope, allowed_channels_scope, last_active_at, page_scope, needs_attention, needs_attention_reason FROM agent
+SELECT id, workspace_id, name, avatar_url, runtime_mode, runtime_config, visibility, status, max_concurrent_tasks, owner_id, created_at, updated_at, description, tools, triggers, runtime_id, instructions, archived_at, archived_by, capabilities, auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags, agent_metadata, trigger_on_channel_mention, is_system, system_config, needs_attention, needs_attention_reason, agent_type, online_status, workload_status, identity_card, accessible_files_scope, allowed_channels_scope, last_active_at, page_scope, cloud_llm_config, scope, owner_type FROM agent
 WHERE id = $1 AND workspace_id = $2
 `
 
@@ -543,7 +549,8 @@ func (q *Queries) GetAgentInWorkspace(ctx context.Context, arg GetAgentInWorkspa
 		&i.TriggerOnChannelMention,
 		&i.IsSystem,
 		&i.SystemConfig,
-		&i.CloudLlmConfig,
+		&i.NeedsAttention,
+		&i.NeedsAttentionReason,
 		&i.AgentType,
 		&i.OnlineStatus,
 		&i.WorkloadStatus,
@@ -552,8 +559,9 @@ func (q *Queries) GetAgentInWorkspace(ctx context.Context, arg GetAgentInWorkspa
 		&i.AllowedChannelsScope,
 		&i.LastActiveAt,
 		&i.PageScope,
-		&i.NeedsAttention,
-		&i.NeedsAttentionReason,
+		&i.CloudLlmConfig,
+		&i.Scope,
+		&i.OwnerType,
 	)
 	return i, err
 }
@@ -754,7 +762,7 @@ func (q *Queries) ListAgentTasks(ctx context.Context, agentID pgtype.UUID) ([]Ag
 }
 
 const listAgents = `-- name: ListAgents :many
-SELECT id, workspace_id, name, avatar_url, runtime_mode, runtime_config, visibility, status, max_concurrent_tasks, owner_id, created_at, updated_at, description, tools, triggers, runtime_id, instructions, archived_at, archived_by, capabilities, auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags, agent_metadata, trigger_on_channel_mention, is_system, system_config, cloud_llm_config, agent_type, online_status, workload_status, identity_card, accessible_files_scope, allowed_channels_scope, last_active_at, page_scope, needs_attention, needs_attention_reason FROM agent
+SELECT id, workspace_id, name, avatar_url, runtime_mode, runtime_config, visibility, status, max_concurrent_tasks, owner_id, created_at, updated_at, description, tools, triggers, runtime_id, instructions, archived_at, archived_by, capabilities, auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags, agent_metadata, trigger_on_channel_mention, is_system, system_config, needs_attention, needs_attention_reason, agent_type, online_status, workload_status, identity_card, accessible_files_scope, allowed_channels_scope, last_active_at, page_scope, cloud_llm_config, scope, owner_type FROM agent
 WHERE workspace_id = $1 AND archived_at IS NULL
 ORDER BY created_at ASC
 `
@@ -799,7 +807,8 @@ func (q *Queries) ListAgents(ctx context.Context, workspaceID pgtype.UUID) ([]Ag
 			&i.TriggerOnChannelMention,
 			&i.IsSystem,
 			&i.SystemConfig,
-			&i.CloudLlmConfig,
+			&i.NeedsAttention,
+			&i.NeedsAttentionReason,
 			&i.AgentType,
 			&i.OnlineStatus,
 			&i.WorkloadStatus,
@@ -808,8 +817,9 @@ func (q *Queries) ListAgents(ctx context.Context, workspaceID pgtype.UUID) ([]Ag
 			&i.AllowedChannelsScope,
 			&i.LastActiveAt,
 			&i.PageScope,
-			&i.NeedsAttention,
-			&i.NeedsAttentionReason,
+			&i.CloudLlmConfig,
+			&i.Scope,
+			&i.OwnerType,
 		); err != nil {
 			return nil, err
 		}
@@ -822,7 +832,7 @@ func (q *Queries) ListAgents(ctx context.Context, workspaceID pgtype.UUID) ([]Ag
 }
 
 const listAllAgents = `-- name: ListAllAgents :many
-SELECT id, workspace_id, name, avatar_url, runtime_mode, runtime_config, visibility, status, max_concurrent_tasks, owner_id, created_at, updated_at, description, tools, triggers, runtime_id, instructions, archived_at, archived_by, capabilities, auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags, agent_metadata, trigger_on_channel_mention, is_system, system_config, cloud_llm_config, agent_type, online_status, workload_status, identity_card, accessible_files_scope, allowed_channels_scope, last_active_at, page_scope, needs_attention, needs_attention_reason FROM agent
+SELECT id, workspace_id, name, avatar_url, runtime_mode, runtime_config, visibility, status, max_concurrent_tasks, owner_id, created_at, updated_at, description, tools, triggers, runtime_id, instructions, archived_at, archived_by, capabilities, auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags, agent_metadata, trigger_on_channel_mention, is_system, system_config, needs_attention, needs_attention_reason, agent_type, online_status, workload_status, identity_card, accessible_files_scope, allowed_channels_scope, last_active_at, page_scope, cloud_llm_config, scope, owner_type FROM agent
 WHERE workspace_id = $1
 ORDER BY created_at ASC
 `
@@ -867,7 +877,8 @@ func (q *Queries) ListAllAgents(ctx context.Context, workspaceID pgtype.UUID) ([
 			&i.TriggerOnChannelMention,
 			&i.IsSystem,
 			&i.SystemConfig,
-			&i.CloudLlmConfig,
+			&i.NeedsAttention,
+			&i.NeedsAttentionReason,
 			&i.AgentType,
 			&i.OnlineStatus,
 			&i.WorkloadStatus,
@@ -876,8 +887,9 @@ func (q *Queries) ListAllAgents(ctx context.Context, workspaceID pgtype.UUID) ([
 			&i.AllowedChannelsScope,
 			&i.LastActiveAt,
 			&i.PageScope,
-			&i.NeedsAttention,
-			&i.NeedsAttentionReason,
+			&i.CloudLlmConfig,
+			&i.Scope,
+			&i.OwnerType,
 		); err != nil {
 			return nil, err
 		}
@@ -1030,7 +1042,7 @@ func (q *Queries) ListTasksByIssue(ctx context.Context, issueID pgtype.UUID) ([]
 const restoreAgent = `-- name: RestoreAgent :one
 UPDATE agent SET archived_at = NULL, archived_by = NULL, updated_at = now()
 WHERE id = $1
-RETURNING id, workspace_id, name, avatar_url, runtime_mode, runtime_config, visibility, status, max_concurrent_tasks, owner_id, created_at, updated_at, description, tools, triggers, runtime_id, instructions, archived_at, archived_by, capabilities, auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags, agent_metadata, trigger_on_channel_mention, is_system, system_config, cloud_llm_config, agent_type, online_status, workload_status, identity_card, accessible_files_scope, allowed_channels_scope, last_active_at, page_scope, needs_attention, needs_attention_reason
+RETURNING id, workspace_id, name, avatar_url, runtime_mode, runtime_config, visibility, status, max_concurrent_tasks, owner_id, created_at, updated_at, description, tools, triggers, runtime_id, instructions, archived_at, archived_by, capabilities, auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags, agent_metadata, trigger_on_channel_mention, is_system, system_config, needs_attention, needs_attention_reason, agent_type, online_status, workload_status, identity_card, accessible_files_scope, allowed_channels_scope, last_active_at, page_scope, cloud_llm_config, scope, owner_type
 `
 
 func (q *Queries) RestoreAgent(ctx context.Context, id pgtype.UUID) (Agent, error) {
@@ -1067,7 +1079,8 @@ func (q *Queries) RestoreAgent(ctx context.Context, id pgtype.UUID) (Agent, erro
 		&i.TriggerOnChannelMention,
 		&i.IsSystem,
 		&i.SystemConfig,
-		&i.CloudLlmConfig,
+		&i.NeedsAttention,
+		&i.NeedsAttentionReason,
 		&i.AgentType,
 		&i.OnlineStatus,
 		&i.WorkloadStatus,
@@ -1076,10 +1089,47 @@ func (q *Queries) RestoreAgent(ctx context.Context, id pgtype.UUID) (Agent, erro
 		&i.AllowedChannelsScope,
 		&i.LastActiveAt,
 		&i.PageScope,
-		&i.NeedsAttention,
-		&i.NeedsAttentionReason,
+		&i.CloudLlmConfig,
+		&i.Scope,
+		&i.OwnerType,
 	)
 	return i, err
+}
+
+const setAgentOwnerType = `-- name: SetAgentOwnerType :exec
+UPDATE agent
+SET owner_type = $2,
+    updated_at = now()
+WHERE id = $1
+`
+
+type SetAgentOwnerTypeParams struct {
+	ID        pgtype.UUID `json:"id"`
+	OwnerType pgtype.Text `json:"owner_type"`
+}
+
+func (q *Queries) SetAgentOwnerType(ctx context.Context, arg SetAgentOwnerTypeParams) error {
+	_, err := q.db.Exec(ctx, setAgentOwnerType, arg.ID, arg.OwnerType)
+	return err
+}
+
+const setAgentScope = `-- name: SetAgentScope :exec
+UPDATE agent
+SET scope      = $2,
+    page_scope = $3,
+    updated_at = now()
+WHERE id = $1
+`
+
+type SetAgentScopeParams struct {
+	ID        pgtype.UUID `json:"id"`
+	Scope     pgtype.Text `json:"scope"`
+	PageScope pgtype.Text `json:"page_scope"`
+}
+
+func (q *Queries) SetAgentScope(ctx context.Context, arg SetAgentScopeParams) error {
+	_, err := q.db.Exec(ctx, setAgentScope, arg.ID, arg.Scope, arg.PageScope)
+	return err
 }
 
 const startAgentTask = `-- name: StartAgentTask :one
@@ -1131,7 +1181,7 @@ UPDATE agent SET
     instructions = COALESCE($13, instructions),
     updated_at = now()
 WHERE id = $1
-RETURNING id, workspace_id, name, avatar_url, runtime_mode, runtime_config, visibility, status, max_concurrent_tasks, owner_id, created_at, updated_at, description, tools, triggers, runtime_id, instructions, archived_at, archived_by, capabilities, auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags, agent_metadata, trigger_on_channel_mention, is_system, system_config, cloud_llm_config, agent_type, online_status, workload_status, identity_card, accessible_files_scope, allowed_channels_scope, last_active_at, page_scope, needs_attention, needs_attention_reason
+RETURNING id, workspace_id, name, avatar_url, runtime_mode, runtime_config, visibility, status, max_concurrent_tasks, owner_id, created_at, updated_at, description, tools, triggers, runtime_id, instructions, archived_at, archived_by, capabilities, auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags, agent_metadata, trigger_on_channel_mention, is_system, system_config, needs_attention, needs_attention_reason, agent_type, online_status, workload_status, identity_card, accessible_files_scope, allowed_channels_scope, last_active_at, page_scope, cloud_llm_config, scope, owner_type
 `
 
 type UpdateAgentParams struct {
@@ -1198,7 +1248,8 @@ func (q *Queries) UpdateAgent(ctx context.Context, arg UpdateAgentParams) (Agent
 		&i.TriggerOnChannelMention,
 		&i.IsSystem,
 		&i.SystemConfig,
-		&i.CloudLlmConfig,
+		&i.NeedsAttention,
+		&i.NeedsAttentionReason,
 		&i.AgentType,
 		&i.OnlineStatus,
 		&i.WorkloadStatus,
@@ -1207,8 +1258,9 @@ func (q *Queries) UpdateAgent(ctx context.Context, arg UpdateAgentParams) (Agent
 		&i.AllowedChannelsScope,
 		&i.LastActiveAt,
 		&i.PageScope,
-		&i.NeedsAttention,
-		&i.NeedsAttentionReason,
+		&i.CloudLlmConfig,
+		&i.Scope,
+		&i.OwnerType,
 	)
 	return i, err
 }
@@ -1216,7 +1268,7 @@ func (q *Queries) UpdateAgent(ctx context.Context, arg UpdateAgentParams) (Agent
 const updateAgentStatus = `-- name: UpdateAgentStatus :one
 UPDATE agent SET status = $2, updated_at = now()
 WHERE id = $1
-RETURNING id, workspace_id, name, avatar_url, runtime_mode, runtime_config, visibility, status, max_concurrent_tasks, owner_id, created_at, updated_at, description, tools, triggers, runtime_id, instructions, archived_at, archived_by, capabilities, auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags, agent_metadata, trigger_on_channel_mention, is_system, system_config, cloud_llm_config, agent_type, online_status, workload_status, identity_card, accessible_files_scope, allowed_channels_scope, last_active_at, page_scope, needs_attention, needs_attention_reason
+RETURNING id, workspace_id, name, avatar_url, runtime_mode, runtime_config, visibility, status, max_concurrent_tasks, owner_id, created_at, updated_at, description, tools, triggers, runtime_id, instructions, archived_at, archived_by, capabilities, auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags, agent_metadata, trigger_on_channel_mention, is_system, system_config, needs_attention, needs_attention_reason, agent_type, online_status, workload_status, identity_card, accessible_files_scope, allowed_channels_scope, last_active_at, page_scope, cloud_llm_config, scope, owner_type
 `
 
 type UpdateAgentStatusParams struct {
@@ -1258,7 +1310,8 @@ func (q *Queries) UpdateAgentStatus(ctx context.Context, arg UpdateAgentStatusPa
 		&i.TriggerOnChannelMention,
 		&i.IsSystem,
 		&i.SystemConfig,
-		&i.CloudLlmConfig,
+		&i.NeedsAttention,
+		&i.NeedsAttentionReason,
 		&i.AgentType,
 		&i.OnlineStatus,
 		&i.WorkloadStatus,
@@ -1267,8 +1320,9 @@ func (q *Queries) UpdateAgentStatus(ctx context.Context, arg UpdateAgentStatusPa
 		&i.AllowedChannelsScope,
 		&i.LastActiveAt,
 		&i.PageScope,
-		&i.NeedsAttention,
-		&i.NeedsAttentionReason,
+		&i.CloudLlmConfig,
+		&i.Scope,
+		&i.OwnerType,
 	)
 	return i, err
 }

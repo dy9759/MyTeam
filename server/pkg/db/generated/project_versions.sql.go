@@ -14,7 +14,7 @@ import (
 const createProjectVersion = `-- name: CreateProjectVersion :one
 INSERT INTO project_version (project_id, parent_version_id, version_number, branch_name, fork_reason, plan_snapshot, workflow_snapshot, created_by)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, project_id, parent_version_id, version_number, branch_name, fork_reason, plan_snapshot, workflow_snapshot, version_status, created_by, created_at
+RETURNING id, project_id, version, title, description, plan_snapshot, created_by, created_at, parent_version_id, version_number, branch_name, fork_reason, workflow_snapshot, version_status, context_imports
 `
 
 type CreateProjectVersionParams struct {
@@ -43,21 +43,25 @@ func (q *Queries) CreateProjectVersion(ctx context.Context, arg CreateProjectVer
 	err := row.Scan(
 		&i.ID,
 		&i.ProjectID,
+		&i.Version,
+		&i.Title,
+		&i.Description,
+		&i.PlanSnapshot,
+		&i.CreatedBy,
+		&i.CreatedAt,
 		&i.ParentVersionID,
 		&i.VersionNumber,
 		&i.BranchName,
 		&i.ForkReason,
-		&i.PlanSnapshot,
 		&i.WorkflowSnapshot,
 		&i.VersionStatus,
-		&i.CreatedBy,
-		&i.CreatedAt,
+		&i.ContextImports,
 	)
 	return i, err
 }
 
 const getLatestProjectVersion = `-- name: GetLatestProjectVersion :one
-SELECT id, project_id, parent_version_id, version_number, branch_name, fork_reason, plan_snapshot, workflow_snapshot, version_status, created_by, created_at FROM project_version WHERE project_id = $1 ORDER BY version_number DESC LIMIT 1
+SELECT id, project_id, version, title, description, plan_snapshot, created_by, created_at, parent_version_id, version_number, branch_name, fork_reason, workflow_snapshot, version_status, context_imports FROM project_version WHERE project_id = $1 ORDER BY version_number DESC LIMIT 1
 `
 
 func (q *Queries) GetLatestProjectVersion(ctx context.Context, projectID pgtype.UUID) (ProjectVersion, error) {
@@ -66,21 +70,25 @@ func (q *Queries) GetLatestProjectVersion(ctx context.Context, projectID pgtype.
 	err := row.Scan(
 		&i.ID,
 		&i.ProjectID,
+		&i.Version,
+		&i.Title,
+		&i.Description,
+		&i.PlanSnapshot,
+		&i.CreatedBy,
+		&i.CreatedAt,
 		&i.ParentVersionID,
 		&i.VersionNumber,
 		&i.BranchName,
 		&i.ForkReason,
-		&i.PlanSnapshot,
 		&i.WorkflowSnapshot,
 		&i.VersionStatus,
-		&i.CreatedBy,
-		&i.CreatedAt,
+		&i.ContextImports,
 	)
 	return i, err
 }
 
 const getProjectVersion = `-- name: GetProjectVersion :one
-SELECT id, project_id, parent_version_id, version_number, branch_name, fork_reason, plan_snapshot, workflow_snapshot, version_status, created_by, created_at FROM project_version WHERE id = $1
+SELECT id, project_id, version, title, description, plan_snapshot, created_by, created_at, parent_version_id, version_number, branch_name, fork_reason, workflow_snapshot, version_status, context_imports FROM project_version WHERE id = $1
 `
 
 func (q *Queries) GetProjectVersion(ctx context.Context, id pgtype.UUID) (ProjectVersion, error) {
@@ -89,21 +97,25 @@ func (q *Queries) GetProjectVersion(ctx context.Context, id pgtype.UUID) (Projec
 	err := row.Scan(
 		&i.ID,
 		&i.ProjectID,
+		&i.Version,
+		&i.Title,
+		&i.Description,
+		&i.PlanSnapshot,
+		&i.CreatedBy,
+		&i.CreatedAt,
 		&i.ParentVersionID,
 		&i.VersionNumber,
 		&i.BranchName,
 		&i.ForkReason,
-		&i.PlanSnapshot,
 		&i.WorkflowSnapshot,
 		&i.VersionStatus,
-		&i.CreatedBy,
-		&i.CreatedAt,
+		&i.ContextImports,
 	)
 	return i, err
 }
 
 const listProjectVersions = `-- name: ListProjectVersions :many
-SELECT id, project_id, parent_version_id, version_number, branch_name, fork_reason, plan_snapshot, workflow_snapshot, version_status, created_by, created_at FROM project_version WHERE project_id = $1 ORDER BY version_number DESC
+SELECT id, project_id, version, title, description, plan_snapshot, created_by, created_at, parent_version_id, version_number, branch_name, fork_reason, workflow_snapshot, version_status, context_imports FROM project_version WHERE project_id = $1 ORDER BY version_number DESC
 `
 
 func (q *Queries) ListProjectVersions(ctx context.Context, projectID pgtype.UUID) ([]ProjectVersion, error) {
@@ -118,15 +130,19 @@ func (q *Queries) ListProjectVersions(ctx context.Context, projectID pgtype.UUID
 		if err := rows.Scan(
 			&i.ID,
 			&i.ProjectID,
+			&i.Version,
+			&i.Title,
+			&i.Description,
+			&i.PlanSnapshot,
+			&i.CreatedBy,
+			&i.CreatedAt,
 			&i.ParentVersionID,
 			&i.VersionNumber,
 			&i.BranchName,
 			&i.ForkReason,
-			&i.PlanSnapshot,
 			&i.WorkflowSnapshot,
 			&i.VersionStatus,
-			&i.CreatedBy,
-			&i.CreatedAt,
+			&i.ContextImports,
 		); err != nil {
 			return nil, err
 		}

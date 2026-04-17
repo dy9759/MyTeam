@@ -14,7 +14,7 @@ import (
 const createProject = `-- name: CreateProject :one
 INSERT INTO project (workspace_id, title, description, status, schedule_type, cron_expr, source_conversations, channel_id, creator_owner_id)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING id, workspace_id, title, description, status, schedule_type, cron_expr, source_conversations, channel_id, creator_owner_id, created_at, updated_at
+RETURNING id, workspace_id, title, description, status, created_by, plan_id, created_at, updated_at, schedule_type, cron_expr, source_conversations, channel_id, creator_owner_id
 `
 
 type CreateProjectParams struct {
@@ -48,13 +48,15 @@ func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (P
 		&i.Title,
 		&i.Description,
 		&i.Status,
+		&i.CreatedBy,
+		&i.PlanID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 		&i.ScheduleType,
 		&i.CronExpr,
 		&i.SourceConversations,
 		&i.ChannelID,
 		&i.CreatorOwnerID,
-		&i.CreatedAt,
-		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -69,7 +71,7 @@ func (q *Queries) DeleteProject(ctx context.Context, id pgtype.UUID) error {
 }
 
 const getProject = `-- name: GetProject :one
-SELECT id, workspace_id, title, description, status, schedule_type, cron_expr, source_conversations, channel_id, creator_owner_id, created_at, updated_at FROM project WHERE id = $1
+SELECT id, workspace_id, title, description, status, created_by, plan_id, created_at, updated_at, schedule_type, cron_expr, source_conversations, channel_id, creator_owner_id FROM project WHERE id = $1
 `
 
 func (q *Queries) GetProject(ctx context.Context, id pgtype.UUID) (Project, error) {
@@ -81,19 +83,21 @@ func (q *Queries) GetProject(ctx context.Context, id pgtype.UUID) (Project, erro
 		&i.Title,
 		&i.Description,
 		&i.Status,
+		&i.CreatedBy,
+		&i.PlanID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 		&i.ScheduleType,
 		&i.CronExpr,
 		&i.SourceConversations,
 		&i.ChannelID,
 		&i.CreatorOwnerID,
-		&i.CreatedAt,
-		&i.UpdatedAt,
 	)
 	return i, err
 }
 
 const listProjects = `-- name: ListProjects :many
-SELECT id, workspace_id, title, description, status, schedule_type, cron_expr, source_conversations, channel_id, creator_owner_id, created_at, updated_at FROM project WHERE workspace_id = $1 ORDER BY created_at DESC
+SELECT id, workspace_id, title, description, status, created_by, plan_id, created_at, updated_at, schedule_type, cron_expr, source_conversations, channel_id, creator_owner_id FROM project WHERE workspace_id = $1 ORDER BY created_at DESC
 `
 
 func (q *Queries) ListProjects(ctx context.Context, workspaceID pgtype.UUID) ([]Project, error) {
@@ -111,13 +115,15 @@ func (q *Queries) ListProjects(ctx context.Context, workspaceID pgtype.UUID) ([]
 			&i.Title,
 			&i.Description,
 			&i.Status,
+			&i.CreatedBy,
+			&i.PlanID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
 			&i.ScheduleType,
 			&i.CronExpr,
 			&i.SourceConversations,
 			&i.ChannelID,
 			&i.CreatorOwnerID,
-			&i.CreatedAt,
-			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -138,7 +144,7 @@ UPDATE project SET
     cron_expr = $5,
     updated_at = NOW()
 WHERE id = $6
-RETURNING id, workspace_id, title, description, status, schedule_type, cron_expr, source_conversations, channel_id, creator_owner_id, created_at, updated_at
+RETURNING id, workspace_id, title, description, status, created_by, plan_id, created_at, updated_at, schedule_type, cron_expr, source_conversations, channel_id, creator_owner_id
 `
 
 type UpdateProjectParams struct {
@@ -166,13 +172,15 @@ func (q *Queries) UpdateProject(ctx context.Context, arg UpdateProjectParams) (P
 		&i.Title,
 		&i.Description,
 		&i.Status,
+		&i.CreatedBy,
+		&i.PlanID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 		&i.ScheduleType,
 		&i.CronExpr,
 		&i.SourceConversations,
 		&i.ChannelID,
 		&i.CreatorOwnerID,
-		&i.CreatedAt,
-		&i.UpdatedAt,
 	)
 	return i, err
 }
