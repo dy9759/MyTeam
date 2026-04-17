@@ -42,6 +42,13 @@ export type {
   SessionParticipant,
   Conversation,
   Thread,
+  ThreadStatus,
+  ThreadCreatorType,
+  ThreadContextItem,
+  ThreadContextItemType,
+  RetentionClass,
+  CreateThreadRequest,
+  CreateThreadContextItemRequest,
   RemoteSession,
   RemoteSessionEvent,
 } from "./messaging";

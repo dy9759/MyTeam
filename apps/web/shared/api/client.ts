@@ -39,6 +39,10 @@ import type {
   IdentityCard,
   Channel,
   Thread,
+  ThreadContextItem,
+  CreateThreadRequest,
+  CreateThreadContextItemRequest,
+  Message,
   Project,
   ProjectVersion,
   ProjectRun,
@@ -746,6 +750,13 @@ export class ApiClient {
     return this.fetch(`/api/channels/${channelId}/threads`);
   }
 
+  async createThread(channelID: string, body: CreateThreadRequest): Promise<Thread> {
+    return this.fetch<Thread>(`/api/channels/${channelID}/threads`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  }
+
   async getThread(threadId: string): Promise<Thread> {
     return this.fetch(`/api/threads/${threadId}`);
   }
@@ -754,10 +765,45 @@ export class ApiClient {
     return this.fetch<{ messages: any[] }>(`/api/threads/${threadId}/messages?limit=${limit}&offset=${offset}`);
   }
 
+  async listThreadMessages(threadID: string, params?: { limit?: number; offset?: number }): Promise<Message[]> {
+    const query = new URLSearchParams();
+    if (params?.limit != null) query.set("limit", String(params.limit));
+    if (params?.offset != null) query.set("offset", String(params.offset));
+    const qs = query.toString();
+    return this.fetch<Message[]>(`/api/threads/${threadID}/messages${qs ? "?" + qs : ""}`);
+  }
+
   async sendThreadMessage(threadId: string, content: string) {
     return this.fetch<any>('/api/messages', {
       method: 'POST',
       body: JSON.stringify({ thread_id: threadId, content }),
+    });
+  }
+
+  async postThreadMessage(threadID: string, body: { content: string }): Promise<Message> {
+    return this.fetch<Message>(`/api/threads/${threadID}/messages`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  }
+
+  async listThreadContextItems(threadID: string): Promise<ThreadContextItem[]> {
+    return this.fetch<ThreadContextItem[]>(`/api/threads/${threadID}/context-items`);
+  }
+
+  async createThreadContextItem(
+    threadID: string,
+    body: CreateThreadContextItemRequest,
+  ): Promise<ThreadContextItem> {
+    return this.fetch<ThreadContextItem>(`/api/threads/${threadID}/context-items`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  }
+
+  async deleteThreadContextItem(threadID: string, itemID: string): Promise<void> {
+    await this.fetch<void>(`/api/threads/${threadID}/context-items/${itemID}`, {
+      method: "DELETE",
     });
   }
 

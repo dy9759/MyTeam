@@ -27,13 +27,67 @@ export interface Message {
   updated_at: string;
 }
 
+export type ThreadStatus = "active" | "archived";
+export type ThreadCreatorType = "member" | "agent" | "system";
+
 export interface Thread {
   id: string;
   channel_id: string;
-  title?: string;
+  workspace_id?: string;
+  root_message_id?: string | null;
+  issue_id?: string | null;
+  title?: string | null;
+  status?: ThreadStatus;
+  created_by?: string | null;
+  created_by_type?: ThreadCreatorType | null;
+  metadata?: Record<string, unknown>;
   reply_count: number;
-  last_reply_at?: string;
+  last_reply_at?: string | null;
+  last_activity_at?: string | null;
   created_at: string;
+}
+
+export type ThreadContextItemType =
+  | "decision"
+  | "file"
+  | "code_snippet"
+  | "summary"
+  | "reference";
+
+export type RetentionClass = "permanent" | "ttl" | "temp";
+
+export interface ThreadContextItem {
+  id: string;
+  workspace_id: string;
+  thread_id: string;
+  item_type: ThreadContextItemType;
+  title: string | null;
+  body: string | null;
+  metadata: Record<string, unknown>;
+  source_message_id: string | null;
+  retention_class: RetentionClass;
+  expires_at: string | null;
+  created_by: string | null;
+  created_by_type: ThreadCreatorType | null;
+  created_at: string;
+}
+
+export interface CreateThreadRequest {
+  root_message_id?: string;
+  issue_id?: string;
+  title?: string;
+  status?: ThreadStatus;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CreateThreadContextItemRequest {
+  item_type: ThreadContextItemType;
+  title?: string;
+  body?: string;
+  metadata?: Record<string, unknown>;
+  source_message_id?: string;
+  retention_class?: RetentionClass;
+  expires_at?: string;
 }
 
 export interface Channel {
