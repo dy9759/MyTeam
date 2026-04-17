@@ -187,6 +187,14 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 						r.Patch("/", h.UpdateMember)
 						r.Delete("/", h.DeleteMember)
 					})
+					// Workspace secrets (admin/owner only — values authorize
+					// external integrations and are never exposed to members).
+					r.Route("/secrets", func(r chi.Router) {
+						r.Get("/", h.ListWorkspaceSecrets)
+						r.Get("/{key}", h.GetWorkspaceSecret)
+						r.Put("/{key}", h.SetWorkspaceSecret)
+						r.Delete("/{key}", h.DeleteWorkspaceSecret)
+					})
 				})
 				// Owner-only access
 				r.With(middleware.RequireWorkspaceRoleFromURL(queries, "id", "owner")).Delete("/", h.DeleteWorkspace)
