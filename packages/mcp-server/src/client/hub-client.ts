@@ -405,6 +405,58 @@ export class HubClient {
     });
   }
 
+  // Threads
+  async createThread(request: { channel_id: string; title?: string; root_message_id?: string; issue_id?: string }): Promise<any> {
+    return this.fetch(`/api/channels/${request.channel_id}/threads`, {
+      method: "POST",
+      body: JSON.stringify({
+        title: request.title,
+        root_message_id: request.root_message_id,
+        issue_id: request.issue_id,
+      }),
+    });
+  }
+
+  async getThread(threadId: string): Promise<any> {
+    return this.fetch(`/api/threads/${threadId}`);
+  }
+
+  async listThreadMessages(threadId: string, opts?: { limit?: number; offset?: number }): Promise<any> {
+    const params = new URLSearchParams();
+    if (opts?.limit != null) params.set("limit", String(opts.limit));
+    if (opts?.offset != null) params.set("offset", String(opts.offset));
+    const qs = params.toString();
+    return this.fetch(`/api/threads/${threadId}/messages${qs ? `?${qs}` : ""}`);
+  }
+
+  async postThreadMessage(threadId: string, body: { content: string }): Promise<any> {
+    return this.fetch(`/api/threads/${threadId}/messages`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  }
+
+  async listThreadContextItems(threadId: string): Promise<any> {
+    return this.fetch(`/api/threads/${threadId}/context-items`);
+  }
+
+  async createThreadContextItem(threadId: string, body: {
+    item_type: "decision" | "file" | "code_snippet" | "summary" | "reference";
+    title?: string;
+    body?: string;
+    metadata?: Record<string, unknown>;
+    retention_class?: "permanent" | "ttl" | "temp";
+  }): Promise<any> {
+    return this.fetch(`/api/threads/${threadId}/context-items`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  }
+
+  async deleteThreadContextItem(threadId: string, itemId: string): Promise<void> {
+    await this.fetch<void>(`/api/threads/${threadId}/context-items/${itemId}`, { method: "DELETE" });
+  }
+
   // Health
   // Owner whoami
   async whoami(): Promise<{ ownerId: string; name: string }> {

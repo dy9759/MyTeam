@@ -1,6 +1,5 @@
 import { z } from "zod";
 import type { HubClient } from "../client/hub-client.js";
-import type { Interaction } from "@agentmesh/shared";
 
 export function registerMultiTurnChatTool(
   server: import("@modelcontextprotocol/sdk/server/mcp.js").McpServer,
@@ -11,122 +10,111 @@ export function registerMultiTurnChatTool(
     "agentmesh_multi_turn_chat",
     {
       description:
-        "Start or continue a multi-turn collaboration session with another agent. " +
-        "Creates a session, sends your message, and waits for a reply. " +
-        "Returns the reply so you can decide whether to continue the conversation. " +
-        "Each call is one turn — call again with the sessionId to continue.",
+        "Post a turn to a thread and return the latest thread state. " +
+        "If threadId is omitted, creates a new thread in the given channel and posts the first message. " +
+        "Each call is one turn — call again with the same threadId to continue the conversation. " +
+        "Unlike the old session model, threads are channel-scoped: all channel members can participate.",
       inputSchema: {
-        targetAgentId: z.string().describe("The agentId to collaborate with"),
+        threadId: z.string().optional().describe("Existing thread ID to post to. If omitted, a new thread is created in `channelId`."),
+        channelId: z.string().optional().describe("Channel ID to create the thread in (required when threadId is omitted)"),
+        title: z.string().optional().describe("Thread title (only used when creating a new thread)"),
         message: z.string().describe("Your message for this turn"),
-        sessionId: z.string().optional().describe("Existing session ID to continue. If omitted, creates a new session."),
-        topic: z.string().optional().describe("Topic for new session (only used when creating)"),
-        maxTurns: z.number().int().min(2).max(100).optional().describe("Max turns for new session (default 20)"),
-        timeoutMs: z.number().int().min(5000).max(300000).optional().describe("How long to wait for reply (default 60000ms)"),
+        issueId: z.string().optional().describe("Optional issue to link (only used when creating a new thread)"),
+        rootMessageId: z.string().optional().describe("Optional channel message to root this thread under (only used when creating)"),
+        limit: z.number().int().min(1).max(100).optional().describe("Max recent messages to return after posting (default 20)"),
       },
     },
-    async ({ targetAgentId, message, sessionId, topic, maxTurns, timeoutMs }) => {
-      const myId = state.agentId;
+    async ({ threadId, channelId, title, message, issueId, rootMessageId, limit }) => {
+      const myId = state.agentId ?? state.ownerId;
       if (!myId) {
-        return { content: [{ type: "text" as const, text: JSON.stringify({ error: "Not registered. Call agentmesh_register first." }) }], isError: true };
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify({ error: "Not registered. Call agentmesh_register first." }) }],
+          isError: true,
+        };
       }
 
-      const timeout = timeoutMs ?? 60000;
-      let currentSessionId: string = sessionId ?? "";
+      let currentThreadId = threadId ?? "";
 
-      // Step 1: Create session if needed
-      if (currentSessionId === "") {
-        try {
-          const session = await client.createSession({
-            title: topic ?? `Chat with ${targetAgentId}`,
-            participants: [{ id: targetAgentId, type: "agent" }],
-            maxTurns: maxTurns ?? 20,
-            context: topic ? { topic } : undefined,
-          });
-          currentSessionId = session.id;
-        } catch (err: any) {
-          return { content: [{ type: "text" as const, text: JSON.stringify({ error: `Failed to create session: ${err.message ?? err}` }) }], isError: true };
-        }
-      }
-
-      // Step 2: Send message with sessionId
-      const correlationId = `mtc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      try {
-        await client.sendInteraction({
-          type: "message",
-          contentType: "text",
-          target: { agentId: targetAgentId, sessionId: currentSessionId },
-          payload: { text: message },
-          metadata: { expectReply: true, correlationId },
-        });
-      } catch (err: any) {
-        return { content: [{ type: "text" as const, text: JSON.stringify({ error: `Failed to send message: ${err.message ?? err}`, sessionId: currentSessionId }) }], isError: true };
-      }
-
-      // Step 3: Poll for reply
-      const startTime = Date.now();
-      const pollInterval = 2000;
-      let lastId: string | undefined;
-
-      while (Date.now() - startTime < timeout) {
-        await sleep(pollInterval);
-
-        const result = await client.pollInteractions(myId, { afterId: lastId, limit: 50 });
-        const interactions: Interaction[] = result.interactions ?? [];
-
-        if (interactions.length > 0) {
-          lastId = interactions[interactions.length - 1].id;
-        }
-
-        // Find reply from target in this session
-        const reply = interactions.find(
-          (i) =>
-            (i.fromId ?? i.fromAgent) === targetAgentId &&
-            (i.metadata?.correlationId === correlationId ||
-             (i.target?.sessionId === currentSessionId && !i.metadata?.correlationId)),
-        );
-
-        if (reply) {
-          // Get session status
-          let sessionStatus: any;
-          try {
-            sessionStatus = await client.getSession(currentSessionId);
-          } catch { /* ignore */ }
-
+      // Step 1: Create thread if needed
+      if (currentThreadId === "") {
+        if (!channelId) {
           return {
             content: [{
               type: "text" as const,
               text: JSON.stringify({
-                sessionId: currentSessionId,
-                turn: sessionStatus?.currentTurn ?? "?",
-                maxTurns: sessionStatus?.maxTurns ?? "?",
-                sessionStatus: sessionStatus?.status ?? "unknown",
-                reply: reply.payload.text ?? reply.payload.data,
-                fromAgent: reply.fromId,
-                interactionId: reply.id,
-                hint: sessionStatus?.status === "completed"
-                  ? "Session completed (max turns reached)."
-                  : "Call agentmesh_multi_turn_chat again with this sessionId to continue.",
-              }, null, 2),
+                error: "When threadId is omitted, channelId is required to create a new thread.",
+              }),
             }],
+            isError: true,
+          };
+        }
+        try {
+          const thread = await client.createThread({
+            channel_id: channelId,
+            title: title ?? "Thread",
+            root_message_id: rootMessageId,
+            issue_id: issueId,
+          });
+          currentThreadId = thread?.id;
+          if (!currentThreadId) {
+            return {
+              content: [{ type: "text" as const, text: JSON.stringify({ error: "Thread created but no id returned", raw: thread }) }],
+              isError: true,
+            };
+          }
+        } catch (err: any) {
+          return {
+            content: [{ type: "text" as const, text: JSON.stringify({ error: `Failed to create thread: ${err.message ?? err}` }) }],
+            isError: true,
           };
         }
       }
+
+      // Step 2: Post this turn's message
+      try {
+        await client.postThreadMessage(currentThreadId, { content: message });
+      } catch (err: any) {
+        return {
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({
+              error: `Failed to post message: ${err.message ?? err}`,
+              threadId: currentThreadId,
+            }),
+          }],
+          isError: true,
+        };
+      }
+
+      // Step 3: Fetch updated thread state + recent messages
+      let thread: any = undefined;
+      let messages: any[] = [];
+      try {
+        thread = await client.getThread(currentThreadId);
+      } catch { /* non-fatal */ }
+      try {
+        const listResp = await client.listThreadMessages(currentThreadId, { limit: limit ?? 20 });
+        messages = Array.isArray(listResp)
+          ? listResp
+          : (listResp?.messages ?? listResp?.items ?? []);
+      } catch { /* non-fatal */ }
 
       return {
         content: [{
           type: "text" as const,
           text: JSON.stringify({
-            sessionId: currentSessionId,
-            error: "timeout",
-            message: `No reply from ${targetAgentId} within ${timeout}ms`,
-            hint: "The agent may be offline. Try again later or check agentmesh_session_status.",
+            threadId: currentThreadId,
+            sessionId: currentThreadId,
+            channelId: thread?.channel_id ?? channelId,
+            title: thread?.title,
+            status: thread?.status,
+            replyCount: thread?.reply_count,
+            lastReplyAt: thread?.last_reply_at,
+            messages,
+            hint: "Call agentmesh_multi_turn_chat again with this threadId to continue the conversation.",
           }, null, 2),
         }],
       };
     },
   );
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }

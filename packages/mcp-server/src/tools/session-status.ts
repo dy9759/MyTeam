@@ -8,20 +8,36 @@ export function registerSessionStatusTool(
   server.registerTool(
     "agentmesh_session_status",
     {
-      description: "Get the status and details of a collaboration session, including participants, turn count, and shared context.",
+      description:
+        "Get the status and details of a thread, including title, status, reply count, and last reply time.",
       inputSchema: {
-        sessionId: z.string().describe("The session ID to check"),
+        threadId: z.string().describe("The thread ID to check"),
       },
     },
-    async ({ sessionId }) => {
+    async ({ threadId }) => {
       try {
-        const session = await client.getSession(sessionId);
+        const thread = await client.getThread(threadId);
         return {
-          content: [{ type: "text" as const, text: JSON.stringify(session, null, 2) }],
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({
+              threadId,
+              sessionId: threadId,
+              channelId: thread?.channel_id,
+              title: thread?.title,
+              status: thread?.status,
+              replyCount: thread?.reply_count,
+              lastReplyAt: thread?.last_reply_at,
+              rootMessageId: thread?.root_message_id,
+              issueId: thread?.issue_id,
+              createdAt: thread?.created_at,
+              raw: thread,
+            }, null, 2),
+          }],
         };
       } catch (err: any) {
         return {
-          content: [{ type: "text" as const, text: JSON.stringify({ error: `Failed to get session: ${err.message ?? err}` }) }],
+          content: [{ type: "text" as const, text: JSON.stringify({ error: `Failed to get thread: ${err.message ?? err}` }) }],
           isError: true,
         };
       }
@@ -31,23 +47,24 @@ export function registerSessionStatusTool(
   server.registerTool(
     "agentmesh_list_sessions",
     {
-      description: "List all collaboration sessions. Filter by status (active, completed, etc.).",
+      description:
+        "List threads for a channel. Currently disabled during the session-to-thread migration — " +
+        "use agentmesh_session_status with a specific threadId instead.",
       inputSchema: {
-        status: z.string().optional().describe("Filter by status: active, waiting, completed, failed, archived"),
+        channelId: z.string().optional().describe("Channel ID to list threads for"),
       },
     },
-    async ({ status }) => {
-      try {
-        const result = await client.listSessions({ status });
-        return {
-          content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
-        };
-      } catch (err: any) {
-        return {
-          content: [{ type: "text" as const, text: JSON.stringify({ error: `Failed to list sessions: ${err.message ?? err}` }) }],
-          isError: true,
-        };
-      }
+    async () => {
+      return {
+        content: [{
+          type: "text" as const,
+          text: JSON.stringify({
+            error: "agentmesh_list_sessions is temporarily disabled during thread migration. " +
+              "Use agentmesh_session_status with a specific threadId to inspect a thread.",
+          }),
+        }],
+        isError: true,
+      };
     },
   );
 }
