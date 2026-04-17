@@ -57,3 +57,38 @@ WHERE i.workspace_id = $1 AND i.recipient_type = 'member' AND i.recipient_id = $
 INSERT INTO inbox_item (workspace_id, recipient_id, recipient_type, type, severity, title, body, action_required, action_type, deadline, related_project_id, related_run_id, actor_type, actor_id)
 VALUES (@workspace_id, @recipient_id, @recipient_type, @type, @severity, @title, @body, @action_required, @action_type, @deadline, @related_project_id, @related_run_id, @actor_type, @actor_id)
 RETURNING *;
+
+-- name: ListInboxUnresolved :many
+-- Plan 4 §8: paginated list of unresolved inbox items for a recipient.
+-- Uses idx_inbox_item_recipient_active partial index.
+SELECT * FROM inbox_item
+WHERE recipient_id = @recipient_id
+  AND resolved_at IS NULL
+ORDER BY created_at DESC
+LIMIT @limit_count OFFSET @offset_count;
+
+-- name: ResolveInboxItem :exec
+-- Plan 4 §8: mark an inbox item as resolved with a resolution and operator.
+-- Recipient ownership check enforced in WHERE clause.
+UPDATE inbox_item
+SET resolved_at   = now(),
+    resolution    = @resolution,
+    resolution_by = sqlc.narg('resolution_by')
+WHERE id = @id
+  AND recipient_id = @recipient_id;
+
+-- name: MarkInboxItemRead :exec
+-- Plan 4 §8: mark a single inbox item as read for a specific recipient.
+-- Idempotent: no-op when the row is already read.
+UPDATE inbox_item
+SET read = true
+WHERE id = @id
+  AND recipient_id = @recipient_id
+  AND read = false;
+
+-- name: MarkAllInboxItemsRead :execrows
+-- Plan 4 §8: mark all unread items as read for a recipient (workspace-agnostic).
+UPDATE inbox_item
+SET read = true
+WHERE recipient_id = @recipient_id
+  AND read = false;

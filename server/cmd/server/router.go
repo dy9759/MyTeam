@@ -463,6 +463,9 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 				r.Post("/archive-completed", h.ArchiveCompletedInbox)
 				r.Post("/{id}/read", h.MarkInboxRead)
 				r.Post("/{id}/archive", h.ArchiveInboxItem)
+				// Plan 4 §8: actionable inbox items must be resolved
+				// with an explicit user-facing resolution.
+				r.Post("/{id}/resolve", h.ResolveInboxItem)
 			})
 		})
 	})

@@ -469,6 +469,89 @@ func (q *Queries) ListInboxItems(ctx context.Context, arg ListInboxItemsParams) 
 	return items, nil
 }
 
+const listInboxUnresolved = `-- name: ListInboxUnresolved :many
+SELECT id, workspace_id, recipient_type, recipient_id, type, severity, issue_id, title, body, read, archived, created_at, actor_type, actor_id, details, action_required, action_type, deadline, resolution_status, related_project_id, related_run_id, related_conversation_id, plan_id, task_id, slot_id, thread_id, channel_id, resolved_at, resolution, resolution_by FROM inbox_item
+WHERE recipient_id = $1
+  AND resolved_at IS NULL
+ORDER BY created_at DESC
+LIMIT $3 OFFSET $2
+`
+
+type ListInboxUnresolvedParams struct {
+	RecipientID pgtype.UUID `json:"recipient_id"`
+	OffsetCount int32       `json:"offset_count"`
+	LimitCount  int32       `json:"limit_count"`
+}
+
+// Plan 4 §8: paginated list of unresolved inbox items for a recipient.
+// Uses idx_inbox_item_recipient_active partial index.
+func (q *Queries) ListInboxUnresolved(ctx context.Context, arg ListInboxUnresolvedParams) ([]InboxItem, error) {
+	rows, err := q.db.Query(ctx, listInboxUnresolved, arg.RecipientID, arg.OffsetCount, arg.LimitCount)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []InboxItem{}
+	for rows.Next() {
+		var i InboxItem
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.RecipientType,
+			&i.RecipientID,
+			&i.Type,
+			&i.Severity,
+			&i.IssueID,
+			&i.Title,
+			&i.Body,
+			&i.Read,
+			&i.Archived,
+			&i.CreatedAt,
+			&i.ActorType,
+			&i.ActorID,
+			&i.Details,
+			&i.ActionRequired,
+			&i.ActionType,
+			&i.Deadline,
+			&i.ResolutionStatus,
+			&i.RelatedProjectID,
+			&i.RelatedRunID,
+			&i.RelatedConversationID,
+			&i.PlanID,
+			&i.TaskID,
+			&i.SlotID,
+			&i.ThreadID,
+			&i.ChannelID,
+			&i.ResolvedAt,
+			&i.Resolution,
+			&i.ResolutionBy,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const markAllInboxItemsRead = `-- name: MarkAllInboxItemsRead :execrows
+UPDATE inbox_item
+SET read = true
+WHERE recipient_id = $1
+  AND read = false
+`
+
+// Plan 4 §8: mark all unread items as read for a recipient (workspace-agnostic).
+func (q *Queries) MarkAllInboxItemsRead(ctx context.Context, recipientID pgtype.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, markAllInboxItemsRead, recipientID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const markAllInboxRead = `-- name: MarkAllInboxRead :execrows
 UPDATE inbox_item SET read = true
 WHERE workspace_id = $1 AND recipient_type = 'member' AND recipient_id = $2 AND archived = false AND read = false
@@ -485,6 +568,26 @@ func (q *Queries) MarkAllInboxRead(ctx context.Context, arg MarkAllInboxReadPara
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const markInboxItemRead = `-- name: MarkInboxItemRead :exec
+UPDATE inbox_item
+SET read = true
+WHERE id = $1
+  AND recipient_id = $2
+  AND read = false
+`
+
+type MarkInboxItemReadParams struct {
+	ID          pgtype.UUID `json:"id"`
+	RecipientID pgtype.UUID `json:"recipient_id"`
+}
+
+// Plan 4 §8: mark a single inbox item as read for a specific recipient.
+// Idempotent: no-op when the row is already read.
+func (q *Queries) MarkInboxItemRead(ctx context.Context, arg MarkInboxItemReadParams) error {
+	_, err := q.db.Exec(ctx, markInboxItemRead, arg.ID, arg.RecipientID)
+	return err
 }
 
 const markInboxRead = `-- name: MarkInboxRead :one
@@ -529,4 +632,32 @@ func (q *Queries) MarkInboxRead(ctx context.Context, id pgtype.UUID) (InboxItem,
 		&i.ResolutionBy,
 	)
 	return i, err
+}
+
+const resolveInboxItem = `-- name: ResolveInboxItem :exec
+UPDATE inbox_item
+SET resolved_at   = now(),
+    resolution    = $1,
+    resolution_by = $2
+WHERE id = $3
+  AND recipient_id = $4
+`
+
+type ResolveInboxItemParams struct {
+	Resolution   pgtype.Text `json:"resolution"`
+	ResolutionBy pgtype.UUID `json:"resolution_by"`
+	ID           pgtype.UUID `json:"id"`
+	RecipientID  pgtype.UUID `json:"recipient_id"`
+}
+
+// Plan 4 §8: mark an inbox item as resolved with a resolution and operator.
+// Recipient ownership check enforced in WHERE clause.
+func (q *Queries) ResolveInboxItem(ctx context.Context, arg ResolveInboxItemParams) error {
+	_, err := q.db.Exec(ctx, resolveInboxItem,
+		arg.Resolution,
+		arg.ResolutionBy,
+		arg.ID,
+		arg.RecipientID,
+	)
+	return err
 }
