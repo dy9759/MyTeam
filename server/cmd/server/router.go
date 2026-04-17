@@ -348,7 +348,20 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 					r.Post("/transfer-founder", h.TransferFounder)
 					r.Post("/split", h.SplitChannel)
 					r.Post("/merge-request", h.CreateMergeRequest)
+					// Thread API (Plan 3)
+					r.Get("/threads", h.ListThreads)
+					r.Post("/threads", h.CreateThread)
 				})
+			})
+
+			// Thread API (Plan 3 / Phase 2)
+			r.Route("/api/threads/{threadID}", func(r chi.Router) {
+				r.Get("/", h.GetThread)
+				r.Get("/messages", h.ListThreadMessages)
+				r.Post("/messages", h.PostThreadMessage)
+				r.Get("/context-items", h.ListThreadContextItems)
+				r.Post("/context-items", h.CreateThreadContextItem)
+				r.Delete("/context-items/{itemID}", h.DeleteThreadContextItem)
 			})
 
 			// Merge requests

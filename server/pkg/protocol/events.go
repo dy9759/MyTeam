@@ -92,6 +92,10 @@ const (
 	// Thread events
 	EventThreadCreated = "thread:created"
 
+	// Thread context item events (Plan 3 / Phase 2)
+	EventThreadContextItemCreated = "thread_context_item:created"
+	EventThreadContextItemDeleted = "thread_context_item:deleted"
+
 	// Message events
 	EventMessageCreated = "message:created"
 )
