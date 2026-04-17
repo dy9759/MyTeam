@@ -6,7 +6,6 @@ export interface Message {
   channel_id?: string;
   recipient_id?: string;
   recipient_type?: "member" | "agent";
-  session_id?: string;
   thread_id?: string;
   parent_id?: string;
   content: string;

@@ -11,7 +11,6 @@ const SEND_DEBOUNCE_MS = 1000;
 
 interface UseTypingIndicatorParams {
   channelId?: string;
-  sessionId?: string;
 }
 
 interface UseTypingIndicatorReturn {
@@ -21,7 +20,6 @@ interface UseTypingIndicatorReturn {
 
 export function useTypingIndicator({
   channelId,
-  sessionId,
 }: UseTypingIndicatorParams): UseTypingIndicatorReturn {
   const [typingUsers, setTypingUsers] = useState<string[]>([]);
   const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
@@ -52,10 +50,9 @@ export function useTypingIndicator({
         const selfId = useAuthStore.getState().user?.id;
         if (data.sender_id === selfId) return;
 
-        // Filter by channel/session
+        // Filter by channel
         if (channelId && data.channel_id !== channelId) return;
-        if (sessionId && data.session_id !== sessionId) return;
-        if (!channelId && !sessionId) return;
+        if (!channelId) return;
 
         const senderId = data.sender_id;
 
@@ -83,7 +80,7 @@ export function useTypingIndicator({
           setTypingUsers((prev) => prev.filter((id) => id !== senderId));
         }
       },
-      [channelId, sessionId],
+      [channelId],
     ),
   );
 
@@ -104,11 +101,11 @@ export function useTypingIndicator({
         sendTimeoutRef.current = null;
       }
 
-      api.sendTyping({ channel_id: channelId, session_id: sessionId, is_typing: isTyping }).catch(() => {
+      api.sendTyping({ channel_id: channelId, is_typing: isTyping }).catch(() => {
         // Silently ignore typing errors
       });
     },
-    [channelId, sessionId],
+    [channelId],
   );
 
   return { typingUsers, sendTyping };

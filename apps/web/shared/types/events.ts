@@ -238,7 +238,6 @@ export interface IssueReactionRemovedPayload {
 
 export interface TypingPayload {
   channel_id?: string;
-  session_id?: string;
   is_typing: boolean;
   sender_id: string;
 }

@@ -638,7 +638,7 @@ export class ApiClient {
   }
 
   // Typing
-  async sendTyping(params: { channel_id?: string; session_id?: string; is_typing: boolean }): Promise<void> {
+  async sendTyping(params: { channel_id?: string; is_typing: boolean }): Promise<void> {
     await this.fetch("/api/typing", { method: "POST", body: JSON.stringify(params) });
   }
 
@@ -647,11 +647,11 @@ export class ApiClient {
   }
 
   // Messages
-  async sendMessage(data: { channel_id?: string; recipient_id?: string; recipient_type?: string; session_id?: string; content: string; content_type?: string; file_id?: string; file_name?: string }) {
+  async sendMessage(data: { channel_id?: string; recipient_id?: string; recipient_type?: string; thread_id?: string; content: string; content_type?: string; file_id?: string; file_name?: string }) {
     return this.fetch<any>('/api/messages', { method: 'POST', body: JSON.stringify(data) })
   }
 
-  async listMessages(params: { channel_id?: string; recipient_id?: string; session_id?: string; limit?: number; offset?: number }) {
+  async listMessages(params: { channel_id?: string; recipient_id?: string; thread_id?: string; limit?: number; offset?: number }) {
     const qs = new URLSearchParams(Object.entries(params).filter(([,v]) => v != null).map(([k,v]) => [k, String(v)])).toString()
     return this.fetch<{ messages: any[] }>(`/api/messages?${qs}`)
   }
@@ -678,27 +678,6 @@ export class ApiClient {
   async getChannelMessages(id: string, limit = 50, offset = 0) {
     return this.fetch<{ messages: any[] }>(`/api/channels/${id}/messages?limit=${limit}&offset=${offset}`)
   }
-
-  // Sessions
-  async listSessions(limit = 20, offset = 0) {
-    return this.fetch<{ sessions: any[] }>(`/api/sessions?limit=${limit}&offset=${offset}`)
-  }
-
-  async createSession(data: { title: string; issue_id?: string; max_turns?: number; context?: any; participants?: Array<{id: string; type: string}> }) {
-    return this.fetch<any>('/api/sessions', { method: 'POST', body: JSON.stringify(data) })
-  }
-
-  async getSession(id: string) { return this.fetch<any>(`/api/sessions/${id}`) }
-
-  async getSessionMessages(id: string) { return this.fetch<{ messages: any[] }>(`/api/sessions/${id}/messages`) }
-
-  async joinSession(id: string) { return this.fetch<void>(`/api/sessions/${id}/join`, { method: 'POST' }) }
-
-  async updateSession(id: string, data: { status?: string; context?: any }) {
-    return this.fetch<any>(`/api/sessions/${id}`, { method: 'PATCH', body: JSON.stringify(data) })
-  }
-
-  async getSessionSummary(id: string) { return this.fetch<any>(`/api/sessions/${id}/summary`) }
 
   // Plans
   async listPlans(limit = 20, offset = 0) { return this.fetch<{ plans: any[] }>(`/api/plans?limit=${limit}&offset=${offset}`) }
@@ -927,20 +906,6 @@ export class ApiClient {
   // Metrics
   async getWorkspaceMetrics(): Promise<WorkspaceMetrics> {
     return this.fetch("/api/metrics");
-  }
-
-  // Session Auto-Discussion
-  async startAutoDiscussion(sessionId: string): Promise<void> {
-    await this.fetch(`/api/sessions/${sessionId}/auto-start`, { method: "POST" });
-  }
-
-  async stopAutoDiscussion(sessionId: string): Promise<void> {
-    await this.fetch(`/api/sessions/${sessionId}/auto-stop`, { method: "POST" });
-  }
-
-  // Session Context
-  async shareSessionContext(sessionId: string, context: { files?: Array<{ name: string; content?: string }>; summary?: string; decision?: string }): Promise<void> {
-    await this.fetch(`/api/sessions/${sessionId}/context`, { method: "PUT", body: JSON.stringify(context) });
   }
 
   // Remote Sessions
