@@ -18,7 +18,7 @@ function getCliVersion(metadata: Record<string, unknown>): string | null {
 
 export function RuntimeDetail({ runtime }: { runtime: AgentRuntime }) {
   const cliVersion =
-    runtime.runtime_mode === "local" ? getCliVersion(runtime.metadata) : null;
+    runtime.mode === "local" ? getCliVersion(runtime.metadata) : null;
 
   return (
     <div className="flex h-full flex-col">
@@ -30,7 +30,7 @@ export function RuntimeDetail({ runtime }: { runtime: AgentRuntime }) {
               runtime.status === "online" ? "bg-success/10" : "bg-muted"
             }`}
           >
-            <RuntimeModeIcon mode={runtime.runtime_mode} />
+            <RuntimeModeIcon mode={runtime.mode} />
           </div>
           <div className="min-w-0">
             <h2 className="text-sm font-semibold truncate">{runtime.name}</h2>
@@ -43,12 +43,12 @@ export function RuntimeDetail({ runtime }: { runtime: AgentRuntime }) {
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
         {/* Info grid */}
         <div className="grid grid-cols-2 gap-4">
-          <InfoField label="运行模式" value={runtime.runtime_mode} />
+          <InfoField label="运行模式" value={runtime.mode} />
           <InfoField label="提供者" value={runtime.provider} />
           <InfoField label="状态" value={runtime.status} />
           <InfoField
             label="最后上线"
-            value={formatLastSeen(runtime.last_seen_at)}
+            value={formatLastSeen(runtime.last_heartbeat_at)}
           />
           {runtime.device_info && (
             <InfoField label="设备" value={runtime.device_info} />
@@ -59,7 +59,7 @@ export function RuntimeDetail({ runtime }: { runtime: AgentRuntime }) {
         </div>
 
         {/* CLI Version & Update */}
-        {runtime.runtime_mode === "local" && (
+        {runtime.mode === "local" && (
           <div>
             <h3 className="text-xs font-medium text-muted-foreground mb-3">
               CLI 版本

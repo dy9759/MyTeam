@@ -23,12 +23,12 @@ function RuntimeListItem({
           runtime.status === "online" ? "bg-success/10" : "bg-muted"
         }`}
       >
-        <RuntimeModeIcon mode={runtime.runtime_mode} />
+        <RuntimeModeIcon mode={runtime.mode} />
       </div>
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-medium">{runtime.name}</div>
         <div className="mt-0.5 truncate text-xs text-muted-foreground">
-          {runtime.provider} &middot; {runtime.runtime_mode}
+          {runtime.provider} &middot; {runtime.mode}
         </div>
       </div>
       <div

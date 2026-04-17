@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import type { Agent, AgentRuntime, IdentityCard } from "@/shared/types";
 import { splitList, statusMeta } from "./shared";
 
-type AgentFilter = "all" | "personal_agent" | "page_system_agent" | "system_agent";
+type AgentFilter = "all" | "personal_agent" | "scoped_system_agent" | "system_agent";
 
 interface AgentsTabProps {
   agents: Agent[];
@@ -55,7 +55,17 @@ export function AgentsTab({
 
   const filteredAgents = useMemo(() => {
     if (filter === "all") return agents;
-    return agents.filter((agent) => (agent.agent_type ?? "personal_agent") === filter);
+    return agents.filter((agent) => {
+      const type = agent.agent_type ?? "personal_agent";
+      if (filter === "personal_agent") return type === "personal_agent";
+      if (filter === "scoped_system_agent") {
+        return type === "system_agent" && agent.scope !== null;
+      }
+      if (filter === "system_agent") {
+        return type === "system_agent" && agent.scope === null;
+      }
+      return true;
+    });
   }, [agents, filter]);
 
   const selectedRuntime = selectedAgent ? runtimeById.get(selectedAgent.runtime_id) : null;
@@ -82,7 +92,7 @@ export function AgentsTab({
                 {[
                   { value: "all", label: "全部" },
                   { value: "personal_agent", label: "Personal" },
-                  { value: "page_system_agent", label: "Page" },
+                  { value: "scoped_system_agent", label: "Scoped" },
                   { value: "system_agent", label: "System" },
                 ].map((item) => (
                   <button
@@ -201,7 +211,7 @@ export function AgentsTab({
                       </div>
                       <div className="mt-1 text-xs text-muted-foreground">
                         {(selectedRuntime?.status ?? "offline")} · {selectedRuntime?.readiness ?? "unknown"}
-                        {selectedRuntime?.last_heartbeat ? ` · heartbeat ${new Date(selectedRuntime.last_heartbeat).toLocaleString()}` : ""}
+                        {selectedRuntime?.last_heartbeat_at ? ` · heartbeat ${new Date(selectedRuntime.last_heartbeat_at).toLocaleString()}` : ""}
                       </div>
                     </div>
                   </div>

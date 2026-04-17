@@ -14,7 +14,7 @@ interface RuntimeState {
 interface RuntimeActions {
   fetchRuntimes: () => Promise<void>;
   setSelectedId: (id: string) => void;
-  /** Patch a single runtime in-place (e.g. status/last_seen_at from WS event). */
+  /** Patch a single runtime in-place (e.g. status/last_heartbeat_at from WS event). */
   patchRuntime: (id: string, updates: Partial<AgentRuntime>) => void;
   /** Replace the full runtimes list (used on daemon:register events). */
   setRuntimes: (runtimes: AgentRuntime[]) => void;

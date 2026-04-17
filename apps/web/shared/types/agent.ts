@@ -1,10 +1,18 @@
-export type AgentStatus = "idle" | "working" | "blocked" | "error" | "offline";
+// AgentType — collapsed to two values per Account PRD §6.2
+export type AgentType = "personal_agent" | "system_agent";
 
-export type AgentType = "personal_agent" | "system_agent" | "page_system_agent";
+// AgentStatus — single 7-value enum (PRD §3.4)
+export type AgentStatus =
+  | "offline"
+  | "online"
+  | "idle"
+  | "busy"
+  | "blocked"
+  | "degraded"
+  | "suspended";
 
-export type AgentOnlineStatus = "online" | "offline";
-
-export type AgentWorkloadStatus = "idle" | "busy" | "blocked" | "degraded" | "suspended";
+// AgentScope — System Agent's functional scope. `null` means the global System Agent.
+export type AgentScope = "account" | "conversation" | "project" | "file" | null;
 
 export interface IdentityCard {
   title?: string;
@@ -24,50 +32,29 @@ export type AgentRuntimeMode = "local" | "cloud";
 
 export type AgentVisibility = "workspace" | "private";
 
-export type AgentTriggerType = "on_assign" | "on_comment" | "scheduled";
-
 export interface RuntimeDevice {
   id: string;
   workspace_id: string;
   daemon_id: string | null;
   name: string;
-  runtime_mode: AgentRuntimeMode; // legacy, kept during transition
-  mode?: AgentRuntimeMode;        // new canonical field
+  mode: AgentRuntimeMode;
   provider: string;
   status: "online" | "offline" | "degraded";
   device_info: string;
   metadata: Record<string, unknown>;
-  last_seen_at: string | null;     // legacy
-  last_heartbeat_at?: string | null;
-  concurrency_limit?: number;
-  current_load?: number;
-  lease_expires_at?: string | null;
+  last_heartbeat_at: string | null;
+  concurrency_limit: number;
+  current_load: number;
+  lease_expires_at: string | null;
   created_at: string;
   updated_at: string;
   server_host?: string;
   working_dir?: string;
   capabilities?: string[];
   readiness?: string;
-  last_heartbeat?: string;
 }
 
 export type AgentRuntime = RuntimeDevice;
-
-export interface AgentTool {
-  id: string;
-  name: string;
-  description: string;
-  auth_type: "oauth" | "api_key" | "none";
-  connected: boolean;
-  config: Record<string, unknown>;
-}
-
-export interface AgentTrigger {
-  id: string;
-  type: AgentTriggerType;
-  enabled: boolean;
-  config: Record<string, unknown>;
-}
 
 export interface AgentTask {
   id: string;
@@ -84,46 +71,33 @@ export interface AgentTask {
   created_at: string;
 }
 
-export type PageAgentScope = "account" | "session" | "project" | "file";
-
-export interface CloudLLMConfig {
-  endpoint?: string;
-  api_key?: string;
-  model?: string;
-}
-
 export interface Agent {
   id: string;
   workspace_id: string;
   runtime_id: string;
+  owner_id: string | null;
+  owner_type: "user" | "organization";
+  agent_type: AgentType;
+  scope: AgentScope;
   name: string;
+  display_name?: string;
   description: string;
   instructions: string;
   avatar_url: string | null;
-  runtime_mode: AgentRuntimeMode;
-  runtime_config: Record<string, unknown>;
   visibility: AgentVisibility;
   status: AgentStatus;
-  agent_type?: AgentType;
-  online_status?: AgentOnlineStatus;
-  workload_status?: AgentWorkloadStatus;
   identity_card?: IdentityCard;
   last_active_at?: string;
   max_concurrent_tasks: number;
-  owner_id: string | null;
   skills: Skill[];
-  tools: AgentTool[];
-  triggers: AgentTrigger[];
-  cloud_llm_config?: CloudLLMConfig;
+  auto_reply_enabled?: boolean;
+  auto_reply_config?: AgentAutoReplyConfig;
+  needs_attention?: boolean;
+  needs_attention_reason?: string | null;
   created_at: string;
   updated_at: string;
   archived_at: string | null;
   archived_by: string | null;
-  page_scope?: PageAgentScope | null;
-  scope?: PageAgentScope | "conversation" | null;
-  owner_type?: "user" | "organization";
-  needs_attention?: boolean;
-  needs_attention_reason?: string | null;
 }
 
 export interface CreateAgentRequest {
@@ -132,11 +106,8 @@ export interface CreateAgentRequest {
   instructions?: string;
   avatar_url?: string;
   runtime_id: string;
-  runtime_config?: Record<string, unknown>;
   visibility?: AgentVisibility;
   max_concurrent_tasks?: number;
-  tools?: AgentTool[];
-  triggers?: AgentTrigger[];
 }
 
 export interface UpdateAgentRequest {
@@ -145,12 +116,9 @@ export interface UpdateAgentRequest {
   instructions?: string;
   avatar_url?: string;
   runtime_id?: string;
-  runtime_config?: Record<string, unknown>;
   visibility?: AgentVisibility;
   status?: AgentStatus;
   max_concurrent_tasks?: number;
-  tools?: AgentTool[];
-  triggers?: AgentTrigger[];
 }
 
 // Skills

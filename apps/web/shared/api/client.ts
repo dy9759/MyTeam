@@ -8,6 +8,7 @@ import type {
   UpdateMemberRequest,
   ListIssuesParams,
   Agent,
+  AgentStatus,
   CreateAgentRequest,
   UpdateAgentRequest,
   AgentTask,
@@ -733,7 +734,7 @@ export class ApiClient {
     });
   }
 
-  async updateAgentStatus(agentId: string, status: { online_status?: string; workload_status?: string }): Promise<void> {
+  async updateAgentStatus(agentId: string, status: { status: AgentStatus }): Promise<void> {
     return this.fetch(`/api/agents/${agentId}/status`, {
       method: "PATCH",
       body: JSON.stringify(status),
@@ -912,12 +913,5 @@ export class ApiClient {
   // Personal Agent
   async getPersonalAgent(): Promise<Agent> {
     return this.fetch<Agent>("/api/personal-agent");
-  }
-
-  async updatePersonalAgentConfig(config: Record<string, unknown>): Promise<Agent> {
-    return this.fetch<Agent>("/api/personal-agent/config", {
-      method: "PATCH",
-      body: JSON.stringify({ cloud_llm_config: config }),
-    });
   }
 }
