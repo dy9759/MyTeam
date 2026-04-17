@@ -4,9 +4,19 @@ INSERT INTO thread_context_item (
     metadata, source_message_id, retention_class, expires_at,
     created_by, created_by_type, created_at
 ) VALUES (
-    gen_random_uuid(), $1, $2, $3, $4, $5,
-    COALESCE($6, '{}'::jsonb), $7, COALESCE($8, 'ttl'), $9,
-    $10, COALESCE($11, 'system'), now()
+    gen_random_uuid(),
+    @workspace_id,
+    @thread_id,
+    @item_type,
+    sqlc.narg('title'),
+    sqlc.narg('body'),
+    COALESCE(sqlc.narg('metadata')::jsonb, '{}'::jsonb),
+    sqlc.narg('source_message_id'),
+    COALESCE(sqlc.narg('retention_class')::text, 'ttl'),
+    sqlc.narg('expires_at'),
+    sqlc.narg('created_by'),
+    COALESCE(sqlc.narg('created_by_type')::text, 'system'),
+    now()
 )
 RETURNING *;
 

@@ -26,8 +26,16 @@ INSERT INTO thread (
     title, status, created_by, created_by_type, metadata,
     reply_count, last_reply_at, last_activity_at, created_at
 ) VALUES (
-    COALESCE($1, gen_random_uuid()), $2, $3, $4, $5,
-    $6, COALESCE($7, 'active'), $8, $9, COALESCE($10, '{}'::jsonb),
+    COALESCE(sqlc.narg('id')::uuid, gen_random_uuid()),
+    @channel_id,
+    @workspace_id,
+    sqlc.narg('root_message_id'),
+    sqlc.narg('issue_id'),
+    sqlc.narg('title'),
+    COALESCE(sqlc.narg('status')::text, 'active'),
+    sqlc.narg('created_by'),
+    sqlc.narg('created_by_type'),
+    COALESCE(sqlc.narg('metadata')::jsonb, '{}'::jsonb),
     0, NULL, now(), now()
 )
 RETURNING *;
@@ -40,18 +48,21 @@ SELECT * FROM thread WHERE root_message_id = $1 LIMIT 1;
 
 -- name: ListThreadsByChannel :many
 SELECT * FROM thread
-WHERE channel_id = $1 AND ($2::text IS NULL OR status = $2)
+WHERE channel_id = @channel_id
+  AND (sqlc.narg('status')::text IS NULL OR status = sqlc.narg('status')::text)
 ORDER BY last_activity_at DESC NULLS LAST, created_at DESC;
 
 -- name: ListThreadsByWorkspace :many
 SELECT * FROM thread
-WHERE workspace_id = $1 AND ($2::text IS NULL OR status = $2)
+WHERE workspace_id = @workspace_id
+  AND (sqlc.narg('status')::text IS NULL OR status = sqlc.narg('status')::text)
 ORDER BY last_activity_at DESC NULLS LAST, created_at DESC
-LIMIT $3 OFFSET $4;
+LIMIT @limit_count OFFSET @offset_count;
 
 -- name: ListThreadsByIssue :many
 SELECT * FROM thread
-WHERE issue_id = $1 AND ($2::text IS NULL OR status = $2)
+WHERE issue_id = @issue_id
+  AND (sqlc.narg('status')::text IS NULL OR status = sqlc.narg('status')::text)
 ORDER BY created_at DESC;
 
 -- name: UpdateThreadStatus :exec

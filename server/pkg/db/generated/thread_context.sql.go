@@ -17,9 +17,19 @@ INSERT INTO thread_context_item (
     metadata, source_message_id, retention_class, expires_at,
     created_by, created_by_type, created_at
 ) VALUES (
-    gen_random_uuid(), $1, $2, $3, $4, $5,
-    COALESCE($6, '{}'::jsonb), $7, COALESCE($8, 'ttl'), $9,
-    $10, COALESCE($11, 'system'), now()
+    gen_random_uuid(),
+    $1,
+    $2,
+    $3,
+    $4,
+    $5,
+    COALESCE($6::jsonb, '{}'::jsonb),
+    $7,
+    COALESCE($8::text, 'ttl'),
+    $9,
+    $10,
+    COALESCE($11::text, 'system'),
+    now()
 )
 RETURNING id, workspace_id, thread_id, item_type, title, body, metadata, source_message_id, retention_class, expires_at, created_by, created_by_type, created_at
 `
@@ -30,12 +40,12 @@ type CreateThreadContextItemParams struct {
 	ItemType        string             `json:"item_type"`
 	Title           pgtype.Text        `json:"title"`
 	Body            pgtype.Text        `json:"body"`
-	Column6         interface{}        `json:"column_6"`
+	Metadata        []byte             `json:"metadata"`
 	SourceMessageID pgtype.UUID        `json:"source_message_id"`
-	Column8         interface{}        `json:"column_8"`
+	RetentionClass  pgtype.Text        `json:"retention_class"`
 	ExpiresAt       pgtype.Timestamptz `json:"expires_at"`
 	CreatedBy       pgtype.UUID        `json:"created_by"`
-	Column11        interface{}        `json:"column_11"`
+	CreatedByType   pgtype.Text        `json:"created_by_type"`
 }
 
 func (q *Queries) CreateThreadContextItem(ctx context.Context, arg CreateThreadContextItemParams) (ThreadContextItem, error) {
@@ -45,12 +55,12 @@ func (q *Queries) CreateThreadContextItem(ctx context.Context, arg CreateThreadC
 		arg.ItemType,
 		arg.Title,
 		arg.Body,
-		arg.Column6,
+		arg.Metadata,
 		arg.SourceMessageID,
-		arg.Column8,
+		arg.RetentionClass,
 		arg.ExpiresAt,
 		arg.CreatedBy,
-		arg.Column11,
+		arg.CreatedByType,
 	)
 	var i ThreadContextItem
 	err := row.Scan(

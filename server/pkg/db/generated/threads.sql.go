@@ -18,39 +18,47 @@ INSERT INTO thread (
     title, status, created_by, created_by_type, metadata,
     reply_count, last_reply_at, last_activity_at, created_at
 ) VALUES (
-    COALESCE($1, gen_random_uuid()), $2, $3, $4, $5,
-    $6, COALESCE($7, 'active'), $8, $9, COALESCE($10, '{}'::jsonb),
+    COALESCE($1::uuid, gen_random_uuid()),
+    $2,
+    $3,
+    $4,
+    $5,
+    $6,
+    COALESCE($7::text, 'active'),
+    $8,
+    $9,
+    COALESCE($10::jsonb, '{}'::jsonb),
     0, NULL, now(), now()
 )
 RETURNING id, channel_id, title, reply_count, last_reply_at, created_at, workspace_id, root_message_id, issue_id, created_by, created_by_type, status, metadata, last_activity_at
 `
 
 type CreateThreadParams struct {
-	Column1       interface{} `json:"column_1"`
+	ID            pgtype.UUID `json:"id"`
 	ChannelID     pgtype.UUID `json:"channel_id"`
 	WorkspaceID   pgtype.UUID `json:"workspace_id"`
 	RootMessageID pgtype.UUID `json:"root_message_id"`
 	IssueID       pgtype.UUID `json:"issue_id"`
 	Title         pgtype.Text `json:"title"`
-	Column7       interface{} `json:"column_7"`
+	Status        pgtype.Text `json:"status"`
 	CreatedBy     pgtype.UUID `json:"created_by"`
 	CreatedByType pgtype.Text `json:"created_by_type"`
-	Column10      interface{} `json:"column_10"`
+	Metadata      []byte      `json:"metadata"`
 }
 
 // ===== Plan 3 / Phase 1: Thread extension =====
 func (q *Queries) CreateThread(ctx context.Context, arg CreateThreadParams) (Thread, error) {
 	row := q.db.QueryRow(ctx, createThread,
-		arg.Column1,
+		arg.ID,
 		arg.ChannelID,
 		arg.WorkspaceID,
 		arg.RootMessageID,
 		arg.IssueID,
 		arg.Title,
-		arg.Column7,
+		arg.Status,
 		arg.CreatedBy,
 		arg.CreatedByType,
-		arg.Column10,
+		arg.Metadata,
 	)
 	var i Thread
 	err := row.Scan(
@@ -165,17 +173,18 @@ func (q *Queries) IncrementThreadReplyCount(ctx context.Context, id pgtype.UUID)
 
 const listThreadsByChannel = `-- name: ListThreadsByChannel :many
 SELECT id, channel_id, title, reply_count, last_reply_at, created_at, workspace_id, root_message_id, issue_id, created_by, created_by_type, status, metadata, last_activity_at FROM thread
-WHERE channel_id = $1 AND ($2::text IS NULL OR status = $2)
+WHERE channel_id = $1
+  AND ($2::text IS NULL OR status = $2::text)
 ORDER BY last_activity_at DESC NULLS LAST, created_at DESC
 `
 
 type ListThreadsByChannelParams struct {
 	ChannelID pgtype.UUID `json:"channel_id"`
-	Column2   string      `json:"column_2"`
+	Status    pgtype.Text `json:"status"`
 }
 
 func (q *Queries) ListThreadsByChannel(ctx context.Context, arg ListThreadsByChannelParams) ([]Thread, error) {
-	rows, err := q.db.Query(ctx, listThreadsByChannel, arg.ChannelID, arg.Column2)
+	rows, err := q.db.Query(ctx, listThreadsByChannel, arg.ChannelID, arg.Status)
 	if err != nil {
 		return nil, err
 	}
@@ -211,17 +220,18 @@ func (q *Queries) ListThreadsByChannel(ctx context.Context, arg ListThreadsByCha
 
 const listThreadsByIssue = `-- name: ListThreadsByIssue :many
 SELECT id, channel_id, title, reply_count, last_reply_at, created_at, workspace_id, root_message_id, issue_id, created_by, created_by_type, status, metadata, last_activity_at FROM thread
-WHERE issue_id = $1 AND ($2::text IS NULL OR status = $2)
+WHERE issue_id = $1
+  AND ($2::text IS NULL OR status = $2::text)
 ORDER BY created_at DESC
 `
 
 type ListThreadsByIssueParams struct {
 	IssueID pgtype.UUID `json:"issue_id"`
-	Column2 string      `json:"column_2"`
+	Status  pgtype.Text `json:"status"`
 }
 
 func (q *Queries) ListThreadsByIssue(ctx context.Context, arg ListThreadsByIssueParams) ([]Thread, error) {
-	rows, err := q.db.Query(ctx, listThreadsByIssue, arg.IssueID, arg.Column2)
+	rows, err := q.db.Query(ctx, listThreadsByIssue, arg.IssueID, arg.Status)
 	if err != nil {
 		return nil, err
 	}
@@ -257,24 +267,25 @@ func (q *Queries) ListThreadsByIssue(ctx context.Context, arg ListThreadsByIssue
 
 const listThreadsByWorkspace = `-- name: ListThreadsByWorkspace :many
 SELECT id, channel_id, title, reply_count, last_reply_at, created_at, workspace_id, root_message_id, issue_id, created_by, created_by_type, status, metadata, last_activity_at FROM thread
-WHERE workspace_id = $1 AND ($2::text IS NULL OR status = $2)
+WHERE workspace_id = $1
+  AND ($2::text IS NULL OR status = $2::text)
 ORDER BY last_activity_at DESC NULLS LAST, created_at DESC
-LIMIT $3 OFFSET $4
+LIMIT $4 OFFSET $3
 `
 
 type ListThreadsByWorkspaceParams struct {
 	WorkspaceID pgtype.UUID `json:"workspace_id"`
-	Column2     string      `json:"column_2"`
-	Limit       int32       `json:"limit"`
-	Offset      int32       `json:"offset"`
+	Status      pgtype.Text `json:"status"`
+	OffsetCount int32       `json:"offset_count"`
+	LimitCount  int32       `json:"limit_count"`
 }
 
 func (q *Queries) ListThreadsByWorkspace(ctx context.Context, arg ListThreadsByWorkspaceParams) ([]Thread, error) {
 	rows, err := q.db.Query(ctx, listThreadsByWorkspace,
 		arg.WorkspaceID,
-		arg.Column2,
-		arg.Limit,
-		arg.Offset,
+		arg.Status,
+		arg.OffsetCount,
+		arg.LimitCount,
 	)
 	if err != nil {
 		return nil, err
