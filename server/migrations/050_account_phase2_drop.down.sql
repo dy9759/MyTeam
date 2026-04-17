@@ -31,3 +31,8 @@ ALTER TABLE agent_runtime
 
 DROP INDEX IF EXISTS uq_workspace_global_system_agent;
 DROP INDEX IF EXISTS uq_workspace_scoped_system_agent;
+
+-- Recreate the legacy system_agent uniqueness invariant (from migration 037).
+-- Depends on is_system being re-added above, so it sits at the end of the file.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_system_agent_workspace
+    ON agent(workspace_id) WHERE is_system = TRUE;

@@ -43,7 +43,10 @@ ALTER TABLE agent ADD CONSTRAINT agent_agent_type_check
     CHECK (agent_type IN ('personal_agent', 'system_agent'));
 
 -- New uniqueness constraints for system_agent + scope (replaces old is_system unique).
+-- The pre-existing index was created in migration 037 as idx_system_agent_workspace;
+-- older tooling may also have named it uq_workspace_system_agent, so drop both defensively.
 DROP INDEX IF EXISTS uq_workspace_system_agent;
+DROP INDEX IF EXISTS idx_system_agent_workspace;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_workspace_global_system_agent
     ON agent(workspace_id)
     WHERE agent_type = 'system_agent' AND scope IS NULL;

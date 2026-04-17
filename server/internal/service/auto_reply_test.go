@@ -212,10 +212,7 @@ func TestReplyAsMentionedAgent_AgentNotFound_Silent(t *testing.T) {
 	}
 }
 
-func TestReplyAsMentionedAgent_OnMentionDisabled_Silent(t *testing.T) {
-	// Trigger-level eligibility (per-agent on_mention enable/disable) was
-	// removed in Account Phase 2. The stored auto_reply_config now uses a
-	// different shape and gating moves to MediationService in a later phase.
-	// Test kept as a placeholder so the file structure stays familiar.
-	t.Skip("on_mention trigger flag removed in Account Phase 2; gating moves to MediationService in Plan 4")
-}
+// Removed: the on_mention trigger flag was dropped in Account Phase 2.
+// Eligibility now lives in MediationService (Plan 4). The previous test
+// (TestReplyAsMentionedAgent_OnMentionDisabled_Silent) asserted a gating
+// mechanism that no longer exists on auto_reply_config.
