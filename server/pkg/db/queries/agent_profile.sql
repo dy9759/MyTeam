@@ -44,8 +44,8 @@ UPDATE agent SET needs_attention = $2, needs_attention_reason = $3 WHERE id = $1
 SELECT * FROM agent WHERE archived_at IS NULL ORDER BY created_at ASC;
 
 -- name: CreateSystemAgent :one
-INSERT INTO agent (workspace_id, name, description, status, is_system, owner_id, visibility, runtime_mode, runtime_id)
-VALUES ($1, 'System Agent', 'Workspace system agent - manages defaults and automation', 'idle', TRUE, $2, 'workspace', 'cloud', $3)
+INSERT INTO agent (workspace_id, name, description, status, is_system, owner_id, visibility, runtime_mode, runtime_id, cloud_llm_config)
+VALUES ($1, 'System Agent', 'Workspace system agent - manages defaults and automation', 'idle', TRUE, $2, 'workspace', 'cloud', $3, $4)
 RETURNING *;
 
 -- name: CreatePageSystemAgent :one
@@ -62,11 +62,6 @@ LIMIT 1;
 SELECT * FROM agent
 WHERE workspace_id = $1 AND agent_type = 'page_system_agent' AND archived_at IS NULL
 ORDER BY page_scope ASC;
-
--- name: SetAgentNeedsAttention :exec
-UPDATE agent
-SET needs_attention = $2, needs_attention_reason = $3
-WHERE id = $1;
 
 -- name: GetPersonalAgent :one
 SELECT * FROM agent
