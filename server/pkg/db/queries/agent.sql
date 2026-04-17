@@ -189,3 +189,16 @@ WHERE atq.status IN ('queued', 'dispatched')
   AND a.runtime_mode = 'cloud'
 ORDER BY atq.priority DESC, atq.created_at ASC
 LIMIT 20;
+
+-- name: SetAgentScope :exec
+UPDATE agent
+SET scope      = sqlc.narg('scope'),
+    page_scope = sqlc.narg('page_scope'),
+    updated_at = now()
+WHERE id = $1;
+
+-- name: SetAgentOwnerType :exec
+UPDATE agent
+SET owner_type = $2,
+    updated_at = now()
+WHERE id = $1;

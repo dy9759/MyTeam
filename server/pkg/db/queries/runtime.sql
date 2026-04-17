@@ -78,3 +78,23 @@ WHERE status IN ('dispatched', 'running')
     SELECT id FROM agent_runtime WHERE status = 'offline'
   )
 RETURNING id, agent_id, issue_id;
+
+-- name: UpdateRuntimeHeartbeat :exec
+UPDATE agent_runtime
+SET last_heartbeat_at = now(),
+    last_seen_at      = now(),
+    status            = COALESCE(sqlc.narg('status'), status),
+    updated_at        = now()
+WHERE id = $1;
+
+-- name: SetRuntimeLoad :exec
+UPDATE agent_runtime
+SET current_load = $2,
+    updated_at   = now()
+WHERE id = $1;
+
+-- name: AcquireRuntimeLease :exec
+UPDATE agent_runtime
+SET lease_expires_at = $2,
+    updated_at       = now()
+WHERE id = $1;
