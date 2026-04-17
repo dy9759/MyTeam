@@ -34,6 +34,7 @@ import { sendDesktopNotification } from "./notify.js";
 export interface McpServerConfig {
   hubUrl: string;
   apiKey: string;
+  multicaClient?: MulticaClient;
 }
 
 export interface McpServerState {
@@ -43,11 +44,20 @@ export interface McpServerState {
   lastProcessedId?: Record<string, string>;
 }
 
-export function createMcpServer(config: McpServerConfig): { server: McpServer; client: HubClient; state: McpServerState } {
-  const client = new HubClient({
-    hubUrl: config.hubUrl,
-    apiKey: config.apiKey,
-  });
+export function createMcpServer(
+  config: McpServerConfig,
+): { server: McpServer; client: HubClient; unifiedClient: UnifiedClient; state: McpServerState } {
+  const hubClient = config.hubUrl
+    ? new HubClient({ hubUrl: config.hubUrl, apiKey: config.apiKey })
+    : new HubClient({ hubUrl: "", apiKey: config.apiKey });
+
+  // UnifiedClient routes thread calls to Multica when Multica is configured,
+  // and falls back to Hub otherwise. Thread-using tools must use unifiedClient
+  // so Multica-only mode hits the Go backend instead of the dead session API.
+  const unifiedClient = new UnifiedClient(
+    config.hubUrl ? hubClient : undefined,
+    config.multicaClient,
+  );
 
   // Shared mutable state — agentId is set after registration
   const state: McpServerState = {};
@@ -58,34 +68,35 @@ export function createMcpServer(config: McpServerConfig): { server: McpServer; c
   });
 
   // Register all tools
-  registerAgentTool(server, client, state);
-  registerListAgentsTool(server, client);
-  registerSendMessageTool(server, client, state);
-  registerCheckMessagesTool(server, client, state);
-  registerBroadcastTool(server, client);
-  registerCreateTaskTool(server, client, state);
-  registerCreateChannelTool(server, client, state);
-  registerSendToChannelTool(server, client);
-  registerListChannelsTool(server, client);
-  registerJoinChannelTool(server, client, state);
-  registerSendFileTool(server, client, state);
-  registerDownloadFileTool(server, client);
-  registerChatTool(server, client, state);
-  registerConversationsTool(server, client, state);
-  registerOwnerMessageTools(server, client, state);
-  registerCreateSessionTool(server, client, state);
-  registerSessionStatusTool(server, client);
-  registerMultiTurnChatTool(server, client, state);
-  registerShareContextTool(server, client);
-  registerInviteToSessionTool(server, client, state);
-  registerSubmitPlanTool(server, client, state);
-  registerTeamTools(server, client, state);
-  registerRemoteSessionTools(server, client, state);
-  registerAutoReplyTools(server, client, state);
-  registerListenTool(server, client, state);
-  registerAgentProfileTools(server, client, state);
+  registerAgentTool(server, hubClient, state);
+  registerListAgentsTool(server, hubClient);
+  registerSendMessageTool(server, hubClient, state);
+  registerCheckMessagesTool(server, hubClient, state);
+  registerBroadcastTool(server, hubClient);
+  registerCreateTaskTool(server, hubClient, state);
+  registerCreateChannelTool(server, hubClient, state);
+  registerSendToChannelTool(server, hubClient);
+  registerListChannelsTool(server, hubClient);
+  registerJoinChannelTool(server, hubClient, state);
+  registerSendFileTool(server, hubClient, state);
+  registerDownloadFileTool(server, hubClient);
+  registerChatTool(server, hubClient, state);
+  registerConversationsTool(server, hubClient, state);
+  registerOwnerMessageTools(server, hubClient, state);
+  // Thread-based tools route through UnifiedClient.
+  registerCreateSessionTool(server, unifiedClient, state);
+  registerSessionStatusTool(server, unifiedClient);
+  registerMultiTurnChatTool(server, unifiedClient, state);
+  registerShareContextTool(server, unifiedClient);
+  registerInviteToSessionTool(server, hubClient, state);
+  registerSubmitPlanTool(server, unifiedClient, state);
+  registerTeamTools(server, hubClient, state);
+  registerRemoteSessionTools(server, hubClient, state);
+  registerAutoReplyTools(server, hubClient, state);
+  registerListenTool(server, hubClient, state);
+  registerAgentProfileTools(server, hubClient, state);
 
-  return { server, client, state };
+  return { server, client: hubClient, unifiedClient, state };
 }
 
 // CLI entrypoint: stdio transport
@@ -117,14 +128,13 @@ async function main() {
     console.error("[agentmesh-mcp] Warning: AGENTMESH_API_KEY not set");
   }
 
-  const { server, client, state } = createMcpServer({ hubUrl: hubUrl ?? "", apiKey });
+  const { server, client, unifiedClient, state } = createMcpServer({
+    hubUrl: hubUrl ?? "",
+    apiKey,
+    multicaClient,
+  });
   const transport = new StdioServerTransport();
 
-  // Create UnifiedClient — tools can use this for either backend
-  const unifiedClient = new UnifiedClient(
-    hubUrl ? client : undefined,
-    multicaClient,
-  );
   console.error(`[agentmesh-mcp] Mode: ${unifiedClient.isMulticaMode ? "Multica Go" : "Hub Node.js"}`);
 
   // Resolve ownerId from API key via whoami endpoint

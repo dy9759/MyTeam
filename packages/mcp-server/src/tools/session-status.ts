@@ -1,9 +1,9 @@
 import { z } from "zod";
-import type { HubClient } from "../client/hub-client.js";
+import type { UnifiedClient } from "../client/unified-client.js";
 
 export function registerSessionStatusTool(
   server: import("@modelcontextprotocol/sdk/server/mcp.js").McpServer,
-  client: HubClient,
+  client: UnifiedClient,
 ) {
   server.registerTool(
     "agentmesh_session_status",

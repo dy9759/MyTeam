@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { HubClient } from "../client/hub-client.js";
+import type { UnifiedClient } from "../client/unified-client.js";
 
 // Map item_type to its default retention_class per PRD Section 3.2.
 // - decision → permanent
@@ -13,7 +13,7 @@ function defaultRetention(
 
 export function registerShareContextTool(
   server: import("@modelcontextprotocol/sdk/server/mcp.js").McpServer,
-  client: HubClient,
+  client: UnifiedClient,
 ) {
   server.registerTool(
     "agentmesh_share_context",

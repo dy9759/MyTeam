@@ -1,9 +1,9 @@
 import { z } from "zod";
-import type { HubClient } from "../client/hub-client.js";
+import type { UnifiedClient } from "../client/unified-client.js";
 
 export function registerSubmitPlanTool(
   server: import("@modelcontextprotocol/sdk/server/mcp.js").McpServer,
-  client: HubClient,
+  client: UnifiedClient,
   state: { agentId?: string; ownerId?: string },
 ) {
   server.registerTool(
@@ -26,7 +26,21 @@ export function registerSubmitPlanTool(
 
       try {
         const targetType = targetId.startsWith("owner-") ? "ownerId" : "agentId";
-        const result = await client.sendInteraction({
+        // plan_request is a Hub-only interaction type; Multica mode has no equivalent yet.
+        const hub = client.getHub();
+        if (!hub) {
+          return {
+            content: [{
+              type: "text" as const,
+              text: JSON.stringify({
+                error: "agentmesh_submit_plan is only available in Hub mode. " +
+                  "Plan submission has no Multica equivalent yet.",
+              }),
+            }],
+            isError: true,
+          };
+        }
+        const result = await hub.sendInteraction({
           type: "plan_request" as any,
           contentType: "text",
           target: { [targetType]: targetId, sessionId },
@@ -54,22 +68,33 @@ export function registerSubmitPlanTool(
     },
   );
 
-  // Get session summary
+  // Get thread summary — reads context items filtered by item_type = "summary".
   server.registerTool(
     "agentmesh_session_summary",
     {
       description:
-        "Get a structured summary of a collaboration session, including message timeline, " +
-        "participant contribution counts, and session status.",
+        "Get summary context items attached to a thread. " +
+        "Returns all context items with item_type = 'summary' for the given thread.",
       inputSchema: {
-        sessionId: z.string().describe("The session to summarize"),
+        threadId: z.string().describe("The thread to summarize"),
       },
     },
-    async ({ sessionId }) => {
+    async ({ threadId }) => {
       try {
-        const summary = await client.getSessionSummary(sessionId);
+        const items = await client.listThreadContextItems(threadId);
+        // listThreadContextItems may return either an array or { items: [...] } depending on backend.
+        const list: any[] = Array.isArray(items) ? items : (items?.items ?? []);
+        const summaries = list.filter((i) => i?.item_type === "summary");
         return {
-          content: [{ type: "text" as const, text: JSON.stringify(summary, null, 2) }],
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({
+              threadId,
+              count: summaries.length,
+              latest: summaries[0]?.body,
+              summaries,
+            }, null, 2),
+          }],
         };
       } catch (err: any) {
         return {
