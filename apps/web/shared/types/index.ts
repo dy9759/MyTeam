@@ -38,8 +38,6 @@ export type {
   Message,
   Channel,
   ChannelMember,
-  Session,
-  SessionParticipant,
   Conversation,
   Thread,
   ThreadStatus,

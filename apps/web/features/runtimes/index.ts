@@ -1,2 +1,2 @@
-export { RuntimesPage } from "./components";
+export { RuntimesPage, RemoteSessionsList } from "./components";
 export { useRuntimeStore } from "./store";

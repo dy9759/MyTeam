@@ -108,35 +108,6 @@ export interface ChannelMember {
   joined_at: string;
 }
 
-export interface Session {
-  id: string;
-  workspace_id: string;
-  title: string;
-  creator_id: string;
-  creator_type: "member" | "agent";
-  status: "active" | "waiting" | "completed" | "failed" | "archived";
-  max_turns: number;
-  current_turn: number;
-  context?: {
-    topic?: string;
-    files?: Array<{ name: string; content?: string }>;
-    code_snippets?: Array<{ language: string; code: string; description: string }>;
-    decisions?: Array<{ decision: string; by: string; at: string }>;
-    summary?: string;
-  };
-  issue_id?: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface SessionParticipant {
-  session_id: string;
-  participant_id: string;
-  participant_type: "member" | "agent";
-  role: "creator" | "participant";
-  joined_at: string;
-}
-
 export interface Conversation {
   peer_id: string;
   peer_type: "member" | "agent";
