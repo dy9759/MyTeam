@@ -16,6 +16,10 @@ export interface Message {
   file_size?: number;
   file_content_type?: string;
   is_impersonated?: boolean;
+  effective_actor_id?: string | null;
+  effective_actor_type?: "member" | "agent" | "system" | null;
+  real_operator_id?: string | null;
+  real_operator_type?: "member" | "agent" | "system" | null;
   metadata?: Record<string, unknown>;
   status: "sent" | "delivered" | "read";
   reply_count?: number;

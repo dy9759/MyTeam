@@ -31,12 +31,17 @@ export interface RuntimeDevice {
   workspace_id: string;
   daemon_id: string | null;
   name: string;
-  runtime_mode: AgentRuntimeMode;
+  runtime_mode: AgentRuntimeMode; // legacy, kept during transition
+  mode?: AgentRuntimeMode;        // new canonical field
   provider: string;
-  status: "online" | "offline";
+  status: "online" | "offline" | "degraded";
   device_info: string;
   metadata: Record<string, unknown>;
-  last_seen_at: string | null;
+  last_seen_at: string | null;     // legacy
+  last_heartbeat_at?: string | null;
+  concurrency_limit?: number;
+  current_load?: number;
+  lease_expires_at?: string | null;
   created_at: string;
   updated_at: string;
   server_host?: string;
@@ -115,6 +120,8 @@ export interface Agent {
   archived_at: string | null;
   archived_by: string | null;
   page_scope?: PageAgentScope | null;
+  scope?: PageAgentScope | "conversation" | null;
+  owner_type?: "user" | "organization";
   needs_attention?: boolean;
   needs_attention_reason?: string | null;
 }
