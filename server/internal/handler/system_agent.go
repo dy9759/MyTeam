@@ -123,7 +123,7 @@ func (h *Handler) GetPageAgent(w http.ResponseWriter, r *http.Request) {
 
 	scope := chi.URLParam(r, "scope")
 	if !isValidScope(scope) {
-		writeError(w, http.StatusBadRequest, "invalid page scope")
+		writeError(w, http.StatusBadRequest, "invalid scope")
 		return
 	}
 
@@ -146,7 +146,7 @@ func (h *Handler) GetPageAgent(w http.ResponseWriter, r *http.Request) {
 
 func isValidScope(s string) bool {
 	switch s {
-	case "account", "session", "project", "file":
+	case "account", "session", "conversation", "project", "file":
 		return true
 	}
 	return false

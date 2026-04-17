@@ -107,7 +107,7 @@ func (s *PlanGeneratorService) MatchAgentsToSteps(ctx context.Context, steps []P
 
 	agents, err := s.Queries.ListAgents(ctx, util.ParseUUID(workspaceID))
 	if err != nil {
-		return assignments, nil
+		return nil, fmt.Errorf("list agents: %w", err)
 	}
 
 	// Pre-compute capability sets per agent so the inner loops stay O(1).

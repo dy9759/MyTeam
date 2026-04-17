@@ -16,15 +16,15 @@ type AgentRuntimeResponse struct {
 	WorkspaceID      string  `json:"workspace_id"`
 	DaemonID         *string `json:"daemon_id"`
 	Name             string  `json:"name"`
-	Mode             *string `json:"mode,omitempty"`
+	Mode             *string `json:"mode"`
 	Provider         string  `json:"provider"`
 	Status           string  `json:"status"`
 	DeviceInfo       string  `json:"device_info"`
 	Metadata         any     `json:"metadata"`
 	ConcurrencyLimit int32   `json:"concurrency_limit"`
 	CurrentLoad      int32   `json:"current_load"`
-	LeaseExpiresAt   *string `json:"lease_expires_at,omitempty"`
-	LastHeartbeatAt  *string `json:"last_heartbeat_at,omitempty"`
+	LeaseExpiresAt   *string `json:"lease_expires_at"`
+	LastHeartbeatAt  *string `json:"last_heartbeat_at"`
 	CreatedAt        string  `json:"created_at"`
 	UpdatedAt        string  `json:"updated_at"`
 }
