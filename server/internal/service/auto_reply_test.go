@@ -27,22 +27,27 @@ func (f *fakeRunner) Run(ctx context.Context, prompt string, cfg agent_runner.Co
 	return f.reply, f.err
 }
 
-// insertTestAgent inserts a personal-agent row.
+// insertTestAgent inserts a personal-agent row and writes the supplied cloud
+// LLM config under runtime.metadata.cloud_llm_config (post Account Phase 2).
 func insertTestAgent(t *testing.T, q *db.Queries, wsID, runtimeID, ownerID pgtype.UUID, name string, cfg CloudLLMConfig) db.Agent {
 	t.Helper()
 	cfgJSON, _ := json.Marshal(cfg)
-	triggers, _ := json.Marshal([]map[string]any{{"type": "on_mention", "enabled": true}})
 	a, err := q.CreatePersonalAgent(context.Background(), db.CreatePersonalAgentParams{
-		WorkspaceID:    wsID,
-		Name:           name,
-		Description:    "test agent",
-		RuntimeID:      runtimeID,
-		OwnerID:        ownerID,
-		CloudLlmConfig: cfgJSON,
-		Triggers:       triggers,
+		WorkspaceID: wsID,
+		Name:        name,
+		Description: "test agent",
+		RuntimeID:   runtimeID,
+		OwnerID:     ownerID,
 	})
 	if err != nil {
 		t.Fatalf("insert agent: %v", err)
+	}
+	if err := q.SetRuntimeMetadataKey(context.Background(), db.SetRuntimeMetadataKeyParams{
+		ID:    runtimeID,
+		Key:   "cloud_llm_config",
+		Value: cfgJSON,
+	}); err != nil {
+		t.Fatalf("seed runtime cloud_llm_config: %v", err)
 	}
 	return a
 }
@@ -197,37 +202,9 @@ func TestReplyAsMentionedAgent_AgentNotFound_Silent(t *testing.T) {
 }
 
 func TestReplyAsMentionedAgent_OnMentionDisabled_Silent(t *testing.T) {
-	q := testDB(t)
-	wsID := createTestWorkspace(t, q)
-	ownerID := createTestUser(t, q, "t5+"+t.Name()+"@x.com", "T5")
-	runtime, _ := q.EnsureCloudRuntime(context.Background(), wsID)
-
-	cfgJSON, _ := json.Marshal(CloudLLMConfig{APIKey: "sk-X", Kernel: "openai_compat", Model: "m"})
-	triggers, _ := json.Marshal([]map[string]any{{"type": "on_mention", "enabled": false}})
-	_, err := q.CreatePersonalAgent(context.Background(), db.CreatePersonalAgentParams{
-		WorkspaceID:    wsID,
-		Name:           "Muted",
-		Description:    "test",
-		RuntimeID:      runtime.ID,
-		OwnerID:        ownerID,
-		CloudLlmConfig: cfgJSON,
-		Triggers:       triggers,
-	})
-	if err != nil {
-		t.Fatalf("create muted agent: %v", err)
-	}
-	ch := createTestChannel(t, q, wsID, ownerID)
-	trigger := createTestMessage(t, q, wsID, ownerID, ch.ID, "@Muted hi")
-
-	runner := &fakeRunner{}
-	svc := &AutoReplyService{Queries: q, Runner: runner}
-
-	_ = svc.replyAsMentionedAgent(context.Background(), "Muted", uuidToStr(wsID), uuidToStr(ch.ID), trigger)
-	if runner.lastPrompt != "" {
-		t.Fatal("runner should not run when on_mention disabled")
-	}
-	msgs, _ := q.ListChannelMessages(context.Background(), db.ListChannelMessagesParams{ChannelID: ch.ID, Limit: 10})
-	if len(msgs) != 1 {
-		t.Fatalf("expected only trigger message, got %d", len(msgs))
-	}
+	// Trigger-level eligibility (per-agent on_mention enable/disable) was
+	// removed in Account Phase 2. The stored auto_reply_config now uses a
+	// different shape and gating moves to MediationService in a later phase.
+	// Test kept as a placeholder so the file structure stays familiar.
+	t.Skip("on_mention trigger flag removed in Account Phase 2; gating moves to MediationService in Plan 4")
 }

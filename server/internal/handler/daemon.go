@@ -29,8 +29,7 @@ type DaemonRegisterRequest struct {
 		Type             string `json:"type"`
 		Version          string `json:"version"` // agent CLI version (claude/codex)
 		Status           string `json:"status"`
-		Mode             string `json:"mode"`              // phase 1: mirrors runtime_mode
-		RuntimeMode      string `json:"runtime_mode"`      // legacy alias for mode
+		Mode             string `json:"mode"`              // canonical execution mode (local|cloud|...)
 		ConcurrencyLimit int32  `json:"concurrency_limit"` // phase 1: defaults to 1 when absent
 	} `json:"runtimes"`
 }
@@ -94,12 +93,8 @@ func (h *Handler) DaemonRegister(w http.ResponseWriter, r *http.Request) {
 		case "offline", "degraded":
 			status = runtime.Status
 		}
-		// Phase 1: prefer "mode" (the new field) over the legacy "runtime_mode";
-		// fall back to "local" so existing daemons that send neither keep working.
+		// Default to "local" when the daemon doesn't supply a mode.
 		mode := strings.TrimSpace(runtime.Mode)
-		if mode == "" {
-			mode = strings.TrimSpace(runtime.RuntimeMode)
-		}
 		if mode == "" {
 			mode = "local"
 		}
@@ -116,7 +111,7 @@ func (h *Handler) DaemonRegister(w http.ResponseWriter, r *http.Request) {
 			WorkspaceID: parseUUID(req.WorkspaceID),
 			DaemonID:    strToText(req.DaemonID),
 			Name:        name,
-			RuntimeMode: mode,
+			Mode:        pgtype.Text{String: mode, Valid: mode != ""},
 			Provider:    provider,
 			Status:      status,
 			DeviceInfo:  deviceInfo,

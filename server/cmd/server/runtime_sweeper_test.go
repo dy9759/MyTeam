@@ -62,7 +62,7 @@ func setupSweeperTestFixture(t *testing.T, taskStatus string) (string, string, s
 	}
 
 	// Set agent status to "working"
-	_, err = testPool.Exec(ctx, `UPDATE agent SET status = 'working' WHERE id = $1`, agentID)
+	_, err = testPool.Exec(ctx, `UPDATE agent SET status = 'busy' WHERE id = $1`, agentID)
 	if err != nil {
 		t.Fatalf("failed to set agent status: %v", err)
 	}

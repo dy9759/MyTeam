@@ -65,7 +65,9 @@ func (s *IdentityGeneratorService) GenerateCard(ctx context.Context, agentID, wo
 		skillNames = append(skillNames, sk.Name)
 	}
 
-	// 5. Build context for LLM.
+	// 5. Build context for LLM. Pull capabilities from the existing identity_card
+	// (post Account Phase 2: no standalone agent.capabilities column).
+	existingCaps := capabilitiesFromIdentityCard(agent.IdentityCard)
 	contextInfo := fmt.Sprintf(`Agent Name: %s
 Description: %s
 Instructions: %s
@@ -76,7 +78,7 @@ Completed Task Summaries: %s`,
 		agent.Name,
 		agent.Description,
 		agent.Instructions,
-		strings.Join(agent.Capabilities, ", "),
+		strings.Join(existingCaps, ", "),
 		strings.Join(skillNames, ", "),
 		len(completedSummaries),
 		strings.Join(completedSummaries, "; "),
@@ -145,7 +147,7 @@ func (s *IdentityGeneratorService) GenerateAndSave(ctx context.Context, agentID,
 // buildBasicIdentityCard constructs a simple identity card without LLM.
 func buildBasicIdentityCard(agent db.Agent, skills, completedTasks []string) map[string]any {
 	card := map[string]any{
-		"capabilities":       agent.Capabilities,
+		"capabilities":       capabilitiesFromIdentityCard(agent.IdentityCard),
 		"tools":              []string{},
 		"skills":             skills,
 		"subagents":          []string{},
@@ -156,4 +158,28 @@ func buildBasicIdentityCard(agent db.Agent, skills, completedTasks []string) map
 		card["description_auto"] = fmt.Sprintf("%s. Has completed %d tasks.", agent.Description, len(completedTasks))
 	}
 	return card
+}
+
+// capabilitiesFromIdentityCard extracts the "capabilities" array from the
+// existing identity_card JSONB. Returns an empty slice when the card is empty
+// or the field is missing/malformed.
+func capabilitiesFromIdentityCard(raw []byte) []string {
+	if len(raw) == 0 {
+		return []string{}
+	}
+	var card map[string]any
+	if err := json.Unmarshal(raw, &card); err != nil {
+		return []string{}
+	}
+	caps, ok := card["capabilities"].([]any)
+	if !ok {
+		return []string{}
+	}
+	out := make([]string, 0, len(caps))
+	for _, c := range caps {
+		if s, ok := c.(string); ok {
+			out = append(out, s)
+		}
+	}
+	return out
 }

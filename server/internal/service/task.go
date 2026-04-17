@@ -354,7 +354,7 @@ func (s *TaskService) updateAgentStatus(ctx context.Context, agentID pgtype.UUID
 		WorkspaceID: util.UUIDToString(agent.WorkspaceID),
 		ActorType:   "system",
 		ActorID:     "",
-		Payload:     map[string]any{"agent": agentToMap(agent)},
+		Payload:     map[string]any{"agent": s.agentToMap(ctx, agent)},
 	})
 }
 
@@ -540,44 +540,41 @@ func issueToMap(issue db.Issue, issuePrefix string) map[string]any {
 }
 
 // agentToMap builds a simple map for broadcasting agent status updates.
-func agentToMap(a db.Agent) map[string]any {
-	var rc any
-	if a.RuntimeConfig != nil {
-		json.Unmarshal(a.RuntimeConfig, &rc)
-	}
-	var tools any
-	if a.Tools != nil {
-		json.Unmarshal(a.Tools, &tools)
-	}
-	var triggers any
-	if a.Triggers != nil {
-		json.Unmarshal(a.Triggers, &triggers)
-	}
-	var cloudCfg any
-	if a.CloudLlmConfig != nil {
-		json.Unmarshal(a.CloudLlmConfig, &cloudCfg)
-	}
-	return map[string]any{
+// Post Account Phase 2: runtime_mode and cloud_llm_config live on the runtime,
+// not the agent — they're sourced from the agent's runtime when available.
+func (s *TaskService) agentToMap(ctx context.Context, a db.Agent) map[string]any {
+	out := map[string]any{
 		"id":                   util.UUIDToString(a.ID),
 		"workspace_id":         util.UUIDToString(a.WorkspaceID),
 		"runtime_id":           util.UUIDToString(a.RuntimeID),
 		"name":                 a.Name,
 		"description":          a.Description,
 		"avatar_url":           util.TextToPtr(a.AvatarUrl),
-		"runtime_mode":         a.RuntimeMode,
-		"runtime_config":       rc,
 		"visibility":           a.Visibility,
 		"status":               a.Status,
 		"max_concurrent_tasks": a.MaxConcurrentTasks,
 		"owner_id":             util.UUIDToPtr(a.OwnerID),
 		"skills":               []any{},
-		"tools":                tools,
-		"triggers":             triggers,
-		"cloud_llm_config":     cloudCfg,
 		"agent_type":           a.AgentType,
 		"created_at":           util.TimestampToString(a.CreatedAt),
 		"updated_at":           util.TimestampToString(a.UpdatedAt),
 		"archived_at":          util.TimestampToPtr(a.ArchivedAt),
 		"archived_by":          util.UUIDToPtr(a.ArchivedBy),
 	}
+
+	if a.RuntimeID.Valid {
+		runtime, err := s.Queries.GetAgentRuntime(ctx, a.RuntimeID)
+		if err == nil {
+			out["runtime_mode"] = runtime.Mode.String
+			if len(runtime.Metadata) > 0 {
+				var meta map[string]any
+				if json.Unmarshal(runtime.Metadata, &meta) == nil {
+					if cfg, ok := meta["cloud_llm_config"]; ok {
+						out["cloud_llm_config"] = cfg
+					}
+				}
+			}
+		}
+	}
+	return out
 }

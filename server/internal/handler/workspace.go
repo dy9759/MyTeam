@@ -195,12 +195,19 @@ func (h *Handler) CreateWorkspace(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Auto-create system agent (and page system agents) for the new workspace.
+	// System agents have owner_id IS NULL after Account Phase 2; we still need
+	// the cloud runtime to attach them to.
 	go func() {
 		ctx := context.Background()
 		ownerUUID := parseUUID(userID)
+		runtime, rerr := h.Queries.EnsureCloudRuntime(ctx, ws.ID)
+		if rerr != nil {
+			slog.Warn("auto-create system agent: ensure cloud runtime failed", "error", rerr)
+			return
+		}
 		if _, err := h.Queries.CreateSystemAgent(ctx, db.CreateSystemAgentParams{
 			WorkspaceID: ws.ID,
-			OwnerID:     ownerUUID,
+			RuntimeID:   runtime.ID,
 		}); err != nil {
 			slog.Warn("auto-create system agent failed", "error", err)
 		}

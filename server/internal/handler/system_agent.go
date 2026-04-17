@@ -52,21 +52,31 @@ func (h *Handler) GetOrCreateSystemAgent(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Snapshot LLM config from server env (same as personal agent).
-	llmCfg := service.LoadCloudLLMConfigFromEnv()
-	llmJSON, _ := json.Marshal(llmCfg)
-
-	// Create system agent
+	// Create system agent. owner_id is NULL on system agents per the
+	// agent_type_owner_match constraint introduced in migration 050.
+	_ = ownerUUID
 	agent, err = h.Queries.CreateSystemAgent(r.Context(), db.CreateSystemAgentParams{
-		WorkspaceID:    wsUUID,
-		OwnerID:        ownerUUID,
-		RuntimeID:      cloudRuntime.ID,
-		CloudLlmConfig: llmJSON,
+		WorkspaceID: wsUUID,
+		RuntimeID:   cloudRuntime.ID,
 	})
 	if err != nil {
 		slog.Warn("create system agent failed", "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to create system agent")
 		return
+	}
+
+	// Cloud LLM config now lives on the runtime, not the agent. Persist a snapshot
+	// of the server-side env config under runtime.metadata.cloud_llm_config so the
+	// cloud executor can pick it up when the agent dispatches a task.
+	llmCfg := service.LoadCloudLLMConfigFromEnv()
+	if llmJSON, err := json.Marshal(llmCfg); err == nil {
+		if err := h.Queries.SetRuntimeMetadataKey(r.Context(), db.SetRuntimeMetadataKeyParams{
+			ID:    cloudRuntime.ID,
+			Key:   "cloud_llm_config",
+			Value: llmJSON,
+		}); err != nil {
+			slog.Warn("persist runtime cloud_llm_config failed", "error", err, "runtime_id", uuidToString(cloudRuntime.ID))
+		}
 	}
 
 	service.EnsurePageAgents(r.Context(), h.Queries, wsUUID, ownerUUID)
@@ -112,14 +122,14 @@ func (h *Handler) GetPageAgent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	scope := chi.URLParam(r, "scope")
-	if !isValidPageScope(scope) {
+	if !isValidScope(scope) {
 		writeError(w, http.StatusBadRequest, "invalid page scope")
 		return
 	}
 
 	agent, err := h.Queries.GetPageSystemAgent(r.Context(), db.GetPageSystemAgentParams{
 		WorkspaceID: parseUUID(workspaceID),
-		PageScope:   pgtype.Text{String: scope, Valid: true},
+		Scope:       pgtype.Text{String: scope, Valid: true},
 	})
 	if err != nil {
 		if isNotFound(err) {
@@ -134,7 +144,7 @@ func (h *Handler) GetPageAgent(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, agentToResponse(agent))
 }
 
-func isValidPageScope(s string) bool {
+func isValidScope(s string) bool {
 	switch s {
 	case "account", "session", "project", "file":
 		return true

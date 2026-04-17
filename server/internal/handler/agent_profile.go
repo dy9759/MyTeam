@@ -12,16 +12,14 @@ import (
 // ---------- response types ----------
 
 type AgentProfileResponse struct {
-	ID            string          `json:"id"`
-	Name          string          `json:"name"`
-	DisplayName   *string         `json:"display_name,omitempty"`
-	Avatar        *string         `json:"avatar,omitempty"`
-	Bio           *string         `json:"bio,omitempty"`
-	Tags          []string        `json:"tags"`
-	Capabilities  []string        `json:"capabilities"`
-	AgentMetadata json.RawMessage `json:"agent_metadata,omitempty"`
-	Status        string          `json:"status"`
-	Description   string          `json:"description"`
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	DisplayName *string  `json:"display_name,omitempty"`
+	Avatar      *string  `json:"avatar,omitempty"`
+	Bio         *string  `json:"bio,omitempty"`
+	Tags        []string `json:"tags"`
+	Status      string   `json:"status"`
+	Description string   `json:"description"`
 }
 
 type AutoReplyResponse struct {
@@ -44,16 +42,14 @@ func (h *Handler) GetAgentProfile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, AgentProfileResponse{
-		ID:            uuidToString(profile.ID),
-		Name:          profile.Name,
-		DisplayName:   textToPtr(profile.DisplayName),
-		Avatar:        textToPtr(profile.Avatar),
-		Bio:           textToPtr(profile.Bio),
-		Tags:          profile.Tags,
-		Capabilities:  profile.Capabilities,
-		AgentMetadata: profile.AgentMetadata,
-		Status:        profile.Status,
-		Description:   profile.Description,
+		ID:          uuidToString(profile.ID),
+		Name:        profile.Name,
+		DisplayName: textToPtr(profile.DisplayName),
+		Avatar:      textToPtr(profile.Avatar),
+		Bio:         textToPtr(profile.Bio),
+		Tags:        profile.Tags,
+		Status:      profile.Status,
+		Description: profile.Description,
 	})
 }
 
@@ -63,11 +59,10 @@ func (h *Handler) UpdateAgentProfile(w http.ResponseWriter, r *http.Request) {
 	agentID := chi.URLParam(r, "id")
 
 	type updateReq struct {
-		DisplayName *string         `json:"display_name,omitempty"`
-		Avatar      *string         `json:"avatar,omitempty"`
-		Bio         *string         `json:"bio,omitempty"`
-		Tags        []string        `json:"tags,omitempty"`
-		Metadata    json.RawMessage `json:"agent_metadata,omitempty"`
+		DisplayName *string  `json:"display_name,omitempty"`
+		Avatar      *string  `json:"avatar,omitempty"`
+		Bio         *string  `json:"bio,omitempty"`
+		Tags        []string `json:"tags,omitempty"`
 	}
 
 	var req updateReq
@@ -77,12 +72,11 @@ func (h *Handler) UpdateAgentProfile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	err := h.Queries.UpdateAgentProfile(ctx, db.UpdateAgentProfileParams{
-		ID:            parseUUID(agentID),
-		DisplayName:   ptrToText(req.DisplayName),
-		Avatar:        ptrToText(req.Avatar),
-		Bio:           ptrToText(req.Bio),
-		Tags:          req.Tags,
-		AgentMetadata: req.Metadata,
+		ID:          parseUUID(agentID),
+		DisplayName: ptrToText(req.DisplayName),
+		Avatar:      ptrToText(req.Avatar),
+		Bio:         ptrToText(req.Bio),
+		Tags:        req.Tags,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to update profile")

@@ -191,17 +191,16 @@ func (h *Handler) CreateProjectFromChat(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 
-		// Parse tools from JSONB
-		var tools []string
-		if len(agent.Tools) > 0 {
-			_ = json.Unmarshal(agent.Tools, &tools)
-		}
+		// Pull capabilities/tools from identity_card (post Account Phase 2:
+		// no standalone agent.tools / agent.capabilities columns).
+		caps := capabilitiesFromIdentityCard(agent.IdentityCard)
+		tools := toolsFromIdentityCard(agent.IdentityCard)
 
 		agentIdentities = append(agentIdentities, service.AgentIdentity{
 			ID:           agentID,
 			Name:         agent.Name,
-			Capabilities: agent.Capabilities,
-			Skills:       agent.Capabilities, // Capabilities serve as skills in the current model
+			Capabilities: caps,
+			Skills:       caps, // Capabilities serve as skills in the current model
 			Tools:        tools,
 		})
 
@@ -436,6 +435,40 @@ func buildAssignedAgentsJSON(steps []service.PlanStep) json.RawMessage {
 
 	data, _ := json.Marshal(assignments)
 	return data
+}
+
+// capabilitiesFromIdentityCard extracts the "capabilities" array from an
+// agent's identity_card JSONB. Returns an empty slice if the card is empty
+// or the field is missing/malformed. Mirrors the helper in the service
+// package so handlers can read identity_card without crossing the boundary.
+func capabilitiesFromIdentityCard(raw []byte) []string {
+	return stringSliceFromIdentityCardKey(raw, "capabilities")
+}
+
+// toolsFromIdentityCard extracts the "tools" array from identity_card JSONB.
+func toolsFromIdentityCard(raw []byte) []string {
+	return stringSliceFromIdentityCardKey(raw, "tools")
+}
+
+func stringSliceFromIdentityCardKey(raw []byte, key string) []string {
+	if len(raw) == 0 {
+		return []string{}
+	}
+	var card map[string]any
+	if err := json.Unmarshal(raw, &card); err != nil {
+		return []string{}
+	}
+	arr, ok := card[key].([]any)
+	if !ok {
+		return []string{}
+	}
+	out := make([]string, 0, len(arr))
+	for _, v := range arr {
+		if s, ok := v.(string); ok {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // buildWorkflowDAG constructs a simple DAG JSON from plan steps.

@@ -140,3 +140,12 @@ UPDATE agent_runtime
 SET lease_expires_at = $2,
     updated_at       = now()
 WHERE id = $1;
+
+-- name: SetRuntimeMetadataKey :exec
+-- Merges a single key into the runtime.metadata JSONB document.
+-- Used to store per-agent or per-runtime config (e.g. cloud_llm_config)
+-- alongside the runtime instead of on the agent row itself.
+UPDATE agent_runtime
+SET metadata   = jsonb_set(COALESCE(metadata, '{}'::jsonb), ARRAY[@key::TEXT], @value::JSONB, TRUE),
+    updated_at = now()
+WHERE id = @id;

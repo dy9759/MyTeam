@@ -328,7 +328,7 @@ func (s *MediationService) assignResponder(ctx context.Context, channelID, works
 	}
 
 	for _, a := range agents {
-		if a.ArchivedAt.Valid || a.IsSystem {
+		if a.ArchivedAt.Valid || a.AgentType == "system_agent" {
 			continue
 		}
 		if a.Status == "online" || a.Status == "idle" {

@@ -515,10 +515,13 @@ func (h *Handler) shouldEnqueueOnComment(ctx context.Context, issue db.Issue) bo
 	return true
 }
 
-// isAgentTriggerEnabled checks if an issue is assigned to an agent with a
-// specific trigger type enabled. Returns true if the agent has no triggers
-// configured (default-enabled behavior for backwards compatibility).
+// isAgentTriggerEnabled checks if an issue is assigned to an agent that is
+// eligible for trigger-based dispatch. Post Account Phase 2 the fine-grained
+// trigger filter has been removed — eligibility now reduces to "agent exists,
+// has a runtime, and is not archived". Plan 4 will reintroduce gating via
+// MediationService.
 func (h *Handler) isAgentTriggerEnabled(ctx context.Context, issue db.Issue, triggerType string) bool {
+	_ = triggerType
 	if !issue.AssigneeType.Valid || issue.AssigneeType.String != "agent" || !issue.AssigneeID.Valid {
 		return false
 	}
@@ -527,20 +530,17 @@ func (h *Handler) isAgentTriggerEnabled(ctx context.Context, issue db.Issue, tri
 	if err != nil || !agent.RuntimeID.Valid || agent.ArchivedAt.Valid {
 		return false
 	}
-
-	return agentHasTriggerEnabled(agent.Triggers, triggerType)
+	return true
 }
 
-// isAgentMentionTriggerEnabled checks if a specific agent has the on_mention
-// trigger enabled. Unlike isAgentTriggerEnabled, this takes an explicit agent
-// ID rather than deriving it from the issue assignee.
+// isAgentMentionTriggerEnabled checks if a specific agent is eligible to be
+// dispatched via @mention. Same simplification as isAgentTriggerEnabled.
 func (h *Handler) isAgentMentionTriggerEnabled(ctx context.Context, agentID pgtype.UUID) bool {
 	agent, err := h.Queries.GetAgent(ctx, agentID)
 	if err != nil || !agent.RuntimeID.Valid {
 		return false
 	}
-
-	return agentHasTriggerEnabled(agent.Triggers, "on_mention")
+	return true
 }
 
 // agentHasTriggerEnabled checks if a trigger type is enabled in the agent's

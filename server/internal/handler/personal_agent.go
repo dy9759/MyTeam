@@ -40,7 +40,8 @@ func (h *Handler) GetPersonalAgent(w http.ResponseWriter, r *http.Request) {
 }
 
 // UpdatePersonalAgentConfig — PATCH /api/personal-agent/config
-// Updates the cloud LLM config for the current user's personal agent.
+// Updates the cloud LLM config for the current user's personal agent. The
+// config now lives on the agent's runtime metadata (not the agent row itself).
 func (h *Handler) UpdatePersonalAgentConfig(w http.ResponseWriter, r *http.Request) {
 	workspaceID := resolveWorkspaceID(r)
 	userID, ok := requireUserID(w, r)
@@ -58,6 +59,11 @@ func (h *Handler) UpdatePersonalAgentConfig(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	if !agent.RuntimeID.Valid {
+		writeError(w, http.StatusConflict, "personal agent has no runtime configured")
+		return
+	}
+
 	var req struct {
 		CloudLLMConfig *service.CloudLLMConfig `json:"cloud_llm_config"`
 	}
@@ -72,14 +78,14 @@ func (h *Handler) UpdatePersonalAgentConfig(w http.ResponseWriter, r *http.Reque
 
 	configJSON, _ := json.Marshal(req.CloudLLMConfig)
 
-	updated, err := h.Queries.UpdatePersonalAgentConfig(r.Context(), db.UpdatePersonalAgentConfigParams{
-		ID:             agent.ID,
-		CloudLlmConfig: configJSON,
-	})
-	if err != nil {
+	if err := h.Queries.SetRuntimeMetadataKey(r.Context(), db.SetRuntimeMetadataKeyParams{
+		ID:    agent.RuntimeID,
+		Key:   "cloud_llm_config",
+		Value: configJSON,
+	}); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to update config")
 		return
 	}
 
-	writeJSON(w, http.StatusOK, agentToResponse(updated))
+	writeJSON(w, http.StatusOK, agentToResponse(agent))
 }

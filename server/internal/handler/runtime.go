@@ -16,7 +16,6 @@ type AgentRuntimeResponse struct {
 	WorkspaceID      string  `json:"workspace_id"`
 	DaemonID         *string `json:"daemon_id"`
 	Name             string  `json:"name"`
-	RuntimeMode      string  `json:"runtime_mode"`
 	Mode             *string `json:"mode,omitempty"`
 	Provider         string  `json:"provider"`
 	Status           string  `json:"status"`
@@ -26,7 +25,6 @@ type AgentRuntimeResponse struct {
 	CurrentLoad      int32   `json:"current_load"`
 	LeaseExpiresAt   *string `json:"lease_expires_at,omitempty"`
 	LastHeartbeatAt  *string `json:"last_heartbeat_at,omitempty"`
-	LastSeenAt       *string `json:"last_seen_at"`
 	CreatedAt        string  `json:"created_at"`
 	UpdatedAt        string  `json:"updated_at"`
 }
@@ -45,7 +43,6 @@ func runtimeToResponse(rt db.AgentRuntime) AgentRuntimeResponse {
 		WorkspaceID:      uuidToString(rt.WorkspaceID),
 		DaemonID:         textToPtr(rt.DaemonID),
 		Name:             rt.Name,
-		RuntimeMode:      rt.RuntimeMode,
 		Mode:             textToPtr(rt.Mode),
 		Provider:         rt.Provider,
 		Status:           rt.Status,
@@ -55,7 +52,6 @@ func runtimeToResponse(rt db.AgentRuntime) AgentRuntimeResponse {
 		CurrentLoad:      rt.CurrentLoad,
 		LeaseExpiresAt:   timestampToPtr(rt.LeaseExpiresAt),
 		LastHeartbeatAt:  timestampToPtr(rt.LastHeartbeatAt),
-		LastSeenAt:       timestampToPtr(rt.LastSeenAt),
 		CreatedAt:        timestampToString(rt.CreatedAt),
 		UpdatedAt:        timestampToString(rt.UpdatedAt),
 	}

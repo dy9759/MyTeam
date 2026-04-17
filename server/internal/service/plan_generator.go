@@ -99,20 +99,38 @@ Respond with JSON only:
 }
 
 // MatchAgentsToSteps finds best agents for each plan step based on capabilities.
+// Post Account Phase 2 there is no dedicated capabilities column — the
+// canonical source is each agent's identity_card.capabilities JSONB. This
+// function loads the workspace's agents once and filters in-memory.
 func (s *PlanGeneratorService) MatchAgentsToSteps(ctx context.Context, steps []PlanStep, workspaceID string) (map[int][]string, error) {
 	assignments := make(map[int][]string)
 
+	agents, err := s.Queries.ListAgents(ctx, util.ParseUUID(workspaceID))
+	if err != nil {
+		return assignments, nil
+	}
+
+	// Pre-compute capability sets per agent so the inner loops stay O(1).
+	type agentCaps struct {
+		id   string
+		caps map[string]struct{}
+	}
+	agentIndex := make([]agentCaps, 0, len(agents))
+	for _, a := range agents {
+		caps := capabilitiesFromIdentityCard(a.IdentityCard)
+		set := make(map[string]struct{}, len(caps))
+		for _, c := range caps {
+			set[c] = struct{}{}
+		}
+		agentIndex = append(agentIndex, agentCaps{id: util.UUIDToString(a.ID), caps: set})
+	}
+
 	for _, step := range steps {
 		for _, skill := range step.RequiredSkills {
-			agents, err := s.Queries.ListAgentsWithCapability(ctx, db.ListAgentsWithCapabilityParams{
-				WorkspaceID:  util.ParseUUID(workspaceID),
-				Capabilities: []string{skill},
-			})
-			if err != nil {
-				continue
-			}
-			for _, a := range agents {
-				assignments[step.Order] = append(assignments[step.Order], util.UUIDToString(a.ID))
+			for _, ag := range agentIndex {
+				if _, ok := ag.caps[skill]; ok {
+					assignments[step.Order] = append(assignments[step.Order], ag.id)
+				}
 			}
 		}
 	}

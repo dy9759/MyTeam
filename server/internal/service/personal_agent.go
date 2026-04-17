@@ -41,8 +41,8 @@ func LoadCloudLLMConfigFromEnv() CloudLLMConfig {
 }
 
 // EnsurePersonalAgent creates a personal agent for the owner if one doesn't exist.
-// It snapshots AGENT_* server env vars into agent.cloud_llm_config so the auto-reply
-// runner can read per-agent config from the DB.
+// It snapshots AGENT_* server env vars into runtime.metadata.cloud_llm_config so
+// the auto-reply runner can read per-runtime config from the DB.
 func EnsurePersonalAgent(ctx context.Context, queries *db.Queries, workspaceID, ownerID pgtype.UUID, userName string) (db.Agent, error) {
 	existing, err := queries.GetPersonalAgent(ctx, db.GetPersonalAgentParams{
 		WorkspaceID: workspaceID,
@@ -64,26 +64,32 @@ func EnsurePersonalAgent(ctx context.Context, queries *db.Queries, workspaceID, 
 			"owner_id", util.UUIDToString(ownerID),
 		)
 	}
-	configJSON, _ := json.Marshal(cfg)
-
-	triggers, _ := json.Marshal([]map[string]any{
-		{"type": "on_assign", "enabled": true},
-		{"type": "on_comment", "enabled": true},
-		{"type": "on_mention", "enabled": true},
-	})
 
 	agentName := userName + "'s Assistant"
 	agent, err := queries.CreatePersonalAgent(ctx, db.CreatePersonalAgentParams{
-		WorkspaceID:    workspaceID,
-		Name:           agentName,
-		Description:    "Personal AI assistant powered by Claude Agent SDK",
-		RuntimeID:      runtime.ID,
-		OwnerID:        ownerID,
-		CloudLlmConfig: configJSON,
-		Triggers:       triggers,
+		WorkspaceID: workspaceID,
+		Name:        agentName,
+		Description: "Personal AI assistant powered by Claude Agent SDK",
+		RuntimeID:   runtime.ID,
+		OwnerID:     ownerID,
 	})
 	if err != nil {
 		return db.Agent{}, fmt.Errorf("create personal agent: %w", err)
+	}
+
+	// Snapshot the cloud LLM config to runtime.metadata so the cloud executor
+	// and auto-reply path can pick it up.
+	if configJSON, mErr := json.Marshal(cfg); mErr == nil {
+		if sErr := queries.SetRuntimeMetadataKey(ctx, db.SetRuntimeMetadataKeyParams{
+			ID:    runtime.ID,
+			Key:   "cloud_llm_config",
+			Value: configJSON,
+		}); sErr != nil {
+			slog.Warn("personal agent: persist runtime cloud_llm_config failed",
+				"runtime_id", util.UUIDToString(runtime.ID),
+				"error", sErr,
+			)
+		}
 	}
 
 	slog.Info("personal agent created",

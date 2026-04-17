@@ -12,8 +12,8 @@ import (
 )
 
 const createPageSystemAgent = `-- name: CreatePageSystemAgent :one
-INSERT INTO agent (workspace_id, name, description, instructions, status, owner_id, visibility, agent_type, scope, runtime_id)
-VALUES ($1, $2, $3, $4, 'idle', $5, 'workspace', 'system_agent', $6, $7)
+INSERT INTO agent (workspace_id, name, description, instructions, status, owner_type, visibility, agent_type, scope, runtime_id)
+VALUES ($1, $2, $3, $4, 'idle', 'organization', 'workspace', 'system_agent', $5, $6)
 RETURNING
     id, workspace_id, name, avatar_url, visibility, status,
     max_concurrent_tasks, owner_id, created_at, updated_at, description,
@@ -28,18 +28,17 @@ type CreatePageSystemAgentParams struct {
 	Name         string      `json:"name"`
 	Description  string      `json:"description"`
 	Instructions string      `json:"instructions"`
-	OwnerID      pgtype.UUID `json:"owner_id"`
 	Scope        pgtype.Text `json:"scope"`
 	RuntimeID    pgtype.UUID `json:"runtime_id"`
 }
 
+// Page-scoped system agent (account/session/project/file). owner_id is NULL.
 func (q *Queries) CreatePageSystemAgent(ctx context.Context, arg CreatePageSystemAgentParams) (Agent, error) {
 	row := q.db.QueryRow(ctx, createPageSystemAgent,
 		arg.WorkspaceID,
 		arg.Name,
 		arg.Description,
 		arg.Instructions,
-		arg.OwnerID,
 		arg.Scope,
 		arg.RuntimeID,
 	)
@@ -82,8 +81,8 @@ const createPersonalAgent = `-- name: CreatePersonalAgent :one
 INSERT INTO agent (
     workspace_id, name, description,
     runtime_id, visibility, status, max_concurrent_tasks, owner_id,
-    agent_type, auto_reply_enabled
-) VALUES ($1, $2, $3, $4, 'private', 'idle', 1, $5, 'personal_agent', TRUE)
+    agent_type, owner_type, auto_reply_enabled
+) VALUES ($1, $2, $3, $4, 'private', 'idle', 1, $5, 'personal_agent', 'user', TRUE)
 RETURNING
     id, workspace_id, name, avatar_url, visibility, status,
     max_concurrent_tasks, owner_id, created_at, updated_at, description,
@@ -145,8 +144,8 @@ func (q *Queries) CreatePersonalAgent(ctx context.Context, arg CreatePersonalAge
 }
 
 const createSystemAgent = `-- name: CreateSystemAgent :one
-INSERT INTO agent (workspace_id, name, description, status, owner_id, visibility, agent_type, runtime_id)
-VALUES ($1, 'System Agent', 'Workspace system agent - manages defaults and automation', 'idle', $2, 'workspace', 'system_agent', $3)
+INSERT INTO agent (workspace_id, name, description, status, owner_type, visibility, agent_type, runtime_id)
+VALUES ($1, 'System Agent', 'Workspace system agent - manages defaults and automation', 'idle', 'organization', 'workspace', 'system_agent', $2)
 RETURNING
     id, workspace_id, name, avatar_url, visibility, status,
     max_concurrent_tasks, owner_id, created_at, updated_at, description,
@@ -158,12 +157,16 @@ RETURNING
 
 type CreateSystemAgentParams struct {
 	WorkspaceID pgtype.UUID `json:"workspace_id"`
-	OwnerID     pgtype.UUID `json:"owner_id"`
 	RuntimeID   pgtype.UUID `json:"runtime_id"`
 }
 
+// Workspace-level system agent. owner_id is NULL and owner_type is
+// 'organization' (enforced by agent_type_owner_match constraint).
+// $2 was previously the requesting user but is no longer required by the
+// query — kept in the call signature for backwards compatibility but not
+// written to the row.
 func (q *Queries) CreateSystemAgent(ctx context.Context, arg CreateSystemAgentParams) (Agent, error) {
-	row := q.db.QueryRow(ctx, createSystemAgent, arg.WorkspaceID, arg.OwnerID, arg.RuntimeID)
+	row := q.db.QueryRow(ctx, createSystemAgent, arg.WorkspaceID, arg.RuntimeID)
 	var i Agent
 	err := row.Scan(
 		&i.ID,

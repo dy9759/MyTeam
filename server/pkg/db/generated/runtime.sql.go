@@ -352,6 +352,27 @@ func (q *Queries) SetRuntimeLoad(ctx context.Context, arg SetRuntimeLoadParams) 
 	return err
 }
 
+const setRuntimeMetadataKey = `-- name: SetRuntimeMetadataKey :exec
+UPDATE agent_runtime
+SET metadata   = jsonb_set(COALESCE(metadata, '{}'::jsonb), ARRAY[$1::TEXT], $2::JSONB, TRUE),
+    updated_at = now()
+WHERE id = $3
+`
+
+type SetRuntimeMetadataKeyParams struct {
+	Key   string      `json:"key"`
+	Value []byte      `json:"value"`
+	ID    pgtype.UUID `json:"id"`
+}
+
+// Merges a single key into the runtime.metadata JSONB document.
+// Used to store per-agent or per-runtime config (e.g. cloud_llm_config)
+// alongside the runtime instead of on the agent row itself.
+func (q *Queries) SetRuntimeMetadataKey(ctx context.Context, arg SetRuntimeMetadataKeyParams) error {
+	_, err := q.db.Exec(ctx, setRuntimeMetadataKey, arg.Key, arg.Value, arg.ID)
+	return err
+}
+
 const updateAgentRuntimeHeartbeat = `-- name: UpdateAgentRuntimeHeartbeat :one
 UPDATE agent_runtime
 SET status = 'online', last_heartbeat_at = now(), updated_at = now()

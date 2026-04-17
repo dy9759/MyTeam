@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -75,6 +74,19 @@ func createTestUser(t *testing.T, q *db.Queries, email, name string) pgtype.UUID
 	return u.ID
 }
 
+// loadAgentRuntimeCfg helper for tests: reads cloud_llm_config from runtime.metadata.
+func loadAgentRuntimeCfg(t *testing.T, q *db.Queries, agent db.Agent) CloudLLMConfig {
+	t.Helper()
+	if !agent.RuntimeID.Valid {
+		t.Fatal("agent missing runtime_id")
+	}
+	rt, err := q.GetAgentRuntime(context.Background(), agent.RuntimeID)
+	if err != nil {
+		t.Fatalf("load runtime: %v", err)
+	}
+	return cloudLLMConfigFromRuntime(rt)
+}
+
 func TestEnsurePersonalAgent_SnapshotsServerEnv(t *testing.T) {
 	q := testDB(t)
 	setEnvVars(t, map[string]string{
@@ -96,10 +108,8 @@ func TestEnsurePersonalAgent_SnapshotsServerEnv(t *testing.T) {
 		t.Fatalf("unexpected name: %s", agent.Name)
 	}
 
-	var cfg CloudLLMConfig
-	if err := json.Unmarshal(agent.CloudLlmConfig, &cfg); err != nil {
-		t.Fatalf("parse cfg: %v", err)
-	}
+	// cloud_llm_config moved to runtime.metadata in account phase 2.
+	cfg := loadAgentRuntimeCfg(t, q, agent)
 	if cfg.Kernel != "openai_compat" ||
 		cfg.BaseURL != "http://bailian.test" ||
 		cfg.APIKey != "sk-test-snapshot" ||
@@ -122,8 +132,8 @@ func TestEnsurePersonalAgent_EmptyEnvAllowed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ensure should not error on empty env: %v", err)
 	}
-	var cfg CloudLLMConfig
-	_ = json.Unmarshal(agent.CloudLlmConfig, &cfg)
+	// cloud_llm_config moved to runtime.metadata in account phase 2.
+	cfg := loadAgentRuntimeCfg(t, q, agent)
 	if cfg.APIKey != "" {
 		t.Fatalf("expected empty api key, got %q", cfg.APIKey)
 	}
@@ -168,8 +178,8 @@ func TestEnsurePersonalAgent_SwitchesKernelBasedOnEnv(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ensure: %v", err)
 	}
-	var cfg CloudLLMConfig
-	_ = json.Unmarshal(agent.CloudLlmConfig, &cfg)
+	// cloud_llm_config moved to runtime.metadata in account phase 2.
+	cfg := loadAgentRuntimeCfg(t, q, agent)
 	if cfg.Kernel != "anthropic" {
 		t.Fatalf("expected kernel='anthropic', got %q", cfg.Kernel)
 	}

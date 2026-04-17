@@ -229,8 +229,8 @@ const createAgent = `-- name: CreateAgent :one
 INSERT INTO agent (
     workspace_id, name, description, avatar_url,
     runtime_id, visibility, max_concurrent_tasks, owner_id,
-    instructions
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    instructions, agent_type, owner_type
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'personal_agent', 'user')
 RETURNING
     id, workspace_id, name, avatar_url, visibility, status,
     max_concurrent_tasks, owner_id, created_at, updated_at, description,
@@ -252,6 +252,9 @@ type CreateAgentParams struct {
 	Instructions       string      `json:"instructions"`
 }
 
+// Generic agent creation. Treats the new row as a personal_agent (a user-owned
+// agent attached to a runtime); system agents use CreateSystemAgent /
+// CreatePageSystemAgent and skip this path.
 func (q *Queries) CreateAgent(ctx context.Context, arg CreateAgentParams) (Agent, error) {
 	row := q.db.QueryRow(ctx, createAgent,
 		arg.WorkspaceID,

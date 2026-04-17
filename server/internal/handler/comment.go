@@ -325,10 +325,9 @@ func (h *Handler) enqueueMentionedAgentTasks(ctx context.Context, issue db.Issue
 				}
 			}
 		}
-		// Check if the agent has on_mention trigger enabled.
-		if !agentHasTriggerEnabled(agent.Triggers, "on_mention") {
-			continue
-		}
+		// Trigger-based eligibility check removed in Account Phase 2 — every
+		// @mention is considered. Plan 4 will move fine-grained gating into
+		// MediationService.
 		// Dedup: skip if this agent already has a pending task for this issue.
 		hasPending, err := h.Queries.HasPendingTaskForIssueAndAgent(ctx, db.HasPendingTaskForIssueAndAgentParams{
 			IssueID: issue.ID,

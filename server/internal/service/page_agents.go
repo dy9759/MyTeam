@@ -48,7 +48,11 @@ var PageAgentDefs = []PageAgentDef{
 
 // EnsurePageAgents idempotently creates all page system agents for a workspace.
 // Safe to call repeatedly — existing agents are left untouched.
+// The ownerID parameter is retained for call-site compatibility but no longer
+// written to the row — page system agents have owner_id IS NULL after Account
+// Phase 2 (agent_type_owner_match constraint).
 func EnsurePageAgents(ctx context.Context, q *db.Queries, workspaceID pgtype.UUID, ownerID pgtype.UUID) {
+	_ = ownerID
 	// Ensure cloud runtime to use as FK for page system agents.
 	cloudRuntime, rterr := q.EnsureCloudRuntime(ctx, workspaceID)
 	if rterr != nil {
@@ -59,7 +63,7 @@ func EnsurePageAgents(ctx context.Context, q *db.Queries, workspaceID pgtype.UUI
 	for _, def := range PageAgentDefs {
 		_, err := q.GetPageSystemAgent(ctx, db.GetPageSystemAgentParams{
 			WorkspaceID: workspaceID,
-			PageScope:   pgtype.Text{String: def.Scope, Valid: true},
+			Scope:       pgtype.Text{String: def.Scope, Valid: true},
 		})
 		if err == nil {
 			continue
@@ -74,8 +78,7 @@ func EnsurePageAgents(ctx context.Context, q *db.Queries, workspaceID pgtype.UUI
 			Name:         def.Name,
 			Description:  def.Description,
 			Instructions: def.Instructions,
-			OwnerID:      ownerID,
-			PageScope:    pgtype.Text{String: def.Scope, Valid: true},
+			Scope:        pgtype.Text{String: def.Scope, Valid: true},
 			RuntimeID:    cloudRuntime.ID,
 		})
 		if err != nil {

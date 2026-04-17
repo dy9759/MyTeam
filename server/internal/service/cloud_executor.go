@@ -75,11 +75,15 @@ func (s *CloudExecutorService) handleDispatch(ctx context.Context, e events.Even
 		return
 	}
 
-	if agentRow.RuntimeMode != "cloud" {
+	runtime, err := s.Queries.GetAgentRuntime(ctx, agentRow.RuntimeID)
+	if err != nil {
+		return
+	}
+	if runtime.Mode.String != "cloud" {
 		return
 	}
 
-	s.executeTask(ctx, task, agentRow)
+	s.executeTask(ctx, task, agentRow, runtime)
 }
 
 func (s *CloudExecutorService) pollLoop(ctx context.Context) {
@@ -119,15 +123,19 @@ func (s *CloudExecutorService) pollAndExecute(ctx context.Context) {
 			continue
 		}
 
-		if agentRow.RuntimeMode != "cloud" {
+		runtime, err := s.Queries.GetAgentRuntime(ctx, agentRow.RuntimeID)
+		if err != nil {
+			continue
+		}
+		if runtime.Mode.String != "cloud" {
 			continue
 		}
 
-		go s.executeTask(ctx, task, agentRow)
+		go s.executeTask(ctx, task, agentRow, runtime)
 	}
 }
 
-func (s *CloudExecutorService) executeTask(ctx context.Context, task db.AgentTaskQueue, agentRow db.Agent) {
+func (s *CloudExecutorService) executeTask(ctx context.Context, task db.AgentTaskQueue, agentRow db.Agent, runtime db.AgentRuntime) {
 	taskIDStr := util.UUIDToString(task.ID)
 	slog.Info("[cloud-executor] executing task", "task_id", taskIDStr)
 
@@ -154,8 +162,8 @@ func (s *CloudExecutorService) executeTask(ctx context.Context, task db.AgentTas
 	// Build the prompt.
 	prompt := buildCloudPrompt(issue, comments, task.TriggerCommentID)
 
-	// Parse cloud LLM config.
-	llmCfg := s.buildLLMConfig(agentRow)
+	// Parse cloud LLM config from the runtime metadata.
+	llmCfg := s.buildLLMConfig(runtime)
 
 	// Create cloud backend and execute.
 	backend := agent.NewCloudBackend(llmCfg)
@@ -195,11 +203,8 @@ func (s *CloudExecutorService) executeTask(ctx context.Context, task db.AgentTas
 	slog.Info("[cloud-executor] task completed", "task_id", taskIDStr)
 }
 
-func (s *CloudExecutorService) buildLLMConfig(agentRow db.Agent) llmclient.Config {
-	var cloudCfg CloudLLMConfig
-	if len(agentRow.CloudLlmConfig) > 0 {
-		json.Unmarshal(agentRow.CloudLlmConfig, &cloudCfg)
-	}
+func (s *CloudExecutorService) buildLLMConfig(runtime db.AgentRuntime) llmclient.Config {
+	cloudCfg := cloudLLMConfigFromRuntime(runtime)
 
 	cfg := llmclient.DashScopeFromEnv()
 

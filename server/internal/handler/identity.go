@@ -6,7 +6,6 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
@@ -25,12 +24,10 @@ func (h *Handler) GetIdentityCard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: wire after sqlc generation — agent.IdentityCard field will be added by migration.
-	// For now, read from the agent_metadata JSONB as a fallback.
 	var card map[string]any
-	if agent.AgentMetadata != nil {
-		if err := json.Unmarshal(agent.AgentMetadata, &card); err != nil {
-			slog.Warn("failed to parse agent metadata as identity card", "error", err, "agent_id", agentID)
+	if agent.IdentityCard != nil {
+		if err := json.Unmarshal(agent.IdentityCard, &card); err != nil {
+			slog.Warn("failed to parse agent identity card", "error", err, "agent_id", agentID)
 			card = map[string]any{}
 		}
 	}
@@ -69,11 +66,9 @@ func (h *Handler) UpdateIdentityCard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Store identity card in agent_metadata column.
-	// After migration adds dedicated identity_card column, switch to that.
-	err = h.Queries.UpdateAgentProfile(r.Context(), db.UpdateAgentProfileParams{
-		ID:            parseUUID(agentID),
-		AgentMetadata: cardJSON,
+	err = h.Queries.UpdateAgentIdentityCard(r.Context(), db.UpdateAgentIdentityCardParams{
+		ID:           parseUUID(agentID),
+		IdentityCard: cardJSON,
 	})
 	if err != nil {
 		slog.Warn("update identity card failed", "error", err, "agent_id", agentID)
@@ -130,42 +125,20 @@ func (h *Handler) GenerateIdentityCard(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// validOnlineStatusTransitions defines allowed online_status transitions per state machine.
-var validOnlineStatusTransitions = map[string][]string{
-	"offline":   {"online"},
-	"online":    {"idle", "offline"},
-	"idle":      {"busy", "degraded", "suspended", "offline"},
-	"busy":      {"idle", "blocked", "degraded", "suspended", "offline"},
-	"blocked":   {"idle", "offline"},
-	"degraded":  {"idle", "offline"},
-	"suspended": {"idle", "offline"},
-}
-
-// validWorkloadStatusTransitions defines allowed workload_status transitions per state machine.
-var validWorkloadStatusTransitions = map[string][]string{
-	"idle":      {"busy", "blocked", "degraded", "suspended"},
-	"busy":      {"idle", "blocked", "degraded", "suspended"},
-	"blocked":   {"idle", "busy", "suspended"},
-	"degraded":  {"idle", "busy", "suspended"},
-	"suspended": {"idle"},
-}
-
-func isValidTransition(transitions map[string][]string, from, to string) bool {
-	allowed, ok := transitions[from]
-	if !ok {
-		return false
-	}
-	for _, s := range allowed {
-		if s == to {
-			return true
-		}
-	}
-	return false
+// validAgentStatuses defines the canonical 7-value status enum for the unified
+// agent.status field (post Account Phase 2).
+var validAgentStatuses = map[string]struct{}{
+	"offline":   {},
+	"online":    {},
+	"idle":      {},
+	"busy":      {},
+	"blocked":   {},
+	"degraded":  {},
+	"suspended": {},
 }
 
 // UpdateAgentStatus - PATCH /api/agents/{id}/status
-// Update online_status and/or workload_status.
-// Validates state transitions per state machine rules.
+// Updates the unified agent.status field with one of the 7 canonical values.
 // Broadcasts agent:status_changed WS event.
 func (h *Handler) UpdateAgentStatus(w http.ResponseWriter, r *http.Request) {
 	agentID := chi.URLParam(r, "id")
@@ -178,51 +151,26 @@ func (h *Handler) UpdateAgentStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		OnlineStatus   *string `json:"online_status,omitempty"`
-		WorkloadStatus *string `json:"workload_status,omitempty"`
+		Status string `json:"status"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
-	if req.OnlineStatus == nil && req.WorkloadStatus == nil {
-		writeError(w, http.StatusBadRequest, "at least one of online_status or workload_status is required")
+	if req.Status == "" {
+		writeError(w, http.StatusBadRequest, "status is required")
+		return
+	}
+	if _, ok := validAgentStatuses[req.Status]; !ok {
+		writeError(w, http.StatusBadRequest, "invalid status: "+req.Status)
 		return
 	}
 
-	// TODO: wire after migration — agent.OnlineStatus / agent.WorkloadStatus fields.
-	// For now, use agent.Status as the current state for online_status validation,
-	// and default "idle" for workload_status since the field doesn't exist yet.
-
-	// Validate online_status transition
-	if req.OnlineStatus != nil {
-		currentOnline := agent.Status // Closest existing field; will be agent.OnlineStatus after migration
-		if !isValidTransition(validOnlineStatusTransitions, currentOnline, *req.OnlineStatus) {
-			writeError(w, http.StatusBadRequest, "invalid online_status transition from '"+currentOnline+"' to '"+*req.OnlineStatus+"'")
-			return
-		}
-	}
-
-	// Validate workload_status transition
-	if req.WorkloadStatus != nil {
-		currentWorkload := "idle" // TODO: read from agent.WorkloadStatus after migration
-		if !isValidTransition(validWorkloadStatusTransitions, currentWorkload, *req.WorkloadStatus) {
-			writeError(w, http.StatusBadRequest, "invalid workload_status transition from '"+currentWorkload+"' to '"+*req.WorkloadStatus+"'")
-			return
-		}
-	}
-
-	// Build update params. For now, map online_status to the existing Status field.
-	params := db.UpdateAgentParams{
-		ID: parseUUID(agentID),
-	}
-	if req.OnlineStatus != nil {
-		params.Status = pgtype.Text{String: *req.OnlineStatus, Valid: true}
-	}
-	// TODO: wire workload_status after migration adds the column.
-
-	updatedAgent, err := h.Queries.UpdateAgent(r.Context(), params)
+	updatedAgent, err := h.Queries.UpdateAgentStatus(r.Context(), db.UpdateAgentStatusParams{
+		ID:     parseUUID(agentID),
+		Status: req.Status,
+	})
 	if err != nil {
 		slog.Warn("update agent status failed", "error", err, "agent_id", agentID)
 		writeError(w, http.StatusInternalServerError, "failed to update agent status")
