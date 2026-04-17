@@ -18,6 +18,10 @@ DROP INDEX IF EXISTS idx_agent_runtime_lease;
 ALTER TABLE agent_runtime
     DROP CONSTRAINT IF EXISTS agent_runtime_mode_check;
 ALTER TABLE agent_runtime DROP CONSTRAINT IF EXISTS agent_runtime_status_check;
+
+-- Normalize any 'degraded' rows back into 'offline' so the narrow CHECK can apply.
+UPDATE agent_runtime SET status = 'offline' WHERE status = 'degraded';
+
 ALTER TABLE agent_runtime
     ADD CONSTRAINT agent_runtime_status_check
     CHECK (status IN ('online', 'offline'));

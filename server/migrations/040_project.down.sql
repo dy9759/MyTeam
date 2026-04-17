@@ -9,8 +9,7 @@ ALTER TABLE plan DROP COLUMN IF EXISTS risk_points;
 ALTER TABLE plan DROP COLUMN IF EXISTS assigned_agents;
 ALTER TABLE plan DROP COLUMN IF EXISTS task_brief;
 ALTER TABLE plan DROP COLUMN IF EXISTS version_id;
--- Note: plan.project_id is also added by 039; leave it in place for 039's down to remove.
-ALTER TABLE plan DROP COLUMN IF EXISTS project_id;
+-- Note: plan.project_id is added by 039; leave it in place for 039's down to remove.
 
 -- Drop run table outright (introduced in 040 only).
 DROP TABLE IF EXISTS project_run;

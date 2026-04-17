@@ -198,9 +198,18 @@ func (h *Handler) CreateWorkspace(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		ctx := context.Background()
 		ownerUUID := parseUUID(userID)
+
+		runtime, err := h.Queries.EnsureCloudRuntime(ctx, ws.ID)
+		if err != nil {
+			slog.Warn("ensure cloud runtime for system agent failed", "error", err)
+			return
+		}
+
 		if _, err := h.Queries.CreateSystemAgent(ctx, db.CreateSystemAgentParams{
-			WorkspaceID: ws.ID,
-			OwnerID:     ownerUUID,
+			WorkspaceID:    ws.ID,
+			OwnerID:        ownerUUID,
+			RuntimeID:      runtime.ID,
+			CloudLlmConfig: []byte("{}"),
 		}); err != nil {
 			slog.Warn("auto-create system agent failed", "error", err)
 		}
