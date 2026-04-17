@@ -49,6 +49,17 @@ func insertTestAgent(t *testing.T, q *db.Queries, wsID, runtimeID, ownerID pgtyp
 	}); err != nil {
 		t.Fatalf("seed runtime cloud_llm_config: %v", err)
 	}
+	// Ensure agent is not offline so auto-reply's "agent offline → notify owner and stop"
+	// early-return branch doesn't fire in tests that exercise the post-eligibility path.
+	// After unified-status refactor, online/offline maps onto the status field.
+	updated, err := q.UpdateAgentStatus(context.Background(), db.UpdateAgentStatusParams{
+		ID:     a.ID,
+		Status: "idle",
+	})
+	if err != nil {
+		t.Fatalf("set agent status: %v", err)
+	}
+	a = updated
 	return a
 }
 
