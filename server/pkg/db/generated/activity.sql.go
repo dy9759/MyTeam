@@ -13,9 +13,9 @@ import (
 
 const createActivity = `-- name: CreateActivity :one
 INSERT INTO activity_log (
-    workspace_id, issue_id, actor_type, actor_id, action, details
-) VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, workspace_id, issue_id, actor_type, actor_id, action, details, created_at
+    workspace_id, issue_id, actor_type, actor_id, action, event_type, details
+) VALUES ($1, $2, $3, $4, $5, $5, $6)
+RETURNING id, workspace_id, issue_id, actor_type, actor_id, action, details, created_at, event_type, effective_actor_id, effective_actor_type, real_operator_id, real_operator_type, related_project_id, related_plan_id, related_task_id, related_slot_id, related_execution_id, related_channel_id, related_thread_id, related_agent_id, related_runtime_id, payload, retention_class
 `
 
 type CreateActivityParams struct {
@@ -46,12 +46,28 @@ func (q *Queries) CreateActivity(ctx context.Context, arg CreateActivityParams) 
 		&i.Action,
 		&i.Details,
 		&i.CreatedAt,
+		&i.EventType,
+		&i.EffectiveActorID,
+		&i.EffectiveActorType,
+		&i.RealOperatorID,
+		&i.RealOperatorType,
+		&i.RelatedProjectID,
+		&i.RelatedPlanID,
+		&i.RelatedTaskID,
+		&i.RelatedSlotID,
+		&i.RelatedExecutionID,
+		&i.RelatedChannelID,
+		&i.RelatedThreadID,
+		&i.RelatedAgentID,
+		&i.RelatedRuntimeID,
+		&i.Payload,
+		&i.RetentionClass,
 	)
 	return i, err
 }
 
 const listActivities = `-- name: ListActivities :many
-SELECT id, workspace_id, issue_id, actor_type, actor_id, action, details, created_at FROM activity_log
+SELECT id, workspace_id, issue_id, actor_type, actor_id, action, details, created_at, event_type, effective_actor_id, effective_actor_type, real_operator_id, real_operator_type, related_project_id, related_plan_id, related_task_id, related_slot_id, related_execution_id, related_channel_id, related_thread_id, related_agent_id, related_runtime_id, payload, retention_class FROM activity_log
 WHERE issue_id = $1
 ORDER BY created_at ASC
 LIMIT $2 OFFSET $3
@@ -81,6 +97,22 @@ func (q *Queries) ListActivities(ctx context.Context, arg ListActivitiesParams) 
 			&i.Action,
 			&i.Details,
 			&i.CreatedAt,
+			&i.EventType,
+			&i.EffectiveActorID,
+			&i.EffectiveActorType,
+			&i.RealOperatorID,
+			&i.RealOperatorType,
+			&i.RelatedProjectID,
+			&i.RelatedPlanID,
+			&i.RelatedTaskID,
+			&i.RelatedSlotID,
+			&i.RelatedExecutionID,
+			&i.RelatedChannelID,
+			&i.RelatedThreadID,
+			&i.RelatedAgentID,
+			&i.RelatedRuntimeID,
+			&i.Payload,
+			&i.RetentionClass,
 		); err != nil {
 			return nil, err
 		}
@@ -90,4 +122,298 @@ func (q *Queries) ListActivities(ctx context.Context, arg ListActivitiesParams) 
 		return nil, err
 	}
 	return items, nil
+}
+
+const listActivityLogByEventType = `-- name: ListActivityLogByEventType :many
+SELECT id, workspace_id, issue_id, actor_type, actor_id, action, details, created_at, event_type, effective_actor_id, effective_actor_type, real_operator_id, real_operator_type, related_project_id, related_plan_id, related_task_id, related_slot_id, related_execution_id, related_channel_id, related_thread_id, related_agent_id, related_runtime_id, payload, retention_class FROM activity_log
+WHERE workspace_id = $1 AND event_type LIKE $2
+ORDER BY created_at DESC
+LIMIT $4 OFFSET $3
+`
+
+type ListActivityLogByEventTypeParams struct {
+	WorkspaceID      pgtype.UUID `json:"workspace_id"`
+	EventTypePattern string      `json:"event_type_pattern"`
+	OffsetCount      int32       `json:"offset_count"`
+	LimitCount       int32       `json:"limit_count"`
+}
+
+func (q *Queries) ListActivityLogByEventType(ctx context.Context, arg ListActivityLogByEventTypeParams) ([]ActivityLog, error) {
+	rows, err := q.db.Query(ctx, listActivityLogByEventType,
+		arg.WorkspaceID,
+		arg.EventTypePattern,
+		arg.OffsetCount,
+		arg.LimitCount,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ActivityLog{}
+	for rows.Next() {
+		var i ActivityLog
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.IssueID,
+			&i.ActorType,
+			&i.ActorID,
+			&i.Action,
+			&i.Details,
+			&i.CreatedAt,
+			&i.EventType,
+			&i.EffectiveActorID,
+			&i.EffectiveActorType,
+			&i.RealOperatorID,
+			&i.RealOperatorType,
+			&i.RelatedProjectID,
+			&i.RelatedPlanID,
+			&i.RelatedTaskID,
+			&i.RelatedSlotID,
+			&i.RelatedExecutionID,
+			&i.RelatedChannelID,
+			&i.RelatedThreadID,
+			&i.RelatedAgentID,
+			&i.RelatedRuntimeID,
+			&i.Payload,
+			&i.RetentionClass,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listActivityLogByProject = `-- name: ListActivityLogByProject :many
+SELECT id, workspace_id, issue_id, actor_type, actor_id, action, details, created_at, event_type, effective_actor_id, effective_actor_type, real_operator_id, real_operator_type, related_project_id, related_plan_id, related_task_id, related_slot_id, related_execution_id, related_channel_id, related_thread_id, related_agent_id, related_runtime_id, payload, retention_class FROM activity_log
+WHERE workspace_id = $1 AND related_project_id = $2
+ORDER BY created_at DESC
+LIMIT $4 OFFSET $3
+`
+
+type ListActivityLogByProjectParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	ProjectID   pgtype.UUID `json:"project_id"`
+	OffsetCount int32       `json:"offset_count"`
+	LimitCount  int32       `json:"limit_count"`
+}
+
+func (q *Queries) ListActivityLogByProject(ctx context.Context, arg ListActivityLogByProjectParams) ([]ActivityLog, error) {
+	rows, err := q.db.Query(ctx, listActivityLogByProject,
+		arg.WorkspaceID,
+		arg.ProjectID,
+		arg.OffsetCount,
+		arg.LimitCount,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ActivityLog{}
+	for rows.Next() {
+		var i ActivityLog
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.IssueID,
+			&i.ActorType,
+			&i.ActorID,
+			&i.Action,
+			&i.Details,
+			&i.CreatedAt,
+			&i.EventType,
+			&i.EffectiveActorID,
+			&i.EffectiveActorType,
+			&i.RealOperatorID,
+			&i.RealOperatorType,
+			&i.RelatedProjectID,
+			&i.RelatedPlanID,
+			&i.RelatedTaskID,
+			&i.RelatedSlotID,
+			&i.RelatedExecutionID,
+			&i.RelatedChannelID,
+			&i.RelatedThreadID,
+			&i.RelatedAgentID,
+			&i.RelatedRuntimeID,
+			&i.Payload,
+			&i.RetentionClass,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listActivityLogByTask = `-- name: ListActivityLogByTask :many
+SELECT id, workspace_id, issue_id, actor_type, actor_id, action, details, created_at, event_type, effective_actor_id, effective_actor_type, real_operator_id, real_operator_type, related_project_id, related_plan_id, related_task_id, related_slot_id, related_execution_id, related_channel_id, related_thread_id, related_agent_id, related_runtime_id, payload, retention_class FROM activity_log
+WHERE workspace_id = $1 AND related_task_id = $2
+ORDER BY created_at DESC
+LIMIT $4 OFFSET $3
+`
+
+type ListActivityLogByTaskParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	TaskID      pgtype.UUID `json:"task_id"`
+	OffsetCount int32       `json:"offset_count"`
+	LimitCount  int32       `json:"limit_count"`
+}
+
+func (q *Queries) ListActivityLogByTask(ctx context.Context, arg ListActivityLogByTaskParams) ([]ActivityLog, error) {
+	rows, err := q.db.Query(ctx, listActivityLogByTask,
+		arg.WorkspaceID,
+		arg.TaskID,
+		arg.OffsetCount,
+		arg.LimitCount,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ActivityLog{}
+	for rows.Next() {
+		var i ActivityLog
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.IssueID,
+			&i.ActorType,
+			&i.ActorID,
+			&i.Action,
+			&i.Details,
+			&i.CreatedAt,
+			&i.EventType,
+			&i.EffectiveActorID,
+			&i.EffectiveActorType,
+			&i.RealOperatorID,
+			&i.RealOperatorType,
+			&i.RelatedProjectID,
+			&i.RelatedPlanID,
+			&i.RelatedTaskID,
+			&i.RelatedSlotID,
+			&i.RelatedExecutionID,
+			&i.RelatedChannelID,
+			&i.RelatedThreadID,
+			&i.RelatedAgentID,
+			&i.RelatedRuntimeID,
+			&i.Payload,
+			&i.RetentionClass,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const writeActivityLog = `-- name: WriteActivityLog :one
+INSERT INTO activity_log (
+    workspace_id, event_type, action,
+    actor_id, actor_type,
+    effective_actor_id, effective_actor_type,
+    real_operator_id, real_operator_type,
+    related_project_id, related_plan_id, related_task_id, related_slot_id,
+    related_execution_id, related_channel_id, related_thread_id,
+    related_agent_id, related_runtime_id,
+    payload, retention_class, details, created_at
+) VALUES (
+    $1, $2, $2,
+    $3, $4,
+    $5, $6,
+    $7, $8,
+    $9, $10, $11, $12,
+    $13, $14, $15,
+    $16, $17,
+    COALESCE($18::jsonb, '{}'::jsonb),
+    COALESCE($19::text, 'permanent'),
+    COALESCE($20::jsonb, '{}'::jsonb),
+    now()
+)
+RETURNING id, workspace_id, issue_id, actor_type, actor_id, action, details, created_at, event_type, effective_actor_id, effective_actor_type, real_operator_id, real_operator_type, related_project_id, related_plan_id, related_task_id, related_slot_id, related_execution_id, related_channel_id, related_thread_id, related_agent_id, related_runtime_id, payload, retention_class
+`
+
+type WriteActivityLogParams struct {
+	WorkspaceID        pgtype.UUID `json:"workspace_id"`
+	EventType          string      `json:"event_type"`
+	ActorID            pgtype.UUID `json:"actor_id"`
+	ActorType          pgtype.Text `json:"actor_type"`
+	EffectiveActorID   pgtype.UUID `json:"effective_actor_id"`
+	EffectiveActorType pgtype.Text `json:"effective_actor_type"`
+	RealOperatorID     pgtype.UUID `json:"real_operator_id"`
+	RealOperatorType   pgtype.Text `json:"real_operator_type"`
+	RelatedProjectID   pgtype.UUID `json:"related_project_id"`
+	RelatedPlanID      pgtype.UUID `json:"related_plan_id"`
+	RelatedTaskID      pgtype.UUID `json:"related_task_id"`
+	RelatedSlotID      pgtype.UUID `json:"related_slot_id"`
+	RelatedExecutionID pgtype.UUID `json:"related_execution_id"`
+	RelatedChannelID   pgtype.UUID `json:"related_channel_id"`
+	RelatedThreadID    pgtype.UUID `json:"related_thread_id"`
+	RelatedAgentID     pgtype.UUID `json:"related_agent_id"`
+	RelatedRuntimeID   pgtype.UUID `json:"related_runtime_id"`
+	Payload            []byte      `json:"payload"`
+	RetentionClass     pgtype.Text `json:"retention_class"`
+	Details            []byte      `json:"details"`
+}
+
+func (q *Queries) WriteActivityLog(ctx context.Context, arg WriteActivityLogParams) (ActivityLog, error) {
+	row := q.db.QueryRow(ctx, writeActivityLog,
+		arg.WorkspaceID,
+		arg.EventType,
+		arg.ActorID,
+		arg.ActorType,
+		arg.EffectiveActorID,
+		arg.EffectiveActorType,
+		arg.RealOperatorID,
+		arg.RealOperatorType,
+		arg.RelatedProjectID,
+		arg.RelatedPlanID,
+		arg.RelatedTaskID,
+		arg.RelatedSlotID,
+		arg.RelatedExecutionID,
+		arg.RelatedChannelID,
+		arg.RelatedThreadID,
+		arg.RelatedAgentID,
+		arg.RelatedRuntimeID,
+		arg.Payload,
+		arg.RetentionClass,
+		arg.Details,
+	)
+	var i ActivityLog
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.IssueID,
+		&i.ActorType,
+		&i.ActorID,
+		&i.Action,
+		&i.Details,
+		&i.CreatedAt,
+		&i.EventType,
+		&i.EffectiveActorID,
+		&i.EffectiveActorType,
+		&i.RealOperatorID,
+		&i.RealOperatorType,
+		&i.RelatedProjectID,
+		&i.RelatedPlanID,
+		&i.RelatedTaskID,
+		&i.RelatedSlotID,
+		&i.RelatedExecutionID,
+		&i.RelatedChannelID,
+		&i.RelatedThreadID,
+		&i.RelatedAgentID,
+		&i.RelatedRuntimeID,
+		&i.Payload,
+		&i.RetentionClass,
+	)
+	return i, err
 }

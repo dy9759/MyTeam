@@ -120,7 +120,7 @@ func (q *Queries) CreateWorkflowStep(ctx context.Context, arg CreateWorkflowStep
 const createWorkflowStepTask = `-- name: CreateWorkflowStepTask :one
 INSERT INTO agent_task_queue (agent_id, issue_id, status, priority, workflow_step_id, run_id)
 VALUES ($1, NULL, 'pending', $2, $3, $4)
-RETURNING id, agent_id, issue_id, status, priority, dispatched_at, started_at, completed_at, result, error, created_at, context, runtime_id, session_id, work_dir, trigger_comment_id, workflow_step_id, run_id
+RETURNING id, agent_id, issue_id, status, priority, dispatched_at, started_at, completed_at, result, error, created_at, context, runtime_id, session_id, work_dir, trigger_comment_id, workflow_step_id, run_id, cost_input_tokens, cost_output_tokens, cost_usd, cost_provider
 `
 
 type CreateWorkflowStepTaskParams struct {
@@ -158,6 +158,10 @@ func (q *Queries) CreateWorkflowStepTask(ctx context.Context, arg CreateWorkflow
 		&i.TriggerCommentID,
 		&i.WorkflowStepID,
 		&i.RunID,
+		&i.CostInputTokens,
+		&i.CostOutputTokens,
+		&i.CostUsd,
+		&i.CostProvider,
 	)
 	return i, err
 }
@@ -181,7 +185,7 @@ func (q *Queries) DeleteWorkflowStep(ctx context.Context, id pgtype.UUID) error 
 }
 
 const getTaskByWorkflowStep = `-- name: GetTaskByWorkflowStep :one
-SELECT id, agent_id, issue_id, status, priority, dispatched_at, started_at, completed_at, result, error, created_at, context, runtime_id, session_id, work_dir, trigger_comment_id, workflow_step_id, run_id FROM agent_task_queue WHERE workflow_step_id = $1 AND status NOT IN ('completed', 'failed', 'cancelled') LIMIT 1
+SELECT id, agent_id, issue_id, status, priority, dispatched_at, started_at, completed_at, result, error, created_at, context, runtime_id, session_id, work_dir, trigger_comment_id, workflow_step_id, run_id, cost_input_tokens, cost_output_tokens, cost_usd, cost_provider FROM agent_task_queue WHERE workflow_step_id = $1 AND status NOT IN ('completed', 'failed', 'cancelled') LIMIT 1
 `
 
 func (q *Queries) GetTaskByWorkflowStep(ctx context.Context, workflowStepID pgtype.UUID) (AgentTaskQueue, error) {
@@ -206,6 +210,10 @@ func (q *Queries) GetTaskByWorkflowStep(ctx context.Context, workflowStepID pgty
 		&i.TriggerCommentID,
 		&i.WorkflowStepID,
 		&i.RunID,
+		&i.CostInputTokens,
+		&i.CostOutputTokens,
+		&i.CostUsd,
+		&i.CostProvider,
 	)
 	return i, err
 }
@@ -280,7 +288,7 @@ func (q *Queries) IncrementWorkflowStepRetry(ctx context.Context, id pgtype.UUID
 }
 
 const listTasksByRun = `-- name: ListTasksByRun :many
-SELECT id, agent_id, issue_id, status, priority, dispatched_at, started_at, completed_at, result, error, created_at, context, runtime_id, session_id, work_dir, trigger_comment_id, workflow_step_id, run_id FROM agent_task_queue WHERE run_id = $1 ORDER BY created_at
+SELECT id, agent_id, issue_id, status, priority, dispatched_at, started_at, completed_at, result, error, created_at, context, runtime_id, session_id, work_dir, trigger_comment_id, workflow_step_id, run_id, cost_input_tokens, cost_output_tokens, cost_usd, cost_provider FROM agent_task_queue WHERE run_id = $1 ORDER BY created_at
 `
 
 func (q *Queries) ListTasksByRun(ctx context.Context, runID pgtype.UUID) ([]AgentTaskQueue, error) {
@@ -311,6 +319,10 @@ func (q *Queries) ListTasksByRun(ctx context.Context, runID pgtype.UUID) ([]Agen
 			&i.TriggerCommentID,
 			&i.WorkflowStepID,
 			&i.RunID,
+			&i.CostInputTokens,
+			&i.CostOutputTokens,
+			&i.CostUsd,
+			&i.CostProvider,
 		); err != nil {
 			return nil, err
 		}

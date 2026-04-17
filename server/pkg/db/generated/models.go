@@ -9,14 +9,30 @@ import (
 )
 
 type ActivityLog struct {
-	ID          pgtype.UUID        `json:"id"`
-	WorkspaceID pgtype.UUID        `json:"workspace_id"`
-	IssueID     pgtype.UUID        `json:"issue_id"`
-	ActorType   pgtype.Text        `json:"actor_type"`
-	ActorID     pgtype.UUID        `json:"actor_id"`
-	Action      string             `json:"action"`
-	Details     []byte             `json:"details"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	ID                 pgtype.UUID        `json:"id"`
+	WorkspaceID        pgtype.UUID        `json:"workspace_id"`
+	IssueID            pgtype.UUID        `json:"issue_id"`
+	ActorType          pgtype.Text        `json:"actor_type"`
+	ActorID            pgtype.UUID        `json:"actor_id"`
+	Action             string             `json:"action"`
+	Details            []byte             `json:"details"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	EventType          string             `json:"event_type"`
+	EffectiveActorID   pgtype.UUID        `json:"effective_actor_id"`
+	EffectiveActorType pgtype.Text        `json:"effective_actor_type"`
+	RealOperatorID     pgtype.UUID        `json:"real_operator_id"`
+	RealOperatorType   pgtype.Text        `json:"real_operator_type"`
+	RelatedProjectID   pgtype.UUID        `json:"related_project_id"`
+	RelatedPlanID      pgtype.UUID        `json:"related_plan_id"`
+	RelatedTaskID      pgtype.UUID        `json:"related_task_id"`
+	RelatedSlotID      pgtype.UUID        `json:"related_slot_id"`
+	RelatedExecutionID pgtype.UUID        `json:"related_execution_id"`
+	RelatedChannelID   pgtype.UUID        `json:"related_channel_id"`
+	RelatedThreadID    pgtype.UUID        `json:"related_thread_id"`
+	RelatedAgentID     pgtype.UUID        `json:"related_agent_id"`
+	RelatedRuntimeID   pgtype.UUID        `json:"related_runtime_id"`
+	Payload            []byte             `json:"payload"`
+	RetentionClass     string             `json:"retention_class"`
 }
 
 type Agent struct {
@@ -99,6 +115,10 @@ type AgentTaskQueue struct {
 	TriggerCommentID pgtype.UUID        `json:"trigger_comment_id"`
 	WorkflowStepID   pgtype.UUID        `json:"workflow_step_id"`
 	RunID            pgtype.UUID        `json:"run_id"`
+	CostInputTokens  int32              `json:"cost_input_tokens"`
+	CostOutputTokens int32              `json:"cost_output_tokens"`
+	CostUsd          pgtype.Numeric     `json:"cost_usd"`
+	CostProvider     pgtype.Text        `json:"cost_provider"`
 }
 
 type Attachment struct {
@@ -288,6 +308,14 @@ type InboxItem struct {
 	RelatedProjectID      pgtype.UUID        `json:"related_project_id"`
 	RelatedRunID          pgtype.UUID        `json:"related_run_id"`
 	RelatedConversationID pgtype.UUID        `json:"related_conversation_id"`
+	PlanID                pgtype.UUID        `json:"plan_id"`
+	TaskID                pgtype.UUID        `json:"task_id"`
+	SlotID                pgtype.UUID        `json:"slot_id"`
+	ThreadID              pgtype.UUID        `json:"thread_id"`
+	ChannelID             pgtype.UUID        `json:"channel_id"`
+	ResolvedAt            pgtype.Timestamptz `json:"resolved_at"`
+	Resolution            pgtype.Text        `json:"resolution"`
+	ResolutionBy          pgtype.UUID        `json:"resolution_by"`
 }
 
 type Issue struct {
@@ -408,6 +436,7 @@ type PersonalAccessToken struct {
 	LastUsedAt  pgtype.Timestamptz `json:"last_used_at"`
 	Revoked     bool               `json:"revoked"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	Scopes      []string           `json:"scopes"`
 }
 
 type Plan struct {
@@ -680,4 +709,24 @@ type WorkspaceCollaborator struct {
 	Role        string             `json:"role"`
 	AddedBy     pgtype.Text        `json:"added_by"`
 	AddedAt     pgtype.Timestamptz `json:"added_at"`
+}
+
+type WorkspaceQuotum struct {
+	WorkspaceID            pgtype.UUID        `json:"workspace_id"`
+	MaxMonthlyUsd          pgtype.Numeric     `json:"max_monthly_usd"`
+	MaxConcurrentCloudExec int32              `json:"max_concurrent_cloud_exec"`
+	MaxMonthlyPlanGen      int32              `json:"max_monthly_plan_gen"`
+	CurrentMonthlyUsd      pgtype.Numeric     `json:"current_monthly_usd"`
+	CurrentMonth           pgtype.Date        `json:"current_month"`
+	UpdatedAt              pgtype.Timestamptz `json:"updated_at"`
+}
+
+type WorkspaceSecret struct {
+	ID             pgtype.UUID        `json:"id"`
+	WorkspaceID    pgtype.UUID        `json:"workspace_id"`
+	Key            string             `json:"key"`
+	ValueEncrypted []byte             `json:"value_encrypted"`
+	CreatedBy      pgtype.UUID        `json:"created_by"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	RotatedAt      pgtype.Timestamptz `json:"rotated_at"`
 }
