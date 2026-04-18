@@ -26,4 +26,10 @@ ALTER TABLE project DROP CONSTRAINT IF EXISTS project_status_check;
 ALTER TABLE project ADD CONSTRAINT project_status_check
     CHECK (status IN ('not_started', 'running', 'paused', 'completed', 'failed', 'archived'));
 
-ALTER TABLE project ALTER COLUMN created_by DROP NOT NULL;
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_name='project' AND column_name='created_by') THEN
+        ALTER TABLE project ALTER COLUMN created_by DROP NOT NULL;
+    END IF;
+END $$;
