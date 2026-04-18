@@ -32,6 +32,9 @@ func (CreateComment) RuntimeModes() []string {
 }
 
 func (CreateComment) Exec(ctx context.Context, q *db.Queries, ws mcptool.Context, args map[string]any) (mcptool.Result, error) {
+	if err := mcptool.RequireMember(ctx, ws); err != nil {
+		return mcptool.Result{}, err
+	}
 	issueID, err := requireUUIDArg(args, "issue_id")
 	if err != nil {
 		return mcptool.Result{}, err
@@ -39,9 +42,6 @@ func (CreateComment) Exec(ctx context.Context, q *db.Queries, ws mcptool.Context
 	body, _ := args["body"].(string)
 	if body == "" {
 		return mcptool.Result{}, errors.New("body is required")
-	}
-	if ws.WorkspaceID == uuid.Nil {
-		return mcptool.Result{}, errors.New("workspace_id required")
 	}
 	if ws.UserID == uuid.Nil {
 		return mcptool.Result{}, errors.New("user_id required")

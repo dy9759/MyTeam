@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/google/uuid"
 	"github.com/multica-ai/multica/server/internal/mcp/mcptool"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
@@ -31,6 +30,9 @@ func (UpdateIssueStatus) RuntimeModes() []string {
 }
 
 func (UpdateIssueStatus) Exec(ctx context.Context, q *db.Queries, ws mcptool.Context, args map[string]any) (mcptool.Result, error) {
+	if err := mcptool.RequireMember(ctx, ws); err != nil {
+		return mcptool.Result{}, err
+	}
 	issueID, err := requireUUIDArg(args, "issue_id")
 	if err != nil {
 		return mcptool.Result{}, err
@@ -38,9 +40,6 @@ func (UpdateIssueStatus) Exec(ctx context.Context, q *db.Queries, ws mcptool.Con
 	status, _ := args["status"].(string)
 	if status == "" {
 		return mcptool.Result{}, errors.New("status is required")
-	}
-	if ws.WorkspaceID == uuid.Nil {
-		return mcptool.Result{}, errors.New("workspace_id required")
 	}
 
 	// Workspace boundary check before mutating: ensure the issue belongs to

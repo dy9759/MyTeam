@@ -2,10 +2,8 @@ package tools
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
-	"github.com/google/uuid"
 	"github.com/multica-ai/multica/server/internal/mcp/mcptool"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
@@ -32,12 +30,12 @@ func (ListIssueComments) RuntimeModes() []string {
 }
 
 func (ListIssueComments) Exec(ctx context.Context, q *db.Queries, ws mcptool.Context, args map[string]any) (mcptool.Result, error) {
+	if err := mcptool.RequireMember(ctx, ws); err != nil {
+		return mcptool.Result{}, err
+	}
 	issueID, err := requireUUIDArg(args, "issue_id")
 	if err != nil {
 		return mcptool.Result{}, err
-	}
-	if ws.WorkspaceID == uuid.Nil {
-		return mcptool.Result{}, errors.New("workspace_id required")
 	}
 
 	// Verify the issue belongs to this workspace before reading comments.

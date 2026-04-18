@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -31,12 +30,12 @@ func (GetIssue) RuntimeModes() []string {
 }
 
 func (GetIssue) Exec(ctx context.Context, q *db.Queries, ws mcptool.Context, args map[string]any) (mcptool.Result, error) {
+	if err := mcptool.RequireMember(ctx, ws); err != nil {
+		return mcptool.Result{}, err
+	}
 	issueID, err := requireUUIDArg(args, "issue_id")
 	if err != nil {
 		return mcptool.Result{}, err
-	}
-	if ws.WorkspaceID == uuid.Nil {
-		return mcptool.Result{}, errors.New("workspace_id required")
 	}
 
 	issue, err := q.GetIssueInWorkspace(ctx, db.GetIssueInWorkspaceParams{

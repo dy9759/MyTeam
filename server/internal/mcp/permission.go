@@ -2,35 +2,28 @@ package mcp
 
 import (
 	"context"
-	"errors"
 
 	"github.com/google/uuid"
+	"github.com/multica-ai/multica/server/internal/mcp/mcptool"
 )
 
-// ErrPermissionDenied is returned by permission helpers when the caller is not
-// authorized to perform the requested action.
-var ErrPermissionDenied = errors.New("mcp: permission denied")
+// ErrPermissionDenied is re-exported from the mcptool package for callers that
+// already work in terms of mcp.ErrPermissionDenied.
+var ErrPermissionDenied = mcptool.ErrPermissionDenied
 
-// EnsureWorkspaceMember is the baseline permission check every tool calls before
-// reading data. Returns ErrPermissionDenied if user is not a member of the workspace.
-// Concrete implementation deferred — for now this stub allows all (skeleton phase).
+// EnsureWorkspaceMember and EnsureAgentInWorkspace remain on this package as
+// thin wrappers so existing imports keep working. The concrete implementations
+// (today: no-op stubs) live in mcptool so they can be called from the per-tool
+// packages without an import cycle.
 func EnsureWorkspaceMember(ctx context.Context, workspaceID, userID uuid.UUID) error {
-	// TODO(plan4-followup): wire to db.GetMemberByUserAndWorkspace and return
-	// ErrPermissionDenied when not a member.
-	_ = ctx
-	_ = workspaceID
-	_ = userID
-	return nil
+	return mcptool.EnsureWorkspaceMember(ctx, workspaceID, userID)
 }
 
-// EnsureAgentInWorkspace verifies the agent_id (if non-nil) belongs to the workspace.
-// Stub passes everything.
 func EnsureAgentInWorkspace(ctx context.Context, workspaceID, agentID uuid.UUID) error {
-	if agentID == uuid.Nil {
-		return nil
-	}
-	// TODO(plan4-followup): query agent table.
-	_ = ctx
-	_ = workspaceID
-	return nil
+	return mcptool.EnsureAgentInWorkspace(ctx, workspaceID, agentID)
+}
+
+// RequireMember is re-exported for callers in this package.
+func RequireMember(ctx context.Context, ws mcptool.Context) error {
+	return mcptool.RequireMember(ctx, ws)
 }
