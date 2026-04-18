@@ -333,6 +333,60 @@ func (q *Queries) ListExecutionsByTask(ctx context.Context, taskID pgtype.UUID) 
 	return items, nil
 }
 
+const listPendingExecutionsForRuntime = `-- name: ListPendingExecutionsForRuntime :many
+SELECT id, task_id, run_id, slot_id, agent_id, runtime_id, attempt, status, priority, payload, result, error, context_ref, log_retention_policy, logs_expires_at, cost_input_tokens, cost_output_tokens, cost_usd, cost_provider, claimed_at, started_at, completed_at, created_at, updated_at FROM execution
+WHERE runtime_id = $1 AND status = 'queued'
+ORDER BY priority DESC, created_at ASC
+LIMIT 50
+`
+
+// Visibility query: peek at queued executions for a runtime. The daemon
+// normally goes straight to ClaimExecution; this exists for diagnostics.
+func (q *Queries) ListPendingExecutionsForRuntime(ctx context.Context, runtimeID pgtype.UUID) ([]Execution, error) {
+	rows, err := q.db.Query(ctx, listPendingExecutionsForRuntime, runtimeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Execution{}
+	for rows.Next() {
+		var i Execution
+		if err := rows.Scan(
+			&i.ID,
+			&i.TaskID,
+			&i.RunID,
+			&i.SlotID,
+			&i.AgentID,
+			&i.RuntimeID,
+			&i.Attempt,
+			&i.Status,
+			&i.Priority,
+			&i.Payload,
+			&i.Result,
+			&i.Error,
+			&i.ContextRef,
+			&i.LogRetentionPolicy,
+			&i.LogsExpiresAt,
+			&i.CostInputTokens,
+			&i.CostOutputTokens,
+			&i.CostUsd,
+			&i.CostProvider,
+			&i.ClaimedAt,
+			&i.StartedAt,
+			&i.CompletedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const startExecution = `-- name: StartExecution :exec
 UPDATE execution SET
     status = 'running',

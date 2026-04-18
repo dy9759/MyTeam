@@ -155,6 +155,17 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 		r.Post("/tasks/{taskId}/fail", h.FailTask)
 		r.Post("/tasks/{taskId}/messages", h.ReportTaskMessages)
 		r.Get("/tasks/{taskId}/messages", h.ListTaskMessages)
+
+		// Plan 5 §10.2: Project Execution endpoints. The daemon polls
+		// these alongside the Issue task endpoints above; when both
+		// queues have work at the same priority, Project Execution wins.
+		r.Get("/runtimes/{runtimeId}/executions/pending", h.ListPendingExecutions)
+		r.Post("/runtimes/{runtimeId}/executions/claim", h.ClaimExecution)
+		r.Post("/executions/{id}/start", h.StartExecution)
+		r.Post("/executions/{id}/progress", h.ProgressExecution)
+		r.Post("/executions/{id}/complete", h.CompleteExecution)
+		r.Post("/executions/{id}/fail", h.FailExecution)
+		r.Post("/executions/{id}/messages", h.StreamExecutionMessage)
 	})
 
 	// Protected API routes

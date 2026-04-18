@@ -67,3 +67,11 @@ WHERE id = $1;
 -- name: CountInflightExecutionsForRuntime :one
 SELECT COUNT(*) FROM execution
 WHERE runtime_id = @runtime_id AND status IN ('claimed','running');
+
+-- name: ListPendingExecutionsForRuntime :many
+-- Visibility query: peek at queued executions for a runtime. The daemon
+-- normally goes straight to ClaimExecution; this exists for diagnostics.
+SELECT * FROM execution
+WHERE runtime_id = @runtime_id AND status = 'queued'
+ORDER BY priority DESC, created_at ASC
+LIMIT 50;
