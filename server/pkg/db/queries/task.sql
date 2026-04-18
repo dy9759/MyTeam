@@ -48,6 +48,12 @@ UPDATE task SET
     updated_at = now()
 WHERE id = $1;
 
+-- name: UpdateTaskDependsOn :exec
+UPDATE task SET
+    depends_on = @depends_on,
+    updated_at = now()
+WHERE id = $1;
+
 -- name: IncrementTaskRetry :exec
 UPDATE task SET
     current_retry = current_retry + 1,

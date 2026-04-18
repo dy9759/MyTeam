@@ -402,6 +402,23 @@ func (q *Queries) SetTaskResult(ctx context.Context, arg SetTaskResultParams) er
 	return err
 }
 
+const updateTaskDependsOn = `-- name: UpdateTaskDependsOn :exec
+UPDATE task SET
+    depends_on = $2,
+    updated_at = now()
+WHERE id = $1
+`
+
+type UpdateTaskDependsOnParams struct {
+	ID        pgtype.UUID   `json:"id"`
+	DependsOn []pgtype.UUID `json:"depends_on"`
+}
+
+func (q *Queries) UpdateTaskDependsOn(ctx context.Context, arg UpdateTaskDependsOnParams) error {
+	_, err := q.db.Exec(ctx, updateTaskDependsOn, arg.ID, arg.DependsOn)
+	return err
+}
+
 const updateTaskStatus = `-- name: UpdateTaskStatus :one
 UPDATE task SET
     status = $2,

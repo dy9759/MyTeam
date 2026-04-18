@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -8,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/service"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/protocol"
@@ -30,14 +32,27 @@ type CreateProjectFromChatRequest struct {
 
 // CreateProjectFromChatResponse is the response for project creation from chat.
 //
-// TODO(plan5-c4): the workflow field has been dropped along with the legacy
-// workflow tables. Once PlanGenerator emits Task + Slot drafts (Batch C4),
-// this response will gain a top-level "tasks" field describing the created
-// Task rows and their participant slots.
+// Plan 5 C4: Tasks now carries the IDs of the rows materialized by
+// PlanGenerator → CreateTask. Slots are reachable via
+// /api/tasks/{id}/slots in Batch D; here we just expose how many were
+// created so clients can confirm the plan landed end-to-end.
 type CreateProjectFromChatResponse struct {
-	Project ProjectResponse         `json:"project"`
-	Plan    *CreateFromChatPlanResp `json:"plan"`
-	Channel map[string]any          `json:"channel"`
+	Project  ProjectResponse         `json:"project"`
+	Plan     *CreateFromChatPlanResp `json:"plan"`
+	Channel  map[string]any          `json:"channel"`
+	Tasks    []TaskRefResponse       `json:"tasks"`
+	Warnings []string                `json:"warnings,omitempty"`
+}
+
+// TaskRefResponse is the slim task surface returned by from-chat — full
+// task fields will move into a dedicated /api/tasks endpoint in Batch D.
+type TaskRefResponse struct {
+	ID                string `json:"id"`
+	LocalID           string `json:"local_id"`
+	Title             string `json:"title"`
+	StepOrder         int    `json:"step_order"`
+	CollaborationMode string `json:"collaboration_mode"`
+	SlotCount         int    `json:"slot_count"`
 }
 
 // CreateFromChatPlanResp is a plan response with additional project-specific fields.
@@ -216,7 +231,7 @@ func (h *Handler) CreateProjectFromChat(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Step 3: Generate plan with context using PlanGenerator
-	generatedPlan, err := h.PlanGenerator.GeneratePlanWithContext(ctx, chatContext, agentIdentities, workspaceID)
+	genResult, err := h.PlanGenerator.GeneratePlanWithContext(ctx, chatContext, agentIdentities, workspaceID)
 	if err != nil {
 		slog.Error("failed to generate plan from chat context", "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to generate plan")
@@ -224,15 +239,15 @@ func (h *Handler) CreateProjectFromChat(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Step 4: Create Plan record
-	assignedAgentsJSON := buildAssignedAgentsJSON(generatedPlan.Steps)
+	assignedAgentsJSON := buildAssignedAgentsJSON(genResult.Tasks)
 
 	plan, err := h.Queries.CreatePlan(ctx, db.CreatePlanParams{
 		WorkspaceID:    parseUUID(workspaceID),
-		Title:          generatedPlan.Title,
-		Description:    strToText(generatedPlan.Description),
+		Title:          genResult.Plan.Title,
+		Description:    strToText(genResult.Plan.Description),
 		SourceType:     strToText("chat"),
-		Constraints:    strToText(generatedPlan.Constraints),
-		ExpectedOutput: strToText(""),
+		Constraints:    strToText(genResult.Plan.Constraints),
+		ExpectedOutput: strToText(genResult.Plan.ExpectedOutput),
 		CreatedBy:      parseUUID(userID),
 	})
 	if err != nil {
@@ -241,15 +256,13 @@ func (h *Handler) CreateProjectFromChat(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// TODO(plan5-c4): PlanGenerator currently still emits "Steps" but the
-	// downstream Workflow/WorkflowStep tables have been dropped (migration
-	// 059). Once PlanGeneratorService is rewritten to return Task + Slot
-	// drafts, this block will create one Task per draft and one
-	// ParticipantSlot per assignee via h.Queries.CreateTask /
-	// h.Queries.CreateParticipantSlot. For now the steps are discarded and
-	// the endpoint returns a Plan with no Tasks attached — Tasks must be
-	// created via the Task API directly.
-	_ = generatedPlan.Steps
+	// Step 5: Materialize Tasks and Slots from drafts.
+	taskRefs, materializeWarnings, err := h.materializePlanDrafts(ctx, plan.ID, parseUUID(workspaceID), genResult)
+	if err != nil {
+		slog.Error("failed to materialize plan drafts", "error", err, "plan_id", uuidToString(plan.ID))
+		writeError(w, http.StatusInternalServerError, "failed to materialize plan tasks")
+		return
+	}
 
 	// Step 6: Auto-create project channel
 	ch, err := h.createProjectChannel(r, workspaceID, userID, req.Title)
@@ -283,37 +296,18 @@ func (h *Handler) CreateProjectFromChat(w http.ResponseWriter, r *http.Request) 
 	sourceConvsJSON, _ := json.Marshal(sourceConversations)
 
 	// Step 8: Create Project record
-	// TODO: Use h.Queries.CreateProject() once sqlc query is generated.
-	// project, err := h.Queries.CreateProject(ctx, db.CreateProjectParams{
-	//     WorkspaceID:         parseUUID(workspaceID),
-	//     Title:               req.Title,
-	//     Description:         strToText(generatedPlan.Description),
-	//     Status:              "not_started",
-	//     ScheduleType:        scheduleType,
-	//     CronExpr:            ptrToText(req.CronExpr),
-	//     SourceConversations: sourceConvsJSON,
-	//     ChannelID:           ch.ID,
-	//     CreatorOwnerID:      parseUUID(userID),
-	// })
-
-	// Step 9: Create initial ProjectVersion (version_number=1)
-	// TODO: Use h.Queries.CreateProjectVersion() once sqlc query is generated.
-	// version, err := h.Queries.CreateProjectVersion(ctx, db.CreateProjectVersionParams{
-	//     ProjectID:     project.ID,
-	//     VersionNumber: 1,
-	//     VersionStatus: "active",
-	//     PlanSnapshot:  stepsJSON,
-	//     CreatedBy:     parseUUID(userID),
-	// })
+	// TODO(plan5-d): Use h.Queries.CreateProject() once sqlc query is generated.
+	// Plan/Task rows are persisted; the Project + ProjectVersion shells will
+	// follow in Batch D once the sqlc surface stabilizes.
 
 	channelIDStr := uuidToString(ch.ID)
 	now := time.Now().UTC().Format(time.RFC3339)
 
 	projectResp := ProjectResponse{
-		ID:                  "", // TODO: from created project
+		ID:                  "", // TODO(plan5-d): from created project
 		WorkspaceID:         workspaceID,
 		Title:               req.Title,
-		Description:         &generatedPlan.Description,
+		Description:         &genResult.Plan.Description,
 		Status:              "not_started",
 		ScheduleType:        scheduleType,
 		CronExpr:            req.CronExpr,
@@ -326,21 +320,27 @@ func (h *Handler) CreateProjectFromChat(w http.ResponseWriter, r *http.Request) 
 
 	planResp := &CreateFromChatPlanResp{
 		PlanResponse:   planToResponse(plan),
-		TaskBrief:      generatedPlan.TaskBrief,
+		TaskBrief:      genResult.Plan.TaskBrief,
 		AssignedAgents: assignedAgentsJSON,
 		ApprovalStatus: "draft",
 	}
 
+	combinedWarnings := append([]string{}, genResult.Warnings...)
+	combinedWarnings = append(combinedWarnings, materializeWarnings...)
+
 	resp := CreateProjectFromChatResponse{
-		Project: projectResp,
-		Plan:    planResp,
-		Channel: channelToResponse(ch),
+		Project:  projectResp,
+		Plan:     planResp,
+		Channel:  channelToResponse(ch),
+		Tasks:    taskRefs,
+		Warnings: combinedWarnings,
 	}
 
-	// Step 10: Broadcast event
+	// Step 9: Broadcast event
 	h.publish(protocol.EventProjectCreated, workspaceID, "member", userID, map[string]any{
 		"project": projectResp,
 		"plan_id": uuidToString(plan.ID),
+		"tasks":   taskRefs,
 	})
 
 	slog.Info("project created from chat context",
@@ -349,10 +349,190 @@ func (h *Handler) CreateProjectFromChat(w http.ResponseWriter, r *http.Request) 
 		"channel_id", channelIDStr,
 		"source_refs", len(req.SourceRefs),
 		"agents", len(req.AgentIDs),
+		"tasks", len(taskRefs),
+		"warnings", len(combinedWarnings),
 	)
 
-	// Step 11: Return complete project
 	writeJSON(w, http.StatusCreated, resp)
+}
+
+// materializePlanDrafts inserts Task and ParticipantSlot rows for the
+// plan, translating LocalIDs to real UUIDs. It runs in three passes:
+//
+//  1. INSERT every Task (in step_order) and capture the LocalID → UUID map
+//  2. UPDATE depends_on on each Task by translating its DependsOnLocal
+//     list against that map (entries whose LocalID is unknown are
+//     dropped and surfaced as a warning, but never fail the call)
+//  3. INSERT every Slot, mapping TaskLocalID to its newly created
+//     Task UUID; slots whose TaskLocalID can't be resolved are skipped
+//     with a warning
+//
+// Returns the slim TaskRefResponse list (one per inserted task), any
+// warnings raised during materialization, and a hard error only if the
+// underlying DB calls fail.
+func (h *Handler) materializePlanDrafts(
+	ctx context.Context,
+	planID, workspaceID pgtype.UUID,
+	gen *service.GeneratePlanResult,
+) ([]TaskRefResponse, []string, error) {
+	if gen == nil || len(gen.Tasks) == 0 {
+		return nil, nil, nil
+	}
+
+	idMap := make(map[string]pgtype.UUID, len(gen.Tasks))
+	type createdTask struct {
+		row   db.Task
+		local string
+	}
+	created := make([]createdTask, 0, len(gen.Tasks))
+	var warnings []string
+
+	// Pass 1: insert tasks in step_order so the resulting rows read top-to-bottom.
+	tasksOrdered := append([]service.TaskDraft{}, gen.Tasks...)
+	sortTaskDrafts(tasksOrdered)
+
+	for _, t := range tasksOrdered {
+		params := db.CreateTaskParams{
+			PlanID:             planID,
+			WorkspaceID:        workspaceID,
+			Title:              firstNonEmpty(t.Title, "Untitled task"),
+			Description:        strToText(t.Description),
+			StepOrder:          pgtype.Int4{Int32: int32(t.StepOrder), Valid: true},
+			RequiredSkills:     append([]string{}, t.RequiredSkills...),
+			CollaborationMode:  strToText(t.CollaborationMode),
+			AcceptanceCriteria: strToText(t.AcceptanceCriteria),
+		}
+		// PrimaryAssigneeID is optional; only set when the LLM gave us
+		// something parseable.
+		if id := strings.TrimSpace(t.PrimaryAssigneeAgentID); id != "" {
+			params.PrimaryAssigneeID = parseUUID(id)
+		}
+		// Fallback agents — drop empty / unparseable strings silently;
+		// validation happens at FK check time.
+		for _, fa := range t.FallbackAgentIDs {
+			fa = strings.TrimSpace(fa)
+			if fa == "" {
+				continue
+			}
+			params.FallbackAgentIds = append(params.FallbackAgentIds, parseUUID(fa))
+		}
+
+		row, err := h.Queries.CreateTask(ctx, params)
+		if err != nil {
+			return nil, warnings, fmt.Errorf("create task %q: %w", t.LocalID, err)
+		}
+		idMap[t.LocalID] = row.ID
+		created = append(created, createdTask{row: row, local: t.LocalID})
+	}
+
+	// Pass 2: wire depends_on. Drafts use LocalIDs; we resolve them to
+	// the UUIDs from pass 1 and write back in a second statement so we
+	// don't have to defer the FK array until both rows exist.
+	for _, t := range tasksOrdered {
+		if len(t.DependsOnLocal) == 0 {
+			continue
+		}
+		taskID, ok := idMap[t.LocalID]
+		if !ok {
+			continue
+		}
+		var deps []pgtype.UUID
+		var unresolved []string
+		for _, dep := range t.DependsOnLocal {
+			depID, ok := idMap[dep]
+			if !ok {
+				unresolved = append(unresolved, dep)
+				continue
+			}
+			deps = append(deps, depID)
+		}
+		if len(unresolved) > 0 {
+			warnings = append(warnings, fmt.Sprintf(
+				"%s:%s unknown depends_on %s",
+				service.WarnSlotMissingTask, t.LocalID, strings.Join(unresolved, ","),
+			))
+		}
+		if len(deps) == 0 {
+			continue
+		}
+		if err := h.Queries.UpdateTaskDependsOn(ctx, db.UpdateTaskDependsOnParams{
+			ID:        taskID,
+			DependsOn: deps,
+		}); err != nil {
+			return nil, warnings, fmt.Errorf("update depends_on for task %q: %w", t.LocalID, err)
+		}
+	}
+
+	// Pass 3: insert slots. Group counts by TaskLocalID so we can build
+	// TaskRefResponse with the slot_count later.
+	slotCounts := make(map[string]int, len(gen.Tasks))
+	for _, sl := range gen.Slots {
+		taskID, ok := idMap[sl.TaskLocalID]
+		if !ok {
+			warnings = append(warnings, fmt.Sprintf(
+				"%s:%s slot %s skipped (no task)",
+				service.WarnSlotMissingTask, sl.TaskLocalID, sl.SlotType,
+			))
+			continue
+		}
+		params := db.CreateParticipantSlotParams{
+			TaskID:          taskID,
+			SlotType:        sl.SlotType,
+			SlotOrder:       pgtype.Int4{Int32: int32(sl.SlotOrder), Valid: true},
+			ParticipantType: strToText(sl.ParticipantType),
+			Responsibility:  strToText(sl.Responsibility),
+			Trigger:         strToText(sl.Trigger),
+			Blocking:        pgtype.Bool{Bool: sl.Blocking, Valid: true},
+			Required:        pgtype.Bool{Bool: sl.Required, Valid: true},
+			ExpectedOutput:  strToText(sl.ExpectedOutput),
+		}
+		if id := strings.TrimSpace(sl.ParticipantID); id != "" {
+			params.ParticipantID = parseUUID(id)
+		}
+		if _, err := h.Queries.CreateParticipantSlot(ctx, params); err != nil {
+			return nil, warnings, fmt.Errorf("create slot for task %q: %w", sl.TaskLocalID, err)
+		}
+		slotCounts[sl.TaskLocalID]++
+	}
+
+	// Build the slim response in the original draft order.
+	refs := make([]TaskRefResponse, 0, len(created))
+	for _, c := range created {
+		refs = append(refs, TaskRefResponse{
+			ID:                uuidToString(c.row.ID),
+			LocalID:           c.local,
+			Title:             c.row.Title,
+			StepOrder:         int(c.row.StepOrder),
+			CollaborationMode: c.row.CollaborationMode,
+			SlotCount:         slotCounts[c.local],
+		})
+	}
+
+	return refs, warnings, nil
+}
+
+// sortTaskDrafts sorts in-place by StepOrder ascending, falling back to
+// LocalID for stability when two tasks share a step_order.
+func sortTaskDrafts(tasks []service.TaskDraft) {
+	for i := 1; i < len(tasks); i++ {
+		for j := i; j > 0; j-- {
+			if tasks[j].StepOrder < tasks[j-1].StepOrder ||
+				(tasks[j].StepOrder == tasks[j-1].StepOrder && tasks[j].LocalID < tasks[j-1].LocalID) {
+				tasks[j], tasks[j-1] = tasks[j-1], tasks[j]
+				continue
+			}
+			break
+		}
+	}
+}
+
+func firstNonEmpty(ss ...string) string {
+	for _, s := range ss {
+		if s != "" {
+			return s
+		}
+	}
+	return ""
 }
 
 // formatMessagesAsContext converts a list of messages into a human-readable context string.
@@ -381,19 +561,19 @@ func formatMessagesAsContext(messages []db.Message, sourceType, sourceName strin
 	return sb.String()
 }
 
-// buildAssignedAgentsJSON constructs the assigned_agents JSONB from plan steps.
-func buildAssignedAgentsJSON(steps []service.PlanStep) json.RawMessage {
+// buildAssignedAgentsJSON constructs the assigned_agents JSONB from task drafts.
+func buildAssignedAgentsJSON(tasks []service.TaskDraft) json.RawMessage {
 	type agentAssignment struct {
-		TaskOrder int    `json:"task_order"`
-		AgentID   string `json:"agent_id"`
+		LocalID string `json:"local_id"`
+		AgentID string `json:"agent_id"`
 	}
 
 	var assignments []agentAssignment
-	for _, step := range steps {
-		if step.AssignedAgentID != "" {
+	for _, t := range tasks {
+		if id := strings.TrimSpace(t.PrimaryAssigneeAgentID); id != "" {
 			assignments = append(assignments, agentAssignment{
-				TaskOrder: step.Order,
-				AgentID:   step.AssignedAgentID,
+				LocalID: t.LocalID,
+				AgentID: id,
 			})
 		}
 	}
@@ -439,7 +619,3 @@ func stringSliceFromIdentityCardKey(raw []byte, key string) []string {
 	}
 	return out
 }
-
-// TODO(plan5-c4): buildWorkflowDAG was removed when the legacy
-// workflow tables were dropped. The Task / Slot / Execution surface
-// will replace its responsibilities in Batch C4/D.
