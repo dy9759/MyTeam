@@ -18,50 +18,51 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/multica-ai/multica/server/pkg/agent"
+	"github.com/multica-ai/multica/server/pkg/agent_runner"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
-	"github.com/multica-ai/multica/server/pkg/llmclient"
 )
 
-// fakeBackend stubs agent.Backend so cloud_executor tests don't hit a real
-// LLM endpoint. lastPrompt/lastSystem capture what runExecutionAsync built
-// so tests can assert on prompt construction.
-type fakeBackend struct {
+// cloudFakeRunner stubs agent_runner.AgentRunner for cloud_executor tests
+// so they don't spawn the Python claude-agent-sdk subprocess. Distinct
+// from auto_reply_test.go's simpler fakeRunner because the cloud_executor
+// path needs sync access (the goroutine writes from runExecutionAsync
+// while the test reads).
+type cloudFakeRunner struct {
 	mu         sync.Mutex
 	lastPrompt string
 	lastSystem string
+	lastCfg    agent_runner.Config
 	output     string
 	failErr    string
 }
 
-func (b *fakeBackend) Execute(ctx context.Context, prompt string, opts agent.ExecOptions) (*agent.Session, error) {
-	b.mu.Lock()
-	b.lastPrompt = prompt
-	b.lastSystem = opts.SystemPrompt
-	b.mu.Unlock()
+func (r *cloudFakeRunner) Run(ctx context.Context, prompt string, cfg agent_runner.Config) (string, error) {
+	r.mu.Lock()
+	r.lastPrompt = prompt
+	r.lastSystem = cfg.SystemPrompt
+	r.lastCfg = cfg
+	r.mu.Unlock()
 
-	msgChan := make(chan agent.Message, 1)
-	resChan := make(chan agent.Result, 1)
-	close(msgChan)
-	if b.failErr != "" {
-		resChan <- agent.Result{Status: "failed", Error: b.failErr}
-	} else {
-		out := b.output
-		if out == "" {
-			out = "fake-backend-output"
-		}
-		resChan <- agent.Result{Status: "completed", Output: out, DurationMs: 42}
+	if r.failErr != "" {
+		return "", &runnerErr{r.failErr}
 	}
-	close(resChan)
-	return &agent.Session{Messages: msgChan, Result: resChan}, nil
+	out := r.output
+	if out == "" {
+		out = "cloud-fake-runner-output"
+	}
+	return out, nil
 }
 
-// installFakeBackend wires a fakeBackend into the service and returns it so
-// the test can read lastPrompt / lastSystem after the goroutine settles.
-func installFakeBackend(svc *CloudExecutorService, output string) *fakeBackend {
-	fb := &fakeBackend{output: output}
-	svc.BackendFactory = func(_ llmclient.Config) agent.Backend { return fb }
-	return fb
+type runnerErr struct{ msg string }
+
+func (e *runnerErr) Error() string { return e.msg }
+
+// installFakeRunner wires a cloudFakeRunner into the service and returns it
+// so the test can read lastPrompt / lastCfg after the goroutine settles.
+func installFakeRunner(svc *CloudExecutorService, output string) *cloudFakeRunner {
+	r := &cloudFakeRunner{output: output}
+	svc.Runner = r
+	return r
 }
 
 // cloudExecEnv extends schedTestEnv with the bits cloud_executor_test
@@ -83,12 +84,11 @@ func setupCloudExecEnv(t *testing.T, q *db.Queries) cloudExecEnv {
 	// constructor's downstream NewQuotaService call wiring, so we instantiate
 	// a real TaskService against the same queries.
 	taskSvc := NewTaskService(q, nil, nil)
-	svc := NewCloudExecutorService(q, nil, nil, taskSvc, scheduler)
-
-	// Default every test to a fake backend so they don't accidentally hit a
-	// real LLM endpoint. Tests that care about the prompt or output can
-	// install their own via installFakeBackend.
-	installFakeBackend(svc, "")
+	// Default every test to a fake runner so they don't spawn the Python
+	// claude-agent-sdk subprocess. Tests that care about the prompt can
+	// install their own via installFakeRunner after construction.
+	defaultRunner := &cloudFakeRunner{}
+	svc := NewCloudExecutorService(q, nil, nil, taskSvc, scheduler, defaultRunner)
 
 	return cloudExecEnv{
 		schedTestEnv: env,
@@ -169,7 +169,7 @@ func TestPollAndExecuteExecutions_ClaimAndComplete(t *testing.T) {
 
 	// Inject a fake backend so the test doesn't need a real LLM endpoint.
 	// The fake echoes a known string we can assert on below.
-	fb := installFakeBackend(env.Svc, "agent did the thing")
+	fb := installFakeRunner(env.Svc, "agent did the thing")
 
 	task, exec := seedQueuedExecution(t, q, env, "claim-and-complete")
 

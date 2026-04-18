@@ -55,7 +55,11 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 	s3 := storage.NewS3StorageFromEnv()
 	cfSigner := auth.NewCloudFrontSignerFromEnv()
 	h := handler.New(queries, pool, hub, bus, emailSvc, s3, cfSigner)
-	h.AutoReplyService = service.NewAutoReplyService(queries, hub, agent_runner.NewRunner())
+	// Single Claude Agent SDK runner shared across every cloud-mode invocation
+	// path so a system / personal / project agent's cloud_llm_config controls
+	// the same SDK installation regardless of who triggered it.
+	cloudRunner := agent_runner.NewRunner()
+	h.AutoReplyService = service.NewAutoReplyService(queries, hub, cloudRunner)
 	h.PlanGenerator = service.NewPlanGeneratorService(queries)
 	h.IdentityGenerator = service.NewIdentityGeneratorService(queries)
 	// Scheduler / Slots / Artifacts / Reviews / Quota are constructed inside
@@ -74,7 +78,7 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 	// or failing executions on the new execution table cascades into the
 	// Plan/Run state machine (per PRD §10.3). The legacy agent_task_queue
 	// path inside CloudExecutorService is unaffected.
-	cloudExecutor := service.NewCloudExecutorService(queries, hub, bus, h.TaskService, h.Scheduler)
+	cloudExecutor := service.NewCloudExecutorService(queries, hub, bus, h.TaskService, h.Scheduler, cloudRunner)
 	cloudExecutor.Start(context.Background())
 
 	// Audit + notification services

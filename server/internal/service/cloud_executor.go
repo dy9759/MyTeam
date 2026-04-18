@@ -15,22 +15,10 @@ import (
 	"github.com/multica-ai/multica/server/internal/events"
 	"github.com/multica-ai/multica/server/internal/realtime"
 	"github.com/multica-ai/multica/server/internal/util"
-	"github.com/multica-ai/multica/server/pkg/agent"
+	"github.com/multica-ai/multica/server/pkg/agent_runner"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
-	"github.com/multica-ai/multica/server/pkg/llmclient"
 	"github.com/multica-ai/multica/server/pkg/protocol"
 )
-
-// BackendFactory builds an agent.Backend from an LLM config. It exists so
-// tests can inject a fake backend without spinning up the real LLM client.
-type BackendFactory func(llmclient.Config) agent.Backend
-
-// defaultBackendFactory wraps agent.NewCloudBackend so production code reaches
-// the real LLM HTTP path. Kept as a package var (not inlined) so the test
-// suite can verify it's the wired-in default.
-var defaultBackendFactory BackendFactory = func(cfg llmclient.Config) agent.Backend {
-	return agent.NewCloudBackend(cfg)
-}
 
 // CloudExecutorService claims and executes tasks for cloud-mode agents.
 //
@@ -40,8 +28,10 @@ var defaultBackendFactory BackendFactory = func(cfg llmclient.Config) agent.Back
 //  2. execution        (Plan/Task/Run model tasks) via pollAndExecuteExecutions.
 //
 // Both paths share the same quota gate (workspace_quota.max_concurrent_cloud_exec
-// + monthly USD ceiling). Completion of an execution-path task cascades back
-// into SchedulerService so downstream tasks become ready.
+// + monthly USD ceiling) and the same Claude Agent SDK Runner — that's the
+// architecture the platform standardizes on for every cloud-mode agent
+// (system, personal, project). Completion of an execution-path task
+// cascades back into SchedulerService so downstream tasks become ready.
 type CloudExecutorService struct {
 	Queries     *db.Queries
 	Hub         *realtime.Hub
@@ -50,10 +40,11 @@ type CloudExecutorService struct {
 	Quota       *QuotaService
 	Scheduler   *SchedulerService
 
-	// BackendFactory builds the agent.Backend used by runExecutionAsync. Tests
-	// override it to avoid hitting the real LLM API; production leaves it nil
-	// and the service falls back to defaultBackendFactory.
-	BackendFactory BackendFactory
+	// Runner spawns the Python claude-agent-sdk child process. The same
+	// Runner instance is shared with AutoReplyService so the platform has a
+	// single SDK invocation path for every cloud-mode agent. Tests inject a
+	// fake to avoid hitting a real LLM endpoint.
+	Runner agent_runner.AgentRunner
 }
 
 // NewCloudExecutorService creates a new CloudExecutorService.
@@ -61,25 +52,39 @@ type CloudExecutorService struct {
 // scheduler may be nil; the execution-table poll loop will still run but
 // will not cascade completion back into the Plan/Run state machine. The
 // agent_task_queue path is unaffected.
-func NewCloudExecutorService(queries *db.Queries, hub *realtime.Hub, bus *events.Bus, taskService *TaskService, scheduler *SchedulerService) *CloudExecutorService {
+//
+// runner must be non-nil for either poll loop to actually invoke the LLM.
+// Pass agent_runner.NewRunner() for production, or share the Runner with
+// AutoReplyService so both paths converge on the same SDK installation.
+func NewCloudExecutorService(queries *db.Queries, hub *realtime.Hub, bus *events.Bus, taskService *TaskService, scheduler *SchedulerService, runner agent_runner.AgentRunner) *CloudExecutorService {
 	return &CloudExecutorService{
-		Queries:        queries,
-		Hub:            hub,
-		Bus:            bus,
-		TaskService:    taskService,
-		Quota:          NewQuotaService(queries),
-		Scheduler:      scheduler,
-		BackendFactory: defaultBackendFactory,
+		Queries:     queries,
+		Hub:         hub,
+		Bus:         bus,
+		TaskService: taskService,
+		Quota:       NewQuotaService(queries),
+		Scheduler:   scheduler,
+		Runner:      runner,
 	}
 }
 
-// backend returns the configured BackendFactory, falling back to the default
-// so callers that mutate s.BackendFactory to nil don't crash.
-func (s *CloudExecutorService) backend(cfg llmclient.Config) agent.Backend {
-	if s.BackendFactory != nil {
-		return s.BackendFactory(cfg)
+// runnerConfigFromRuntime maps the agent runtime metadata into the SDK
+// Runner's per-invocation config. Mirrors the conversion used by
+// auto_reply.go so a single agent gets the same config no matter which
+// path invokes it.
+func runnerConfigFromRuntime(runtime db.AgentRuntime, systemPrompt string) agent_runner.Config {
+	cloud := cloudLLMConfigFromRuntime(runtime)
+	cfg := agent_runner.Config{
+		Kernel:       cloud.Kernel,
+		BaseURL:      cloud.BaseURL,
+		APIKey:       cloud.APIKey,
+		Model:        cloud.Model,
+		SystemPrompt: systemPrompt,
 	}
-	return defaultBackendFactory(cfg)
+	if cfg.Kernel == "" {
+		cfg.Kernel = "anthropic"
+	}
+	return cfg
 }
 
 // Start subscribes to task:dispatch events and starts a poll loop for pending cloud tasks.
@@ -290,12 +295,6 @@ func (s *CloudExecutorService) executeTask(ctx context.Context, task db.AgentTas
 	// Build the prompt.
 	prompt := buildCloudPrompt(issue, comments, task.TriggerCommentID)
 
-	// Parse cloud LLM config from the runtime metadata.
-	llmCfg := s.buildLLMConfig(runtime)
-
-	// Create cloud backend and execute.
-	backend := agent.NewCloudBackend(llmCfg)
-
 	systemPrompt := fmt.Sprintf(
 		"You are %s, an AI assistant. You are working on issue '%s'. "+
 			"Analyze the issue and provide a helpful, concise response. "+
@@ -303,50 +302,24 @@ func (s *CloudExecutorService) executeTask(ctx context.Context, task db.AgentTas
 		agentRow.Name, issue.Title,
 	)
 
-	session, err := backend.Execute(ctx, prompt, agent.ExecOptions{
-		SystemPrompt: systemPrompt,
-	})
+	// Invoke via the Claude Agent SDK Runner — same path AutoReplyService
+	// uses, so a single agent's cloud_llm_config controls every cloud path.
+	if s.Runner == nil {
+		s.TaskService.FailTask(ctx, task.ID, "cloud-executor: runner not configured")
+		return
+	}
+	output, err := s.Runner.Run(ctx, prompt, runnerConfigFromRuntime(runtime, systemPrompt))
 	if err != nil {
 		s.TaskService.FailTask(ctx, task.ID, fmt.Sprintf("cloud execute failed: %v", err))
 		return
 	}
 
-	// Drain messages.
-	for range session.Messages {
-	}
-
-	// Wait for result.
-	result := <-session.Result
-
-	if result.Status == "failed" {
-		s.TaskService.FailTask(ctx, task.ID, result.Error)
-		return
-	}
-
 	resultJSON, _ := json.Marshal(protocol.TaskCompletedPayload{
-		Output: result.Output,
+		Output: output,
 	})
 
 	s.TaskService.CompleteTask(ctx, task.ID, resultJSON, "", "")
 	slog.Info("[cloud-executor] task completed", "task_id", taskIDStr)
-}
-
-func (s *CloudExecutorService) buildLLMConfig(runtime db.AgentRuntime) llmclient.Config {
-	cloudCfg := cloudLLMConfigFromRuntime(runtime)
-
-	cfg := llmclient.DashScopeFromEnv()
-
-	if cloudCfg.BaseURL != "" {
-		cfg.Endpoint = cloudCfg.BaseURL
-	}
-	if cloudCfg.APIKey != "" {
-		cfg.APIKey = cloudCfg.APIKey
-	}
-	if cloudCfg.Model != "" {
-		cfg.Model = cloudCfg.Model
-	}
-
-	return cfg
 }
 
 func buildCloudPrompt(issue db.Issue, comments []db.Comment, triggerCommentID pgtype.UUID) string {
@@ -499,8 +472,11 @@ func (s *CloudExecutorService) pollAndExecuteExecutions(ctx context.Context) {
 // parent poll loop's ctx so a server shutdown cancels new claims but lets
 // in-flight work finish.
 //
-// The LLM call goes through agent.Backend (built by s.backend), so tests can
-// inject a fake backend without hitting the real LLM HTTP endpoint.
+// The LLM call goes through the same agent_runner.Runner that
+// AutoReplyService uses (Python claude-agent-sdk subprocess), so every
+// cloud-mode agent — system, personal, project — converges on a single
+// SDK invocation path. Tests inject a fake Runner to avoid spawning the
+// child process.
 func (s *CloudExecutorService) runExecutionAsync(parentCtx context.Context, e db.Execution, sessionID, sandboxID string) {
 	_ = parentCtx // intentionally not propagated — see comment above.
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
@@ -508,9 +484,9 @@ func (s *CloudExecutorService) runExecutionAsync(parentCtx context.Context, e db
 
 	execIDStr := uuidToStringSafe(e.ID)
 
-	// Belt-and-suspenders panic recovery: a panic in payload parsing, the
-	// backend goroutine, or message draining would otherwise leave the
-	// execution stuck in 'running' forever. Convert it into failExecution so
+	// Belt-and-suspenders panic recovery: a panic in payload parsing or
+	// the runner subprocess plumbing would otherwise leave the execution
+	// stuck in 'running' forever. Convert it into failExecution so
 	// Scheduler.HandleTaskFailure can run the retry/fallback policy.
 	defer func() {
 		if rec := recover(); rec != nil {
@@ -519,6 +495,11 @@ func (s *CloudExecutorService) runExecutionAsync(parentCtx context.Context, e db
 			s.failExecution(ctx, e, fmt.Sprintf("panic: %v", rec))
 		}
 	}()
+
+	if s.Runner == nil {
+		s.failExecution(ctx, e, "cloud-executor: runner not configured")
+		return
+	}
 
 	agentRow, err := s.Queries.GetAgent(ctx, e.AgentID)
 	if err != nil {
@@ -552,40 +533,21 @@ func (s *CloudExecutorService) runExecutionAsync(parentCtx context.Context, e db
 		return
 	}
 
-	llmCfg := s.buildLLMConfig(runtime)
 	systemPrompt := buildExecutionSystemPrompt(agentRow.Name)
 	prompt := buildExecutionPrompt(payload.Title, payload.Description, payload.AcceptanceCriteria)
+	startedAt := time.Now()
 
-	session, err := s.backend(llmCfg).Execute(ctx, prompt, agent.ExecOptions{
-		SystemPrompt:    systemPrompt,
-		ResumeSessionID: sessionID,
-	})
+	output, err := s.Runner.Run(ctx, prompt, runnerConfigFromRuntime(runtime, systemPrompt))
 	if err != nil {
-		s.failExecution(ctx, e, fmt.Sprintf("backend execute: %v", err))
-		return
-	}
-
-	// Drain the message stream. WS streaming is plan5 follow-up — for now
-	// the channel must still be drained or the goroutine inside
-	// CloudBackend.Execute would block forever.
-	for range session.Messages {
-	}
-
-	r := <-session.Result
-	if r.Status != "completed" {
-		errMsg := r.Error
-		if errMsg == "" {
-			errMsg = fmt.Sprintf("execution finished with status %q", r.Status)
-		}
-		s.failExecution(ctx, e, errMsg)
+		s.failExecution(ctx, e, fmt.Sprintf("runner: %v", err))
 		return
 	}
 
 	result := map[string]any{
-		"output":      r.Output,
+		"output":      output,
 		"session_id":  sessionID,
 		"sandbox_id":  sandboxID,
-		"duration_ms": r.DurationMs,
+		"duration_ms": time.Since(startedAt).Milliseconds(),
 	}
 
 	// Token-level cost capture follows in plan5-d4-followup once
