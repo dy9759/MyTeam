@@ -221,6 +221,45 @@ func TestPollAndExecuteExecutions_ClaimAndComplete(t *testing.T) {
 	}
 }
 
+// TestPollAndExecuteExecutions_RecordsCostOnCompletion asserts that the
+// cloud-executor wires QuotaService.RecordCost into the completion path so
+// monthly USD usage is tracked. The runner does not yet surface token /
+// USD numbers, so the recorded amount may be zero — the test asserts that
+// the workspace_quota row was touched (updated_at bumped past the
+// pre-completion mark) which proves the call happened.
+func TestPollAndExecuteExecutions_RecordsCostOnCompletion(t *testing.T) {
+	q := testDB(t)
+	env := setupCloudExecEnv(t, q)
+	ctx := context.Background()
+
+	setQuota(t, q, env.WorkspaceID, 100.0, 0.0, 10)
+	installFakeRunner(env.Svc, "ok")
+
+	preMark, err := q.GetWorkspaceQuota(ctx, env.WorkspaceID)
+	if err != nil {
+		t.Fatalf("get quota pre: %v", err)
+	}
+	// Make sure updated_at deltas are observable even when the test runs
+	// inside the same wall-clock millisecond as the seed.
+	time.Sleep(10 * time.Millisecond)
+
+	_, exec := seedQueuedExecution(t, q, env, "records-cost")
+	env.Svc.pollAndExecuteExecutions(ctx)
+	final := waitForExecStatus(t, q, exec.ID, "completed", 3*time.Second)
+	if final.Status != "completed" {
+		t.Fatalf("execution status: want completed, got %s", final.Status)
+	}
+
+	postMark, err := q.GetWorkspaceQuota(ctx, env.WorkspaceID)
+	if err != nil {
+		t.Fatalf("get quota post: %v", err)
+	}
+	if !postMark.UpdatedAt.Time.After(preMark.UpdatedAt.Time) {
+		t.Fatalf("expected workspace_quota.updated_at to advance after RecordCost, pre=%s post=%s",
+			preMark.UpdatedAt.Time, postMark.UpdatedAt.Time)
+	}
+}
+
 func TestPollAndExecuteExecutions_QuotaBlocks(t *testing.T) {
 	q := testDB(t)
 	env := setupCloudExecEnv(t, q)

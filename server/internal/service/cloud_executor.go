@@ -550,13 +550,23 @@ func (s *CloudExecutorService) runExecutionAsync(parentCtx context.Context, e db
 		"duration_ms": time.Since(startedAt).Milliseconds(),
 	}
 
-	// Token-level cost capture follows in plan5-d4-followup once
-	// llmclient.Chat surfaces usage stats. Until then we record the result
-	// but leave cost_* unset so the column distinguishes "we don't know" from
-	// a real $0.00 invocation.
+	// TODO(plan5-d4-followup): pull real token usage + USD from the runner
+	// once agent_runner surfaces a Result struct (today Run() returns only
+	// the reply string). Until then we record zeros so the QuotaService /
+	// execution.cost_* wiring is in place — when the runner gains usage
+	// data we only need to populate these three locals.
+	var (
+		costUSD          float64
+		costInputTokens  int64
+		costOutputTokens int64
+	)
+
 	rowsAffected, err := s.Queries.CompleteExecution(ctx, db.CompleteExecutionParams{
-		ID:     e.ID,
-		Result: marshalResult(result),
+		ID:               e.ID,
+		Result:           marshalResult(result),
+		CostInputTokens:  pgtype.Int4{Int32: int32(costInputTokens), Valid: true},
+		CostOutputTokens: pgtype.Int4{Int32: int32(costOutputTokens), Valid: true},
+		CostUsd:          float64ToNumeric(costUSD),
 	})
 	if err != nil {
 		slog.Warn("[cloud-executor] complete execution failed",
@@ -571,6 +581,14 @@ func (s *CloudExecutorService) runExecutionAsync(parentCtx context.Context, e db
 		slog.Info("[cloud-executor] execution already completed by another path; skipping cascade",
 			"exec", execIDStr)
 		return
+	}
+
+	// Workspace-level monthly cost roll-up (PRD §12). Best-effort so a quota
+	// failure cannot undo the completion that already landed.
+	if s.Quota != nil && runtime.WorkspaceID.Valid {
+		if wsUUID, wsErr := uuid.FromBytes(runtime.WorkspaceID.Bytes[:]); wsErr == nil {
+			s.Quota.RecordCost(ctx, wsUUID, costUSD, costInputTokens, costOutputTokens)
+		}
 	}
 
 	if s.Scheduler != nil && e.TaskID.Valid {

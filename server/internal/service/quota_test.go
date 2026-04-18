@@ -116,7 +116,7 @@ func TestQuotaService_RecordCost_IncrementsMonthlyTotal(t *testing.T) {
 	q, wsID, wsUUID, svc := quotaTestSetup(t)
 	setQuota(t, svc.Q, wsID, 100.0, 10.0, 10)
 
-	svc.RecordCost(context.Background(), wsUUID, 2.5)
+	svc.RecordCost(context.Background(), wsUUID, 2.5, 100, 200)
 
 	row, err := q.GetWorkspaceQuota(context.Background(), wsID)
 	if err != nil {
