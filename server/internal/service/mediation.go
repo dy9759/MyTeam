@@ -271,18 +271,77 @@ func (s *MediationService) routeToMentioned(ctx context.Context, workspaceID, na
 	return &a, nil
 }
 
-// findPlanForThread is the Plan-thread lookup hook.
-//
-// TODO(plan5): plan.thread_id does not yet exist; Plan 5 adds it. Until then
-// this returns nil and routing falls through to the Issue branch.
-func (s *MediationService) findPlanForThread(_ context.Context, _ pgtype.UUID) *db.Plan {
-	return nil
+// findPlanForThread loads the plan (if any) bound to this thread via plan.thread_id.
+// Plan 5 added the FK; if no plan owns the thread, returns nil so routing can
+// fall through to the Issue branch.
+func (s *MediationService) findPlanForThread(ctx context.Context, threadID pgtype.UUID) *db.Plan {
+	plan, err := s.Queries.GetPlanByThread(ctx, threadID)
+	if err != nil {
+		if !errors.Is(err, pgx.ErrNoRows) {
+			slog.Warn("[mediation] findPlanForThread query failed", "error", err,
+				"thread_id", util.UUIDToString(threadID))
+		}
+		return nil
+	}
+	return &plan
 }
 
 // routeToPlan picks the agent owning a plan thread.
 //
-// TODO(plan5): wire to plan.assignee / owning agent.
-func (s *MediationService) routeToPlan(_ context.Context, _ *db.Plan) *db.Agent {
+// Strategy:
+//  1. If the plan has an active ProjectRun, find a task on that run that is
+//     currently 'running' with an actual_agent_id set; return that agent.
+//  2. Otherwise fall back to the first agent listed in plan.assigned_agents.
+//
+// Returns nil if no agent can be resolved.
+func (s *MediationService) routeToPlan(ctx context.Context, plan *db.Plan) *db.Agent {
+	if plan == nil {
+		return nil
+	}
+
+	// 1. Active run → currently-running task → its agent.
+	if plan.ProjectID.Valid {
+		run, err := s.Queries.GetActiveProjectRun(ctx, plan.ProjectID)
+		if err == nil {
+			tasks, err := s.Queries.ListTasksByRun(ctx, run.ID)
+			if err == nil {
+				for _, t := range tasks {
+					if !t.ActualAgentID.Valid || t.Status != "running" {
+						continue
+					}
+					a, err := s.Queries.GetAgent(ctx, t.ActualAgentID)
+					if err != nil || a.ArchivedAt.Valid {
+						continue
+					}
+					return &a
+				}
+			}
+		} else if !errors.Is(err, pgx.ErrNoRows) {
+			slog.Warn("[mediation] routeToPlan: GetActiveProjectRun failed",
+				"error", err, "plan_id", util.UUIDToString(plan.ID))
+		}
+	}
+
+	// 2. Fallback: plan.assigned_agents JSONB — shape is
+	// [{"local_id": "...", "agent_id": "..."}].
+	if len(plan.AssignedAgents) > 0 {
+		var assignments []struct {
+			AgentID string `json:"agent_id"`
+		}
+		if err := json.Unmarshal(plan.AssignedAgents, &assignments); err == nil {
+			for _, asn := range assignments {
+				if asn.AgentID == "" {
+					continue
+				}
+				a, err := s.Queries.GetAgent(ctx, util.ParseUUID(asn.AgentID))
+				if err != nil || a.ArchivedAt.Valid {
+					continue
+				}
+				return &a
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -593,7 +652,7 @@ func (s *MediationService) escalateInbox(ctx context.Context, slot db.ReplySlot,
 		"channel_id": util.UUIDToString(slot.ChannelID),
 	})
 
-	_, err := s.Queries.CreateInboxItem(ctx, db.CreateInboxItemParams{
+	item, err := s.Queries.CreateInboxItem(ctx, db.CreateInboxItemParams{
 		WorkspaceID:   slot.WorkspaceID,
 		RecipientType: recipientType,
 		RecipientID:   recipientID,
@@ -610,6 +669,22 @@ func (s *MediationService) escalateInbox(ctx context.Context, slot db.ReplySlot,
 			"tier", severityLabel,
 		)
 		return
+	}
+
+	// Populate inbox_item.slot_id with the originating reply_slot so consumers
+	// can correlate the notification back to the stalled slot without parsing
+	// the details JSON. CreateInboxItem does not accept slot_id in its params.
+	if s.DB != nil {
+		if _, err := s.DB.Exec(ctx,
+			`UPDATE inbox_item SET slot_id = $1 WHERE id = $2`,
+			slot.ID, item.ID,
+		); err != nil {
+			slog.Warn("[mediation] failed to set inbox_item.slot_id",
+				"error", err,
+				"inbox_item_id", util.UUIDToString(item.ID),
+				"slot_id", util.UUIDToString(slot.ID),
+			)
+		}
 	}
 
 	slog.Info("[mediation] SLA inbox escalation",

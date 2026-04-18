@@ -17,6 +17,9 @@ RETURNING *;
 -- name: GetPlanBySourceRef :one
 SELECT * FROM plan WHERE source_type = $1 AND source_ref_id = $2 ORDER BY created_at DESC LIMIT 1;
 
+-- name: GetPlanByThread :one
+SELECT * FROM plan WHERE thread_id = $1 LIMIT 1;
+
 -- name: DeletePlan :exec
 DELETE FROM plan WHERE id = $1;
 

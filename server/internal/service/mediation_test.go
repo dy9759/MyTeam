@@ -239,10 +239,9 @@ func TestMediation_Routing_MentionWins(t *testing.T) {
 }
 
 func TestMediation_Routing_PlanThreadFallback(t *testing.T) {
-	// TODO(plan5): plan.thread_id does not exist yet; findPlanForThread
-	// deliberately returns nil. This test documents the behavior by asserting
-	// routing falls through to the issue/capability branch. When Plan 5 wires
-	// the column, this test should be updated to assert "reason=plan".
+	// When the thread is not bound to a plan (no row in plan with thread_id =
+	// thread.ID), findPlanForThread returns nil and routing falls through to
+	// the issue/capability branch. This test exercises that fallback.
 	f := newMediationFixture(t)
 	agentA := f.insertAgent("PlanFallbackA_" + randStr())
 	ch := f.newChannel(agentA)
@@ -516,6 +515,27 @@ func TestMediation_SLA_TierActions(t *testing.T) {
 	}
 	if !inboxHasTier(t, f.pool, f.wsID, "critical") {
 		t.Fatal("expected critical inbox_item")
+	}
+	// Critical inbox_item must populate the slot_id column with the originating
+	// reply_slot id (Plan 5 wiring).
+	var inboxSlotID pgtype.UUID
+	err = f.pool.QueryRow(context.Background(), `
+		SELECT slot_id FROM inbox_item
+		WHERE workspace_id = $1 AND type = 'reply_slow' AND severity = 'action_required'
+		ORDER BY created_at DESC LIMIT 1
+	`, f.wsID).Scan(&inboxSlotID)
+	if err != nil {
+		t.Fatalf("query critical inbox slot_id: %v", err)
+	}
+	if !inboxSlotID.Valid {
+		t.Fatal("expected critical inbox_item.slot_id to be set")
+	}
+	var replySlotID pgtype.UUID
+	_ = f.pool.QueryRow(context.Background(),
+		`SELECT id FROM reply_slot WHERE message_id = $1`, member.ID).Scan(&replySlotID)
+	if util.UUIDToString(inboxSlotID) != util.UUIDToString(replySlotID) {
+		t.Fatalf("expected inbox slot_id %s to match reply_slot id %s",
+			util.UUIDToString(inboxSlotID), util.UUIDToString(replySlotID))
 	}
 }
 
