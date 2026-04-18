@@ -395,7 +395,11 @@ func (s *SchedulerService) HandleTaskFailure(ctx context.Context, taskID, execut
 		if task.ActualAgentID.Valid && fbBytes.Bytes == task.ActualAgentID.Bytes {
 			continue
 		}
-		if err := s.Q.AssignTaskAgent(ctx, db.AssignTaskAgentParams{
+		// AssignTaskFallbackAgent both swaps the agent AND resets
+		// current_retry to 0 in a single statement. If we used AssignTaskAgent
+		// here the fallback would inherit the exhausted retry budget and
+		// surface as needs_attention on its first failure (codex IMPORTANT #2).
+		if err := s.Q.AssignTaskFallbackAgent(ctx, db.AssignTaskFallbackAgentParams{
 			ID:            task.ID,
 			ActualAgentID: toPgUUID(fbID),
 		}); err != nil {

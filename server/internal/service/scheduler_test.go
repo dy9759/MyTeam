@@ -490,6 +490,82 @@ func TestHandleTaskFailure_FallbackAgent(t *testing.T) {
 	}
 }
 
+// TestHandleTaskFailure_FallbackResetsRetryBudget verifies that when the
+// scheduler swaps to a fallback agent because the primary exhausted its
+// retry budget, current_retry is reset to 0 so the fallback gets a fresh
+// budget rather than inheriting the exhausted one (codex review IMPORTANT #2).
+func TestHandleTaskFailure_FallbackResetsRetryBudget(t *testing.T) {
+	q := testDB(t)
+	env := setupSchedEnv(t, q)
+	svc := makeSchedulerService(q)
+	ctx := context.Background()
+
+	fallback, err := q.CreatePersonalAgent(ctx, db.CreatePersonalAgentParams{
+		WorkspaceID: env.WorkspaceID,
+		Name:        "Fallback " + t.Name(),
+		Description: "fallback agent",
+		RuntimeID:   env.RuntimeID,
+		OwnerID:     env.MemberID,
+	})
+	if err != nil {
+		t.Fatalf("create fallback agent: %v", err)
+	}
+	if _, err := q.UpdateAgentStatus(ctx, db.UpdateAgentStatusParams{
+		ID:     fallback.ID,
+		Status: "idle",
+	}); err != nil {
+		t.Fatalf("set fallback idle: %v", err)
+	}
+
+	task, err := q.CreateTask(ctx, db.CreateTaskParams{
+		PlanID:            env.PlanID,
+		RunID:             env.RunID,
+		WorkspaceID:       env.WorkspaceID,
+		Title:             "fallback-budget",
+		Description:       pgtype.Text{String: "exhaust primary, ensure fallback budget reset", Valid: true},
+		StepOrder:         pgtype.Int4{Int32: 0, Valid: true},
+		PrimaryAssigneeID: env.AgentID,
+		FallbackAgentIds:  []pgtype.UUID{fallback.ID},
+	})
+	if err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	if err := svc.ScheduleRun(ctx, pgxToUUID(t, env.PlanID), pgxToUUID(t, env.RunID)); err != nil {
+		t.Fatalf("ScheduleRun: %v", err)
+	}
+
+	// Default retry policy: max_retries=2. Three failures exhaust the
+	// primary's budget and trigger the fallback switch.
+	failOnce := func() {
+		execs, err := q.ListExecutionsByTask(ctx, task.ID)
+		if err != nil || len(execs) == 0 {
+			t.Fatalf("expected execution: err=%v len=%d", err, len(execs))
+		}
+		if err := svc.HandleTaskFailure(ctx,
+			pgxToUUID(t, task.ID),
+			pgxToUUID(t, execs[0].ID),
+			"primary failed",
+		); err != nil {
+			t.Fatalf("HandleTaskFailure: %v", err)
+		}
+	}
+	failOnce()
+	failOnce()
+	failOnce()
+
+	got, err := q.GetTask(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if !got.ActualAgentID.Valid || got.ActualAgentID.Bytes != fallback.ID.Bytes {
+		t.Fatalf("expected fallback agent assigned, got %+v", got.ActualAgentID)
+	}
+	if got.CurrentRetry != 0 {
+		t.Fatalf("expected current_retry reset to 0 after fallback switch, got %d", got.CurrentRetry)
+	}
+}
+
 // guard: nil run id passed to checkRunCompletion must be a no-op rather
 // than blowing up on the db.UpdateProjectRunStatus call.
 func TestCheckRunCompletion_NilRunID_NoOp(t *testing.T) {
