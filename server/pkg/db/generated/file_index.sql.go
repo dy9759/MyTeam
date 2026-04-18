@@ -14,7 +14,7 @@ import (
 const createFileIndex = `-- name: CreateFileIndex :one
 INSERT INTO file_index (workspace_id, uploader_identity_id, uploader_identity_type, owner_id, source_type, source_id, file_name, file_size, content_type, storage_path, access_scope, channel_id, project_id)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-RETURNING id, workspace_id, uploader_identity_id, uploader_identity_type, owner_id, source_type, source_id, file_name, file_size, content_type, storage_path, access_scope, channel_id, project_id, created_at
+RETURNING id, workspace_id, uploader_identity_id, uploader_identity_type, owner_id, source_type, source_id, file_name, file_size, content_type, storage_path, access_scope, channel_id, project_id, created_at, backend
 `
 
 type CreateFileIndexParams struct {
@@ -66,6 +66,7 @@ func (q *Queries) CreateFileIndex(ctx context.Context, arg CreateFileIndexParams
 		&i.ChannelID,
 		&i.ProjectID,
 		&i.CreatedAt,
+		&i.Backend,
 	)
 	return i, err
 }
@@ -80,7 +81,7 @@ func (q *Queries) DeleteFileIndex(ctx context.Context, id pgtype.UUID) error {
 }
 
 const getFileIndex = `-- name: GetFileIndex :one
-SELECT id, workspace_id, uploader_identity_id, uploader_identity_type, owner_id, source_type, source_id, file_name, file_size, content_type, storage_path, access_scope, channel_id, project_id, created_at FROM file_index WHERE id = $1
+SELECT id, workspace_id, uploader_identity_id, uploader_identity_type, owner_id, source_type, source_id, file_name, file_size, content_type, storage_path, access_scope, channel_id, project_id, created_at, backend FROM file_index WHERE id = $1
 `
 
 func (q *Queries) GetFileIndex(ctx context.Context, id pgtype.UUID) (FileIndex, error) {
@@ -102,12 +103,13 @@ func (q *Queries) GetFileIndex(ctx context.Context, id pgtype.UUID) (FileIndex, 
 		&i.ChannelID,
 		&i.ProjectID,
 		&i.CreatedAt,
+		&i.Backend,
 	)
 	return i, err
 }
 
 const listFilesByChannel = `-- name: ListFilesByChannel :many
-SELECT id, workspace_id, uploader_identity_id, uploader_identity_type, owner_id, source_type, source_id, file_name, file_size, content_type, storage_path, access_scope, channel_id, project_id, created_at FROM file_index WHERE channel_id = $1 ORDER BY created_at DESC
+SELECT id, workspace_id, uploader_identity_id, uploader_identity_type, owner_id, source_type, source_id, file_name, file_size, content_type, storage_path, access_scope, channel_id, project_id, created_at, backend FROM file_index WHERE channel_id = $1 ORDER BY created_at DESC
 `
 
 func (q *Queries) ListFilesByChannel(ctx context.Context, channelID pgtype.UUID) ([]FileIndex, error) {
@@ -135,6 +137,7 @@ func (q *Queries) ListFilesByChannel(ctx context.Context, channelID pgtype.UUID)
 			&i.ChannelID,
 			&i.ProjectID,
 			&i.CreatedAt,
+			&i.Backend,
 		); err != nil {
 			return nil, err
 		}
@@ -147,7 +150,7 @@ func (q *Queries) ListFilesByChannel(ctx context.Context, channelID pgtype.UUID)
 }
 
 const listFilesByOwner = `-- name: ListFilesByOwner :many
-SELECT id, workspace_id, uploader_identity_id, uploader_identity_type, owner_id, source_type, source_id, file_name, file_size, content_type, storage_path, access_scope, channel_id, project_id, created_at FROM file_index WHERE workspace_id = $1 AND owner_id = $2 ORDER BY created_at DESC
+SELECT id, workspace_id, uploader_identity_id, uploader_identity_type, owner_id, source_type, source_id, file_name, file_size, content_type, storage_path, access_scope, channel_id, project_id, created_at, backend FROM file_index WHERE workspace_id = $1 AND owner_id = $2 ORDER BY created_at DESC
 `
 
 type ListFilesByOwnerParams struct {
@@ -180,6 +183,7 @@ func (q *Queries) ListFilesByOwner(ctx context.Context, arg ListFilesByOwnerPara
 			&i.ChannelID,
 			&i.ProjectID,
 			&i.CreatedAt,
+			&i.Backend,
 		); err != nil {
 			return nil, err
 		}
@@ -192,7 +196,7 @@ func (q *Queries) ListFilesByOwner(ctx context.Context, arg ListFilesByOwnerPara
 }
 
 const listFilesByOwnerAndAgents = `-- name: ListFilesByOwnerAndAgents :many
-SELECT id, workspace_id, uploader_identity_id, uploader_identity_type, owner_id, source_type, source_id, file_name, file_size, content_type, storage_path, access_scope, channel_id, project_id, created_at FROM file_index WHERE workspace_id = $1 AND owner_id = ANY($2::uuid[]) ORDER BY created_at DESC
+SELECT id, workspace_id, uploader_identity_id, uploader_identity_type, owner_id, source_type, source_id, file_name, file_size, content_type, storage_path, access_scope, channel_id, project_id, created_at, backend FROM file_index WHERE workspace_id = $1 AND owner_id = ANY($2::uuid[]) ORDER BY created_at DESC
 `
 
 type ListFilesByOwnerAndAgentsParams struct {
@@ -225,6 +229,7 @@ func (q *Queries) ListFilesByOwnerAndAgents(ctx context.Context, arg ListFilesBy
 			&i.ChannelID,
 			&i.ProjectID,
 			&i.CreatedAt,
+			&i.Backend,
 		); err != nil {
 			return nil, err
 		}
@@ -237,7 +242,7 @@ func (q *Queries) ListFilesByOwnerAndAgents(ctx context.Context, arg ListFilesBy
 }
 
 const listFilesByProject = `-- name: ListFilesByProject :many
-SELECT id, workspace_id, uploader_identity_id, uploader_identity_type, owner_id, source_type, source_id, file_name, file_size, content_type, storage_path, access_scope, channel_id, project_id, created_at FROM file_index WHERE project_id = $1 ORDER BY created_at DESC
+SELECT id, workspace_id, uploader_identity_id, uploader_identity_type, owner_id, source_type, source_id, file_name, file_size, content_type, storage_path, access_scope, channel_id, project_id, created_at, backend FROM file_index WHERE project_id = $1 ORDER BY created_at DESC
 `
 
 func (q *Queries) ListFilesByProject(ctx context.Context, projectID pgtype.UUID) ([]FileIndex, error) {
@@ -265,6 +270,7 @@ func (q *Queries) ListFilesByProject(ctx context.Context, projectID pgtype.UUID)
 			&i.ChannelID,
 			&i.ProjectID,
 			&i.CreatedAt,
+			&i.Backend,
 		); err != nil {
 			return nil, err
 		}
@@ -277,7 +283,7 @@ func (q *Queries) ListFilesByProject(ctx context.Context, projectID pgtype.UUID)
 }
 
 const listFilesBySource = `-- name: ListFilesBySource :many
-SELECT id, workspace_id, uploader_identity_id, uploader_identity_type, owner_id, source_type, source_id, file_name, file_size, content_type, storage_path, access_scope, channel_id, project_id, created_at FROM file_index WHERE source_type = $1 AND source_id = $2 ORDER BY created_at DESC
+SELECT id, workspace_id, uploader_identity_id, uploader_identity_type, owner_id, source_type, source_id, file_name, file_size, content_type, storage_path, access_scope, channel_id, project_id, created_at, backend FROM file_index WHERE source_type = $1 AND source_id = $2 ORDER BY created_at DESC
 `
 
 type ListFilesBySourceParams struct {
@@ -310,6 +316,7 @@ func (q *Queries) ListFilesBySource(ctx context.Context, arg ListFilesBySourcePa
 			&i.ChannelID,
 			&i.ProjectID,
 			&i.CreatedAt,
+			&i.Backend,
 		); err != nil {
 			return nil, err
 		}
@@ -322,7 +329,7 @@ func (q *Queries) ListFilesBySource(ctx context.Context, arg ListFilesBySourcePa
 }
 
 const listFilesByWorkspace = `-- name: ListFilesByWorkspace :many
-SELECT id, workspace_id, uploader_identity_id, uploader_identity_type, owner_id, source_type, source_id, file_name, file_size, content_type, storage_path, access_scope, channel_id, project_id, created_at FROM file_index WHERE workspace_id = $1 ORDER BY created_at DESC LIMIT $3 OFFSET $2
+SELECT id, workspace_id, uploader_identity_id, uploader_identity_type, owner_id, source_type, source_id, file_name, file_size, content_type, storage_path, access_scope, channel_id, project_id, created_at, backend FROM file_index WHERE workspace_id = $1 ORDER BY created_at DESC LIMIT $3 OFFSET $2
 `
 
 type ListFilesByWorkspaceParams struct {
@@ -356,6 +363,7 @@ func (q *Queries) ListFilesByWorkspace(ctx context.Context, arg ListFilesByWorks
 			&i.ChannelID,
 			&i.ProjectID,
 			&i.CreatedAt,
+			&i.Backend,
 		); err != nil {
 			return nil, err
 		}

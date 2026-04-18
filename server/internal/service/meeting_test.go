@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/multica-ai/multica/server/internal/service/asr"
+	"github.com/multica-ai/multica/server/internal/service/memory"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
@@ -108,7 +109,7 @@ func TestMeetingService_HappyPath(t *testing.T) {
 				{ID: uuid.NewString(), Task: "Review backend code", Owner: "", Confidence: 0.4},
 			},
 		},
-	})
+	}).WithMemory(memory.NewService(q))
 
 	threadID := uuid.UUID(thread.ID.Bytes)
 
@@ -226,6 +227,51 @@ func TestMeetingService_HappyPath(t *testing.T) {
 	if stored.ASRProvider != "doubao_miaoji" {
 		t.Errorf("provider: want doubao_miaoji, got %q", stored.ASRProvider)
 	}
+
+	// Phase 2 dual-write: each action_item should also have a parallel
+	// memory_record row pointing at it. Status=candidate, type=task.
+	memSvc := memory.NewService(q)
+	dbItems := getActionItemRows(t, q, thread.ID)
+	totalMem := 0
+	for _, it := range dbItems {
+		mems, err := memSvc.GetByRaw(ctx, memory.RawRef{
+			Kind: memory.RawThreadContextItem,
+			ID:   uuid.UUID(it.ID.Bytes),
+		})
+		if err != nil {
+			t.Fatalf("memory.GetByRaw: %v", err)
+		}
+		for _, m := range mems {
+			if m.Type != memory.TypeTask {
+				t.Errorf("memory type: want task, got %s", m.Type)
+			}
+			if m.Status != memory.StatusCandidate {
+				t.Errorf("memory status: want candidate, got %s", m.Status)
+			}
+			if m.Scope != memory.ScopeSharedSummary {
+				t.Errorf("memory scope: want shared_summary, got %s", m.Scope)
+			}
+			totalMem++
+		}
+	}
+	if totalMem != 2 {
+		t.Errorf("expected 2 memory_record rows (one per action_item), got %d", totalMem)
+	}
+}
+
+// getActionItemRows reads thread_context_item rows directly so the test
+// can verify dual-write without depending on the higher-level
+// ListActionItems projection.
+func getActionItemRows(t *testing.T, q *db.Queries, threadID pgtype.UUID) []db.ThreadContextItem {
+	t.Helper()
+	items, err := q.ListThreadContextItemsByType(context.Background(), db.ListThreadContextItemsByTypeParams{
+		ThreadID: threadID,
+		ItemType: "action_item",
+	})
+	if err != nil {
+		t.Fatalf("list context items: %v", err)
+	}
+	return items
 }
 
 func TestMeetingService_NotMeeting(t *testing.T) {

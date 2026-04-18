@@ -310,6 +310,7 @@ type FileIndex struct {
 	ChannelID            pgtype.UUID        `json:"channel_id"`
 	ProjectID            pgtype.UUID        `json:"project_id"`
 	CreatedAt            pgtype.Timestamptz `json:"created_at"`
+	Backend              string             `json:"backend"`
 }
 
 type FileSnapshot struct {
@@ -428,6 +429,26 @@ type Member struct {
 	UserID      pgtype.UUID        `json:"user_id"`
 	Role        string             `json:"role"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
+type MemoryRecord struct {
+	ID          pgtype.UUID        `json:"id"`
+	WorkspaceID pgtype.UUID        `json:"workspace_id"`
+	Type        string             `json:"type"`
+	Scope       string             `json:"scope"`
+	Source      string             `json:"source"`
+	RawKind     string             `json:"raw_kind"`
+	RawID       pgtype.UUID        `json:"raw_id"`
+	Summary     pgtype.Text        `json:"summary"`
+	Body        pgtype.Text        `json:"body"`
+	Tags        []string           `json:"tags"`
+	Entities    []string           `json:"entities"`
+	Confidence  float32            `json:"confidence"`
+	Status      string             `json:"status"`
+	Version     int32              `json:"version"`
+	CreatedBy   pgtype.UUID        `json:"created_by"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }
 
 type MergeRequest struct {

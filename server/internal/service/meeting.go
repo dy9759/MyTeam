@@ -19,6 +19,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/multica-ai/multica/server/internal/service/asr"
+	"github.com/multica-ai/multica/server/internal/service/memory"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
@@ -91,10 +92,18 @@ type MeetingService struct {
 	Tx      TxStarter
 	Secrets SecretGetter
 	ASR     asr.Client
+	Memory  *memory.Service // optional; nil disables dual-write to memory_record
 }
 
 func NewMeetingService(q *db.Queries, tx TxStarter, secrets SecretGetter, asrClient asr.Client) *MeetingService {
 	return &MeetingService{Q: q, Tx: tx, Secrets: secrets, ASR: asrClient}
+}
+
+// WithMemory enables dual-write into memory_record for every action_item
+// + the meeting summary itself. Pass nil to disable (default).
+func (s *MeetingService) WithMemory(m *memory.Service) *MeetingService {
+	s.Memory = m
+	return s
 }
 
 // ErrNotMeeting / ErrAudioMissing are sentinel errors callers can branch on
@@ -187,11 +196,11 @@ func (s *MeetingService) Summarize(ctx context.Context, threadID uuid.UUID, audi
 		return asr.SummaryBundle{}, fmt.Errorf("marshal meta: %w", err)
 	}
 
-	// Transactional path: thread metadata + every action_item insert
-	// committed atomically. Without Tx the writes happen sequentially
-	// and a mid-stream failure leaves the thread marked summarized but
-	// missing action items.
-	persist := func(q *db.Queries) error {
+	// Transactional path: thread metadata + every action_item insert +
+	// optional memory_record dual-write committed atomically. Without
+	// Tx the writes happen sequentially and a mid-stream failure leaves
+	// the thread marked summarized but missing action items.
+	persist := func(q *db.Queries, memorySvc *memory.Service) error {
 		if err := q.UpdateThreadMetadata(ctx, db.UpdateThreadMetadataParams{
 			ID:       pgUUIDFromUUID(threadID),
 			Metadata: metaBytes,
@@ -205,7 +214,7 @@ func (s *MeetingService) Summarize(ctx context.Context, threadID uuid.UUID, audi
 				"confidence": ai.Confidence,
 				"owner_hint": ai.Owner,
 			})
-			if _, err := q.CreateThreadContextItem(ctx, db.CreateThreadContextItemParams{
+			ctxItem, err := q.CreateThreadContextItem(ctx, db.CreateThreadContextItemParams{
 				WorkspaceID:    thread.WorkspaceID,
 				ThreadID:       toPgUUIDFromBytes(thread.ID),
 				ItemType:       "action_item",
@@ -214,8 +223,31 @@ func (s *MeetingService) Summarize(ctx context.Context, threadID uuid.UUID, audi
 				Metadata:       itemMeta,
 				RetentionClass: pgtype.Text{String: "permanent", Valid: true},
 				CreatedByType:  pgtype.Text{String: "system", Valid: true},
-			}); err != nil {
+			})
+			if err != nil {
 				return fmt.Errorf("persist action item %q: %w", ai.Task, err)
+			}
+			// Phase 2 dual-write: parallel memory_record row pointing at
+			// this thread_context_item. Status=candidate (per reference
+			// §七.4 — agents write candidates, humans confirm).
+			// memorySvc bound to the same tx so the whole batch is atomic.
+			if memorySvc != nil {
+				if _, err := memorySvc.Append(ctx, memory.AppendInput{
+					WorkspaceID: uuid.UUID(thread.WorkspaceID.Bytes),
+					Type:        memory.TypeTask,
+					Scope:       memory.ScopeSharedSummary,
+					Source:      "meeting",
+					Raw: memory.RawRef{
+						Kind: memory.RawThreadContextItem,
+						ID:   uuid.UUID(ctxItem.ID.Bytes),
+					},
+					Summary:    meetingTruncate(ai.Task, 200),
+					Body:       string(bodyBytes),
+					Confidence: ai.Confidence,
+					Status:     memory.StatusCandidate,
+				}); err != nil {
+					return fmt.Errorf("dual-write memory_record for action %q: %w", ai.Task, err)
+				}
 			}
 		}
 		return nil
@@ -227,7 +259,12 @@ func (s *MeetingService) Summarize(ctx context.Context, threadID uuid.UUID, audi
 			return asr.SummaryBundle{}, fmt.Errorf("begin tx: %w", err)
 		}
 		defer tx.Rollback(ctx)
-		if err := persist(s.Q.WithTx(tx)); err != nil {
+		txQ := s.Q.WithTx(tx)
+		var txMem *memory.Service
+		if s.Memory != nil {
+			txMem = memory.NewService(txQ)
+		}
+		if err := persist(txQ, txMem); err != nil {
 			return asr.SummaryBundle{}, err
 		}
 		if err := tx.Commit(ctx); err != nil {
@@ -237,7 +274,7 @@ func (s *MeetingService) Summarize(ctx context.Context, threadID uuid.UUID, audi
 	}
 	// No-tx fallback (test wiring without a pool, or callers that
 	// explicitly opted out). Same writes, no atomicity.
-	if err := persist(s.Q); err != nil {
+	if err := persist(s.Q, s.Memory); err != nil {
 		return bundle, err
 	}
 	return bundle, nil
