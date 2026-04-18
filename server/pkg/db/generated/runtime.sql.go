@@ -291,6 +291,63 @@ func (q *Queries) ListAgentRuntimes(ctx context.Context, workspaceID pgtype.UUID
 	return items, nil
 }
 
+const listCloudRuntimes = `-- name: ListCloudRuntimes :many
+SELECT
+    id, workspace_id, daemon_id, name, provider, status,
+    device_info, metadata, created_at, updated_at,
+    server_host, working_dir, capabilities, last_heartbeat,
+    readiness, concurrency_limit, current_load, lease_expires_at,
+    last_heartbeat_at, mode
+FROM agent_runtime
+WHERE mode = 'cloud' AND status IN ('online', 'degraded')
+ORDER BY current_load ASC NULLS LAST, created_at ASC
+`
+
+// Lists all cloud-mode runtimes that are in a serviceable state.
+// Used by CloudExecutorService to fan out execution claims across
+// workspaces. Ordered by current_load ASC so lighter runtimes are
+// preferred when claims race.
+func (q *Queries) ListCloudRuntimes(ctx context.Context) ([]AgentRuntime, error) {
+	rows, err := q.db.Query(ctx, listCloudRuntimes)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AgentRuntime{}
+	for rows.Next() {
+		var i AgentRuntime
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.DaemonID,
+			&i.Name,
+			&i.Provider,
+			&i.Status,
+			&i.DeviceInfo,
+			&i.Metadata,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ServerHost,
+			&i.WorkingDir,
+			&i.Capabilities,
+			&i.LastHeartbeat,
+			&i.Readiness,
+			&i.ConcurrencyLimit,
+			&i.CurrentLoad,
+			&i.LeaseExpiresAt,
+			&i.LastHeartbeatAt,
+			&i.Mode,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const markStaleRuntimesOffline = `-- name: MarkStaleRuntimesOffline :many
 UPDATE agent_runtime
 SET status = 'offline', updated_at = now()

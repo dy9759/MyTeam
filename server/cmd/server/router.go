@@ -70,8 +70,11 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 	// Start auto-reply poll daemon
 	go h.AutoReplyService.StartPollDaemon(context.Background())
 
-	// Start cloud executor service
-	cloudExecutor := service.NewCloudExecutorService(queries, hub, bus, h.TaskService)
+	// Start cloud executor service. Scheduler is wired in so that completing
+	// or failing executions on the new execution table cascades into the
+	// Plan/Run state machine (per PRD §10.3). The legacy agent_task_queue
+	// path inside CloudExecutorService is unaffected.
+	cloudExecutor := service.NewCloudExecutorService(queries, hub, bus, h.TaskService, h.Scheduler)
 	cloudExecutor.Start(context.Background())
 
 	// Audit + notification services
@@ -418,13 +421,35 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 					r.Get("/", h.GetPlan)
 					r.Delete("/", h.DeletePlan)
 					r.Post("/approve", h.ApprovePlan)
+					// Plan 5 §10: Task surface scoped to a plan.
+					r.Get("/tasks", h.ListTasksByPlan)
 				})
 			})
 
-			// TODO(plan5): Workflow API replaced by Task API in Batch D.
-			// The legacy /api/workflows routes have been removed; the
-			// equivalent surface will be built on top of the new Task /
-			// Slot / Execution model.
+			// Plan 5 §10 — Project five-layer API: tasks, slots,
+			// executions, artifacts, reviews. State transitions flow
+			// through SchedulerService; PATCH on tasks accepts only
+			// status=cancelled (see handler/task.go).
+			r.Route("/api/tasks", func(r chi.Router) {
+				r.Post("/", h.CreateTaskHandler)
+				r.Route("/{id}", func(r chi.Router) {
+					r.Get("/", h.GetTaskHandler)
+					r.Patch("/", h.UpdateTaskHandler)
+					r.Get("/slots", h.ListTaskSlots)
+					r.Post("/slots", h.CreateTaskSlot)
+					r.Get("/executions", h.ListTaskExecutions)
+					r.Get("/artifacts", h.ListTaskArtifacts)
+				})
+			})
+			r.Route("/api/artifacts/{id}", func(r chi.Router) {
+				r.Get("/", h.GetArtifactHandler)
+				r.Get("/reviews", h.ListArtifactReviews)
+				r.Post("/reviews", h.CreateReviewHandler)
+			})
+			// /api/runs/{runID}/start — kick off a ProjectRun via
+			// SchedulerService.ScheduleRun. Reads of runs themselves
+			// continue to live under /api/projects/{id}/runs.
+			r.Post("/api/runs/{runID}/start", h.StartRunHandler)
 
 			// Triggers (AgentMesh integration)
 			r.Post("/api/triggers/check-mentions", h.CheckMentions)

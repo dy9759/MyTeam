@@ -95,6 +95,21 @@ FROM agent_runtime
 WHERE workspace_id = $1 AND mode = 'cloud' AND provider = 'cloud_llm'
 LIMIT 1;
 
+-- name: ListCloudRuntimes :many
+-- Lists all cloud-mode runtimes that are in a serviceable state.
+-- Used by CloudExecutorService to fan out execution claims across
+-- workspaces. Ordered by current_load ASC so lighter runtimes are
+-- preferred when claims race.
+SELECT
+    id, workspace_id, daemon_id, name, provider, status,
+    device_info, metadata, created_at, updated_at,
+    server_host, working_dir, capabilities, last_heartbeat,
+    readiness, concurrency_limit, current_load, lease_expires_at,
+    last_heartbeat_at, mode
+FROM agent_runtime
+WHERE mode = 'cloud' AND status IN ('online', 'degraded')
+ORDER BY current_load ASC NULLS LAST, created_at ASC;
+
 -- name: EnsureCloudRuntime :one
 INSERT INTO agent_runtime (
     workspace_id, daemon_id, name, mode, provider, status, device_info, metadata, last_heartbeat_at
