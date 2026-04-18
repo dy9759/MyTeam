@@ -2,6 +2,8 @@ package tools
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
 	"github.com/multica-ai/multica/server/internal/mcp/mcptool"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
@@ -27,7 +29,36 @@ func (UpdateIssueStatus) RuntimeModes() []string {
 	return []string{mcptool.RuntimeLocal, mcptool.RuntimeCloud}
 }
 
-func (UpdateIssueStatus) Exec(_ context.Context, _ *db.Queries, _ mcptool.Context, _ map[string]any) (mcptool.Result, error) {
-	// TODO(plan4-followup): wire to server/internal/handler/issue.go UpdateIssue (status field)
-	return mcptool.Result{Stub: true, Note: "wire to handler/issue.go UpdateIssue"}, nil
+func (UpdateIssueStatus) Exec(ctx context.Context, q *db.Queries, ws mcptool.Context, args map[string]any) (mcptool.Result, error) {
+	if err := mcptool.RequireMember(ctx, ws); err != nil {
+		return mcptool.Result{}, err
+	}
+	issueID, err := requireUUIDArg(args, "issue_id")
+	if err != nil {
+		return mcptool.Result{}, err
+	}
+	status, _ := args["status"].(string)
+	if status == "" {
+		return mcptool.Result{}, errors.New("status is required")
+	}
+
+	// Workspace boundary check before mutating: ensure the issue belongs to
+	// the caller's workspace, otherwise UpdateIssueStatus would silently
+	// touch another tenant's row.
+	if _, err := q.GetIssueInWorkspace(ctx, db.GetIssueInWorkspaceParams{
+		ID:          uuidToPgtype(issueID),
+		WorkspaceID: uuidToPgtype(ws.WorkspaceID),
+	}); err != nil {
+		return mcptool.Result{}, fmt.Errorf("issue not found: %w", err)
+	}
+
+	updated, err := q.UpdateIssueStatus(ctx, db.UpdateIssueStatusParams{
+		ID:     uuidToPgtype(issueID),
+		Status: status,
+	})
+	if err != nil {
+		return mcptool.Result{}, fmt.Errorf("update status: %w", err)
+	}
+
+	return mcptool.Result{Data: issueToMap(updated)}, nil
 }
