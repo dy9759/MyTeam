@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import { useMessagingStore } from "@/features/messaging/store";
 import { useChannelStore } from "@/features/channels/store";
 import { useInboxStore } from "@/features/inbox";
+import { useWorkspaceStore } from "@/features/workspace";
+import { useAuthStore } from "@/features/auth";
 import { MessageList } from "@/features/messaging/components/message-list";
 import { MessageInput } from "@/features/messaging/components/message-input";
 import { ThreadPanel } from "@/features/messaging/components/thread-panel";
@@ -290,6 +292,17 @@ export default function SessionPage() {
   const fetchDmMessages = useMessagingStore((s) => s.loadMessages);
   const sendDmMessage = useMessagingStore((s) => s.sendMessage);
 
+  // Personal agent — always shown in DM list as online + interactable, even
+  // before the user has exchanged any messages with it. Derived from the
+  // workspace agents store so realtime `agent:status_changed` events update
+  // the sidebar (see use-realtime-sync's agent → refreshAgents handler).
+  const currentUserId = useAuthStore((s) => s.user?.id);
+  const personalAgent = useWorkspaceStore((s) =>
+    s.agents.find(
+      (a) => a.agent_type === "personal_agent" && a.owner_id === currentUserId,
+    ) ?? null,
+  );
+
   const channels = useChannelStore((s) => s.channels);
   const currentChannel = useChannelStore((s) => s.currentChannel);
   const channelMembers = useChannelStore((s) => s.members);
@@ -308,6 +321,22 @@ export default function SessionPage() {
     fetchConversations();
     fetchChannels();
   }, [fetchConversations, fetchChannels]);
+
+  // DM list shown in the sidebar = real conversations + the personal agent
+  // (if it isn't already present from prior messages).
+  const sidebarConversations = useMemo<Conversation[]>(() => {
+    if (!personalAgent) return conversations;
+    if (conversations.some((c) => c.peer_id === personalAgent.id)) {
+      return conversations;
+    }
+    const synthetic: Conversation = {
+      peer_id: personalAgent.id,
+      peer_type: "agent",
+      peer_name: personalAgent.display_name || personalAgent.name,
+      unread_count: 0,
+    };
+    return [synthetic, ...conversations];
+  }, [conversations, personalAgent]);
 
   // Selection scope follows the active channel/dm. Switching conversations
   // clears whatever was selected so we never leak picks across rooms.
@@ -376,7 +405,7 @@ export default function SessionPage() {
   // Send handlers
   const handleSendDm = useCallback(
     async (content: string, fileInfo?: { file_id: string; file_name: string; file_size: number; file_content_type: string }) => {
-      const conv = conversations.find((c) => c.peer_id === selectedId);
+      const conv = sidebarConversations.find((c) => c.peer_id === selectedId);
       if (!conv) return;
       await sendDmMessage({
         recipient_id: conv.peer_id,
@@ -384,8 +413,13 @@ export default function SessionPage() {
         content,
         ...(fileInfo ? { file_id: fileInfo.file_id, file_name: fileInfo.file_name } : {}),
       });
+      // Refresh the conversation list so the synthetic personal-agent row is
+      // replaced by the real conversation (with last_message + unread state)
+      // as soon as the first message lands. Cheap to do every send; the
+      // sidebar dedup logic handles the synthetic → real transition.
+      fetchConversations();
     },
-    [conversations, selectedId, sendDmMessage],
+    [sidebarConversations, selectedId, sendDmMessage, fetchConversations],
   );
 
   const handleSendChannel = useCallback(
@@ -434,7 +468,7 @@ export default function SessionPage() {
   const messages = selectedType === "dm" ? dmMessages : channelMessages;
   const headerName =
     selectedType === "dm"
-      ? conversations.find((c) => c.peer_id === selectedId)?.peer_name ||
+      ? sidebarConversations.find((c) => c.peer_id === selectedId)?.peer_name ||
         selectedId?.slice(0, 12) ||
         ""
       : currentChannel?.name
@@ -444,14 +478,14 @@ export default function SessionPage() {
     selectedType === "channel" && channelMembers.length > 0
       ? `${channelMembers.length} 位成员`
       : selectedType === "dm"
-        ? conversations.find((c) => c.peer_id === selectedId)?.peer_type ?? ""
+        ? sidebarConversations.find((c) => c.peer_id === selectedId)?.peer_type ?? ""
         : "";
 
   return (
     <div className="flex h-full">
       {/* Left sidebar */}
       <SessionSidebar
-        conversations={conversations}
+        conversations={sidebarConversations}
         channels={channels}
         selectedId={selectedId}
         selectedType={selectedType}
