@@ -39,6 +39,7 @@ import (
 
 	"github.com/multica-ai/multica/server/internal/events"
 	"github.com/multica-ai/multica/server/internal/realtime"
+	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
@@ -574,8 +575,27 @@ func (s *SchedulerService) checkRunCompletion(ctx context.Context, runID uuid.UU
 		if anyFailed {
 			eventType = "run:failed"
 		}
+		// Resolve workspace_id from run → project. AuditService and
+		// ResultsReporterService both depend on event.WorkspaceID being set;
+		// a missing value cascades into "audit log failed: null value in
+		// column workspace_id" warnings and leaves the activity_log row
+		// uncreated. Failure here is non-fatal — the event still publishes.
+		var workspaceID string
+		if run, runErr := s.Q.GetProjectRun(ctx, toPgUUID(runID)); runErr == nil {
+			if project, projErr := s.Q.GetProject(ctx, run.ProjectID); projErr == nil {
+				workspaceID = util.UUIDToString(project.WorkspaceID)
+			} else {
+				slog.Warn("scheduler: load project for run completion event failed",
+					"run", runID, "err", projErr)
+			}
+		} else {
+			slog.Warn("scheduler: load run for completion event failed",
+				"run", runID, "err", runErr)
+		}
 		s.Bus.Publish(events.Event{
-			Type: eventType,
+			Type:        eventType,
+			WorkspaceID: workspaceID,
+			ActorType:   "system",
 			Payload: map[string]any{
 				"run_id": runID.String(),
 				"status": newStatus,
