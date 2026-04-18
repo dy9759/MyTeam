@@ -328,8 +328,15 @@ func (h *Handler) VerifyCode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Auto-provision a personal agent in every workspace the user belongs to.
-	// Best-effort: a failure here shouldn't block sign-in, just log and continue.
-	h.ensurePersonalAgentInAllWorkspaces(r.Context(), user)
+	// Run async with a detached context so we don't pay N×(SQL+SDK) latency on
+	// the login hot path. Best-effort: a failure here shouldn't block sign-in.
+	go func(u db.User) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		slog.Info("auto-provision personal agent: start", "user_id", uuidToString(u.ID))
+		h.ensurePersonalAgentInAllWorkspaces(ctx, u)
+		slog.Info("auto-provision personal agent: done", "user_id", uuidToString(u.ID))
+	}(user)
 
 	tokenString, err := h.issueJWT(user)
 	if err != nil {
