@@ -135,6 +135,9 @@ WITH accessible_projects AS (
       AND cm.member_type = 'member'
       AND c.workspace_id = $1
       AND c.project_id IS NOT NULL
+), owned_agents AS (
+    SELECT id FROM agent
+    WHERE workspace_id = $1 AND owner_id = $2
 )
 SELECT al.id, al.workspace_id, al.issue_id, al.actor_type, al.actor_id, al.action, al.details, al.created_at, al.event_type, al.effective_actor_id, al.effective_actor_type, al.real_operator_id, al.real_operator_type, al.related_project_id, al.related_plan_id, al.related_task_id, al.related_slot_id, al.related_execution_id, al.related_channel_id, al.related_thread_id, al.related_agent_id, al.related_runtime_id, al.payload, al.retention_class FROM activity_log al
 WHERE al.workspace_id = $1
@@ -144,9 +147,9 @@ WHERE al.workspace_id = $1
       OR al.related_task_id IN (
           SELECT t.id FROM task t
           WHERE t.workspace_id = $1
-            AND t.actual_agent_id IN (
-                SELECT a.id FROM agent a
-                WHERE a.workspace_id = $1 AND a.owner_id = $2
+            AND (
+                t.actual_agent_id IN (SELECT id FROM owned_agents)
+                OR t.primary_assignee_id IN (SELECT id FROM owned_agents)
             )
       )
   )
@@ -171,7 +174,11 @@ type ListActivityForMemberParams struct {
 // A member sees activity_log rows where ANY of:
 //   - actor_id matches the member's own user_id, OR
 //   - related_project_id is a project the member created or joined via channel, OR
-//   - related_task_id belongs to a task whose actual_agent is owned by the member.
+//   - related_task_id belongs to a task whose actual_agent OR primary_assignee
+//     is owned by the member. Both columns matter because primary_assignee_id
+//     is set at plan time while actual_agent_id is only populated once the
+//     scheduler claims the task — draft/queued tasks would otherwise be
+//     invisible to the assignee's owner.
 //
 // Optional sqlc.narg filters narrow the result by project_id / task_id / event_type
 // so the same query backs the existing route variants.

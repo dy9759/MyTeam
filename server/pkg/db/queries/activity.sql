@@ -58,7 +58,11 @@ LIMIT @limit_count OFFSET @offset_count;
 -- A member sees activity_log rows where ANY of:
 --   * actor_id matches the member's own user_id, OR
 --   * related_project_id is a project the member created or joined via channel, OR
---   * related_task_id belongs to a task whose actual_agent is owned by the member.
+--   * related_task_id belongs to a task whose actual_agent OR primary_assignee
+--     is owned by the member. Both columns matter because primary_assignee_id
+--     is set at plan time while actual_agent_id is only populated once the
+--     scheduler claims the task — draft/queued tasks would otherwise be
+--     invisible to the assignee's owner.
 -- Optional sqlc.narg filters narrow the result by project_id / task_id / event_type
 -- so the same query backs the existing route variants.
 WITH accessible_projects AS (
@@ -71,6 +75,9 @@ WITH accessible_projects AS (
       AND cm.member_type = 'member'
       AND c.workspace_id = @workspace_id
       AND c.project_id IS NOT NULL
+), owned_agents AS (
+    SELECT id FROM agent
+    WHERE workspace_id = @workspace_id AND owner_id = @self_user_id
 )
 SELECT al.* FROM activity_log al
 WHERE al.workspace_id = @workspace_id
@@ -80,9 +87,9 @@ WHERE al.workspace_id = @workspace_id
       OR al.related_task_id IN (
           SELECT t.id FROM task t
           WHERE t.workspace_id = @workspace_id
-            AND t.actual_agent_id IN (
-                SELECT a.id FROM agent a
-                WHERE a.workspace_id = @workspace_id AND a.owner_id = @self_user_id
+            AND (
+                t.actual_agent_id IN (SELECT id FROM owned_agents)
+                OR t.primary_assignee_id IN (SELECT id FROM owned_agents)
             )
       )
   )
