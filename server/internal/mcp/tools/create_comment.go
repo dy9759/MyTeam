@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/mcp/mcptool"
+	"github.com/multica-ai/multica/server/internal/service"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
@@ -67,6 +69,28 @@ func (CreateComment) Exec(ctx context.Context, q *db.Queries, ws mcptool.Context
 		authorID = ws.AgentID
 	}
 
+	// Route through CommentService so MCP-created comments fire the same
+	// side effects as HTTP-created comments: identifier expansion, WS event,
+	// on_comment trigger, and @mentioned-agent enqueue. Without this, an
+	// agent that gets @-mentioned in an MCP comment would never auto-reply.
+	if ws.Comments != nil {
+		comment, err := ws.Comments.Create(ctx, service.CreateCommentInput{
+			Issue:       issue,
+			AuthorType:  authorType,
+			AuthorID:    uuidToPgtype(authorID),
+			Content:     body,
+			CommentType: "comment",
+		})
+		if err != nil {
+			return mcptool.Result{}, fmt.Errorf("create comment: %w", err)
+		}
+		return mcptool.Result{Data: commentToMap(comment)}, nil
+	}
+
+	// Fallback path for callers (mostly unit tests) that did not wire a
+	// CommentService into the MCP context. Side effects are SKIPPED — log a
+	// warning so we notice if a production code path forgets to wire it.
+	slog.Warn("mcp create_comment: CommentService not wired; skipping side effects (mention expand, event publish, on_comment trigger, @mention enqueue)", "workspace_id", ws.WorkspaceID.String(), "issue_id", issueID.String())
 	comment, err := q.CreateComment(ctx, db.CreateCommentParams{
 		IssueID:     issue.ID,
 		WorkspaceID: issue.WorkspaceID,

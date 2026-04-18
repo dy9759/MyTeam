@@ -8,7 +8,10 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/multica-ai/multica/server/internal/events"
 	"github.com/multica-ai/multica/server/internal/mcp/mcptool"
+	"github.com/multica-ai/multica/server/internal/realtime"
+	"github.com/multica-ai/multica/server/internal/service"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
@@ -20,6 +23,7 @@ const (
 type issueToolsFixture struct {
 	pool        *pgxpool.Pool
 	queries     *db.Queries
+	comments    *service.CommentService
 	userID      uuid.UUID
 	workspaceID uuid.UUID
 	issueID     uuid.UUID
@@ -92,9 +96,16 @@ func setupIssueToolsFixture(t *testing.T) *issueToolsFixture {
 		pool.Close()
 	})
 
+	queries := db.New(pool)
+	bus := events.New()
+	hub := realtime.NewHub()
+	tasks := service.NewTaskService(queries, hub, bus)
+	comments := service.NewCommentService(queries, bus, tasks)
+
 	return &issueToolsFixture{
 		pool:        pool,
-		queries:     db.New(pool),
+		queries:     queries,
+		comments:    comments,
 		userID:      uuid.MustParse(userIDStr),
 		workspaceID: uuid.MustParse(workspaceIDStr),
 		issueID:     uuid.MustParse(issueIDStr),
@@ -116,6 +127,7 @@ func toolCtx(f *issueToolsFixture) mcptool.Context {
 		WorkspaceID: f.workspaceID,
 		UserID:      f.userID,
 		RuntimeMode: mcptool.RuntimeCloud,
+		Comments:    f.comments,
 	}
 }
 

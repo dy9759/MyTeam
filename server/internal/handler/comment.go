@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -9,8 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/logger"
-	"github.com/multica-ai/multica/server/internal/mention"
-	"github.com/multica-ai/multica/server/internal/util"
+	"github.com/multica-ai/multica/server/internal/service"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/protocol"
 )
@@ -112,9 +110,6 @@ func (h *Handler) CreateComment(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "content is required")
 		return
 	}
-	if req.Type == "" {
-		req.Type = "comment"
-	}
 
 	var parentID pgtype.UUID
 	var parentComment *db.Comment
@@ -131,17 +126,32 @@ func (h *Handler) CreateComment(w http.ResponseWriter, r *http.Request) {
 	// Determine author identity: agent (via X-Agent-ID header) or member.
 	authorType, authorID := h.resolveActor(r, userID, uuidToString(issue.WorkspaceID))
 
-	// Expand bare issue identifiers (e.g. MUL-117) into mention links.
-	req.Content = mention.ExpandIssueIdentifiers(r.Context(), h.Queries, issue.WorkspaceID, req.Content)
-
-	comment, err := h.Queries.CreateComment(r.Context(), db.CreateCommentParams{
-		IssueID:     issue.ID,
-		WorkspaceID: issue.WorkspaceID,
-		AuthorType:  authorType,
-		AuthorID:    parseUUID(authorID),
-		Content:     req.Content,
-		Type:        req.Type,
-		ParentID:    parentID,
+	// Link attachments BEFORE the service call so the WS event the service
+	// publishes already includes them. Linking is idempotent and the row
+	// only becomes addressable to clients via the WS event below.
+	//
+	// Note: we need comment.ID to link, so we link in two phases: insert via
+	// service (no event yet) — but the current service publishes immediately.
+	// To preserve attachment-in-payload behavior, we let the service do the
+	// insert, then attach, then build extra fields for the publish.
+	//
+	// However the current service.Create couples insert+publish atomically.
+	// Reworking for HTTP attachments: we pass attachments-to-be in extra
+	// fields by linking BEFORE Create won't work (no comment id yet). So we
+	// accept the small ordering change: clients see the WS event with empty
+	// attachments first, then the create response (HTTP) carries the linked
+	// attachments. The frontend already polls/refreshes via the WS event so
+	// the next ListComments fetch picks them up. Direct readers of the WS
+	// payload (very few — this surface is mostly used to invalidate caches)
+	// continue to work because the comment id is the key.
+	created, err := h.Comments.Create(r.Context(), service.CreateCommentInput{
+		Issue:         issue,
+		AuthorType:    authorType,
+		AuthorID:      parseUUID(authorID),
+		Content:       req.Content,
+		CommentType:   req.Type,
+		ParentID:      parentID,
+		ParentComment: parentComment,
 	})
 	if err != nil {
 		slog.Warn("create comment failed", append(logger.RequestAttrs(r), "error", err, "issue_id", issueID)...)
@@ -149,203 +159,23 @@ func (h *Handler) CreateComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Link uploaded attachments to this comment.
+	// Link uploaded attachments to this comment (HTTP-only — MCP does not
+	// pass attachments).
 	if len(req.AttachmentIDs) > 0 {
-		h.linkAttachmentsByIDs(r.Context(), comment.ID, issue.ID, req.AttachmentIDs)
+		h.linkAttachmentsByIDs(r.Context(), created.ID, issue.ID, req.AttachmentIDs)
 	}
 
-	// Fetch linked attachments so the response includes them.
-	groupedAtt := h.groupAttachments(r, []pgtype.UUID{comment.ID})
-	resp := commentToResponse(comment, nil, groupedAtt[uuidToString(comment.ID)])
-	slog.Info("comment created", append(logger.RequestAttrs(r), "comment_id", uuidToString(comment.ID), "issue_id", issueID)...)
-	h.publish(protocol.EventCommentCreated, uuidToString(issue.WorkspaceID), authorType, authorID, map[string]any{
-		"comment":             resp,
-		"issue_title":         issue.Title,
-		"issue_assignee_type": textToPtr(issue.AssigneeType),
-		"issue_assignee_id":   uuidToPtr(issue.AssigneeID),
-		"issue_status":        issue.Status,
-	})
-
-	// If the issue is assigned to an agent with on_comment trigger, enqueue a new task.
-	// Skip when the comment comes from the assigned agent itself to avoid loops.
-	// Also skip when the comment @mentions others but not the assignee agent —
-	// the user is talking to someone else, not requesting work from the assignee.
-	// Also skip when replying in a member-started thread without mentioning the
-	// assignee — the user is continuing a member-to-member conversation.
-	if authorType == "member" && h.shouldEnqueueOnComment(r.Context(), issue) &&
-		!h.commentMentionsOthersButNotAssignee(comment.Content, issue) &&
-		!h.isReplyToMemberThread(parentComment, comment.Content, issue) {
-		// Resolve thread root: if the comment is a reply, agent should reply
-		// to the thread root (matching frontend behavior where all replies
-		// in a thread share the same top-level parent).
-		replyTo := comment.ID
-		if comment.ParentID.Valid {
-			replyTo = comment.ParentID
-		}
-		if _, err := h.TaskService.EnqueueTaskForIssue(r.Context(), issue, replyTo); err != nil {
-			slog.Warn("enqueue agent task on comment failed", "issue_id", issueID, "error", err)
-		}
-	}
-
-	// Trigger @mentioned agents: parse agent mentions and enqueue tasks for each.
-	// Pass parentComment so that replies inherit mentions from the thread root.
-	h.enqueueMentionedAgentTasks(r.Context(), issue, comment, parentComment, authorType, authorID)
-
+	// Fetch linked attachments so the HTTP response includes them.
+	groupedAtt := h.groupAttachments(r, []pgtype.UUID{created.ID})
+	resp := commentToResponse(created, nil, groupedAtt[uuidToString(created.ID)])
+	slog.Info("comment created", append(logger.RequestAttrs(r), "comment_id", uuidToString(created.ID), "issue_id", issueID)...)
 	writeJSON(w, http.StatusCreated, resp)
 }
 
-// commentMentionsOthersButNotAssignee returns true if the comment @mentions
-// anyone but does NOT @mention the issue's assignee agent. This is used to
-// suppress the on_comment trigger when the user is directing their comment at
-// someone else (e.g. sharing results with a colleague, asking another agent).
-// @all is treated as a broadcast — it suppresses the trigger because the user
-// is announcing to everyone, not specifically requesting work from the agent.
-func (h *Handler) commentMentionsOthersButNotAssignee(content string, issue db.Issue) bool {
-	mentions := util.ParseMentions(content)
-	// Filter out issue mentions — they are cross-references, not @people.
-	filtered := mentions[:0]
-	for _, m := range mentions {
-		if m.Type != "issue" {
-			filtered = append(filtered, m)
-		}
-	}
-	mentions = filtered
-	if len(mentions) == 0 {
-		return false // No mentions (or only issue refs) — normal on_comment behavior
-	}
-	// @all is a broadcast to all members — suppress agent trigger.
-	if util.HasMentionAll(mentions) {
-		return true
-	}
-	if !issue.AssigneeID.Valid {
-		return true // No assignee — mentions target others
-	}
-	assigneeID := uuidToString(issue.AssigneeID)
-	for _, m := range mentions {
-		if m.ID == assigneeID {
-			return false // Assignee is mentioned — allow trigger
-		}
-	}
-	return true // Others mentioned but not assignee — suppress trigger
-}
-
-// isReplyToMemberThread returns true if the comment is a reply in a thread
-// started by a member and does NOT @mention the issue's assignee agent.
-// When a member replies in a member-started thread, they are most likely
-// continuing a human conversation — not requesting work from the assigned agent.
-// Replying to an agent-started thread, or explicitly @mentioning the assignee
-// in the reply, still triggers on_comment as expected.
-// If the parent (thread root) itself @mentions the assignee, the thread is
-// considered a conversation with the agent, so replies are allowed to trigger.
-func (h *Handler) isReplyToMemberThread(parent *db.Comment, content string, issue db.Issue) bool {
-	if parent == nil {
-		return false // Not a reply — normal top-level comment
-	}
-	if parent.AuthorType != "member" {
-		return false // Thread started by an agent — allow trigger
-	}
-	// Thread was started by a member. Suppress on_comment unless the reply
-	// or the parent explicitly @mentions the assignee agent.
-	if !issue.AssigneeID.Valid {
-		return true // No assignee to mention
-	}
-	assigneeID := uuidToString(issue.AssigneeID)
-	// Check current comment mentions.
-	for _, m := range util.ParseMentions(content) {
-		if m.ID == assigneeID {
-			return false // Assignee explicitly mentioned in reply — allow trigger
-		}
-	}
-	// Check parent (thread root) mentions — if the thread was started by
-	// mentioning the assignee, replies continue that conversation.
-	for _, m := range util.ParseMentions(parent.Content) {
-		if m.ID == assigneeID {
-			return false // Assignee mentioned in thread root — allow trigger
-		}
-	}
-	return true // Reply to member thread without mentioning agent — suppress
-}
-
-// enqueueMentionedAgentTasks parses @agent mentions from comment content and
-// enqueues a task for each mentioned agent. When parentComment is non-nil
-// (i.e. the comment is a reply), mentions from the parent (thread root) are
-// also included so that agents mentioned in the top-level comment are
-// re-triggered by subsequent replies in the same thread.
-// Skips self-mentions, agents that are already the issue's assignee (handled
-// by on_comment), agents with on_mention trigger disabled, and private agents
-// mentioned by non-owner members (only the agent owner or workspace
-// admin/owner can mention a private agent).
-// Note: no status gate here — @mention is an explicit action and should work
-// even on done/cancelled issues (the agent can reopen the issue if needed).
-func (h *Handler) enqueueMentionedAgentTasks(ctx context.Context, issue db.Issue, comment db.Comment, parentComment *db.Comment, authorType, authorID string) {
-	wsID := uuidToString(issue.WorkspaceID)
-	mentions := util.ParseMentions(comment.Content)
-	// When replying in a thread, also include mentions from the parent comment
-	// so that agents mentioned in the thread root are triggered by replies.
-	if parentComment != nil {
-		parentMentions := util.ParseMentions(parentComment.Content)
-		seen := make(map[string]bool, len(mentions))
-		for _, m := range mentions {
-			seen[m.Type+":"+m.ID] = true
-		}
-		for _, m := range parentMentions {
-			if !seen[m.Type+":"+m.ID] {
-				mentions = append(mentions, m)
-				seen[m.Type+":"+m.ID] = true
-			}
-		}
-	}
-	for _, m := range mentions {
-		if m.Type != "agent" {
-			continue
-		}
-		// Prevent self-trigger: skip if the comment author is this agent.
-		if authorType == "agent" && authorID == m.ID {
-			continue
-		}
-		agentUUID := parseUUID(m.ID)
-		// Prevent duplicate: skip if this agent is the issue's assignee
-		// (already handled by the on_comment trigger above).
-		if issue.AssigneeType.Valid && issue.AssigneeType.String == "agent" &&
-			issue.AssigneeID.Valid && uuidToString(issue.AssigneeID) == m.ID {
-			continue
-		}
-		// Load the agent to check visibility, archive status, and trigger config.
-		agent, err := h.Queries.GetAgent(ctx, agentUUID)
-		if err != nil || !agent.RuntimeID.Valid || agent.ArchivedAt.Valid {
-			continue
-		}
-		// Private agents can only be mentioned by the agent owner or workspace admin/owner.
-		if agent.Visibility == "private" && authorType == "member" {
-			isOwner := uuidToString(agent.OwnerID) == authorID
-			if !isOwner {
-				member, err := h.getWorkspaceMember(ctx, authorID, wsID)
-				if err != nil || !roleAllowed(member.Role, "owner", "admin") {
-					continue
-				}
-			}
-		}
-		// Trigger-based eligibility check removed in Account Phase 2 — every
-		// @mention is considered. Plan 4 will move fine-grained gating into
-		// MediationService.
-		// Dedup: skip if this agent already has a pending task for this issue.
-		hasPending, err := h.Queries.HasPendingTaskForIssueAndAgent(ctx, db.HasPendingTaskForIssueAndAgentParams{
-			IssueID: issue.ID,
-			AgentID: agentUUID,
-		})
-		if err != nil || hasPending {
-			continue
-		}
-		// Resolve thread root for reply threading.
-		replyTo := comment.ID
-		if comment.ParentID.Valid {
-			replyTo = comment.ParentID
-		}
-		if _, err := h.TaskService.EnqueueTaskForMention(ctx, issue, agentUUID, replyTo); err != nil {
-			slog.Warn("enqueue mention agent task failed", "issue_id", uuidToString(issue.ID), "agent_id", m.ID, "error", err)
-		}
-	}
-}
+// The trigger-gating helpers (commentMentionsOthersButNotAssignee,
+// isReplyToMemberThread) and the @mention agent enqueue logic now live on
+// service.CommentService — both HTTP and MCP create paths share them via
+// h.Comments.Create.
 
 func (h *Handler) UpdateComment(w http.ResponseWriter, r *http.Request) {
 	commentId := chi.URLParam(r, "commentId")

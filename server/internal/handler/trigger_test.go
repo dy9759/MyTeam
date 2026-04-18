@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/multica-ai/multica/server/internal/service"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
@@ -42,8 +43,6 @@ func issueNoAssignee() db.Issue {
 // -------------------------------------------------------------------
 
 func TestCommentMentionsOthersButNotAssignee(t *testing.T) {
-	h := &Handler{} // nil handler — method doesn't use h
-
 	issue := issueWithAgentAssignee()
 
 	tests := []struct {
@@ -100,7 +99,7 @@ func TestCommentMentionsOthersButNotAssignee(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := h.commentMentionsOthersButNotAssignee(tt.content, issue)
+			got := service.CommentMentionsOthersButNotAssignee(tt.content, issue)
 			if got != tt.want {
 				t.Errorf("commentMentionsOthersButNotAssignee() = %v, want %v", got, tt.want)
 			}
@@ -109,12 +108,11 @@ func TestCommentMentionsOthersButNotAssignee(t *testing.T) {
 }
 
 func TestCommentMentionsOthersButNotAssignee_NoAssignee(t *testing.T) {
-	h := &Handler{}
 	issue := issueNoAssignee()
 
 	// Any mention on an unassigned issue → suppress
 	content := fmt.Sprintf("[@Agent](mention://agent/%s) help", otherAgentID)
-	if got := h.commentMentionsOthersButNotAssignee(content, issue); !got {
+	if got := service.CommentMentionsOthersButNotAssignee(content, issue); !got {
 		t.Errorf("expected true for mentions on unassigned issue, got false")
 	}
 }
@@ -124,7 +122,6 @@ func TestCommentMentionsOthersButNotAssignee_NoAssignee(t *testing.T) {
 // -------------------------------------------------------------------
 
 func TestIsReplyToMemberThread(t *testing.T) {
-	h := &Handler{}
 	issue := issueWithAgentAssignee()
 
 	memberParent := &db.Comment{AuthorType: "member", AuthorID: testUUID(memberID), Content: "plain thread starter"}
@@ -206,7 +203,7 @@ func TestIsReplyToMemberThread(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := h.isReplyToMemberThread(tt.parent, tt.content, issue)
+			got := service.IsReplyToMemberThread(tt.parent, tt.content, issue)
 			if got != tt.want {
 				t.Errorf("isReplyToMemberThread() = %v, want %v", got, tt.want)
 			}
@@ -219,7 +216,6 @@ func TestIsReplyToMemberThread(t *testing.T) {
 // -------------------------------------------------------------------
 
 func TestOnCommentTriggerDecision(t *testing.T) {
-	h := &Handler{}
 	issue := issueWithAgentAssignee()
 
 	memberParent := &db.Comment{AuthorType: "member", AuthorID: testUUID(memberID), Content: "plain thread starter"}
@@ -233,8 +229,8 @@ func TestOnCommentTriggerDecision(t *testing.T) {
 	// Simulates the combined check from CreateComment:
 	//   !commentMentionsOthersButNotAssignee && !isReplyToMemberThread
 	shouldTrigger := func(parent *db.Comment, content string) bool {
-		return !h.commentMentionsOthersButNotAssignee(content, issue) &&
-			!h.isReplyToMemberThread(parent, content, issue)
+		return !service.CommentMentionsOthersButNotAssignee(content, issue) &&
+			!service.IsReplyToMemberThread(parent, content, issue)
 	}
 
 	tests := []struct {

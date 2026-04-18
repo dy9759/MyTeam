@@ -38,6 +38,7 @@ type Handler struct {
 	Hub          *realtime.Hub
 	Bus          *events.Bus
 	TaskService  *service.TaskService
+	Comments     *service.CommentService
 	EmailService *service.EmailService
 	PingStore    *PingStore
 	UpdateStore  *UpdateStore
@@ -69,6 +70,7 @@ func New(queries *db.Queries, txStarter txStarter, hub *realtime.Hub, bus *event
 	reviews := service.NewReviewService(queries, slots)
 	quota := service.NewQuotaService(queries)
 	scheduler := service.NewSchedulerService(queries, slots, artifacts, reviews, quota, bus, hub)
+	tasks := service.NewTaskService(queries, hub, bus)
 
 	return &Handler{
 		Queries:      queries,
@@ -76,7 +78,8 @@ func New(queries *db.Queries, txStarter txStarter, hub *realtime.Hub, bus *event
 		TxStarter:    txStarter,
 		Hub:          hub,
 		Bus:          bus,
-		TaskService:  service.NewTaskService(queries, hub, bus),
+		TaskService:  tasks,
+		Comments:     service.NewCommentService(queries, bus, tasks),
 		EmailService: emailService,
 		PingStore:    NewPingStore(),
 		UpdateStore:  NewUpdateStore(),
