@@ -410,8 +410,13 @@ export default function SessionPage() {
         content,
         ...(fileInfo ? { file_id: fileInfo.file_id, file_name: fileInfo.file_name } : {}),
       });
+      // Refresh the conversation list so the synthetic personal-agent row is
+      // replaced by the real conversation (with last_message + unread state)
+      // as soon as the first message lands. Cheap to do every send; the
+      // sidebar dedup logic handles the synthetic → real transition.
+      fetchConversations();
     },
-    [sidebarConversations, selectedId, sendDmMessage],
+    [sidebarConversations, selectedId, sendDmMessage, fetchConversations],
   );
 
   const handleSendChannel = useCallback(
