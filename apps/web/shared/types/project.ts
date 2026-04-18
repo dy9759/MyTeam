@@ -147,12 +147,18 @@ export interface ParticipantSlot {
   blocking: boolean;
   required: boolean;
   expected_output: string | null;
+  content?: unknown;
   status: SlotStatus;
   timeout_seconds: number | null;
   started_at: string | null;
   completed_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface SubmitSlotInputResponse {
+  slot: ParticipantSlot;
+  task_new_status: TaskStatus;
 }
 
 // Execution

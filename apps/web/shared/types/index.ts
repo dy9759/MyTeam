@@ -85,6 +85,7 @@ export type {
   ReviewDecision,
   CreateTaskRequest,
   CreateParticipantSlotRequest,
+  SubmitSlotInputResponse,
   CreateReviewRequest,
 } from "./project";
 export type { FileIndex, FileSnapshot, WorkspaceMetrics } from "./file";

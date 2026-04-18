@@ -45,7 +45,7 @@ INSERT INTO participant_slot (
     $10,
     $11
 )
-RETURNING id, task_id, slot_type, slot_order, participant_id, participant_type, responsibility, trigger, blocking, required, expected_output, status, timeout_seconds, started_at, completed_at, created_at, updated_at
+RETURNING id, task_id, slot_type, slot_order, participant_id, participant_type, responsibility, trigger, blocking, required, expected_output, status, timeout_seconds, started_at, completed_at, created_at, updated_at, content
 `
 
 type CreateParticipantSlotParams struct {
@@ -95,12 +95,13 @@ func (q *Queries) CreateParticipantSlot(ctx context.Context, arg CreateParticipa
 		&i.CompletedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Content,
 	)
 	return i, err
 }
 
 const getSlot = `-- name: GetSlot :one
-SELECT id, task_id, slot_type, slot_order, participant_id, participant_type, responsibility, trigger, blocking, required, expected_output, status, timeout_seconds, started_at, completed_at, created_at, updated_at FROM participant_slot WHERE id = $1
+SELECT id, task_id, slot_type, slot_order, participant_id, participant_type, responsibility, trigger, blocking, required, expected_output, status, timeout_seconds, started_at, completed_at, created_at, updated_at, content FROM participant_slot WHERE id = $1
 `
 
 func (q *Queries) GetSlot(ctx context.Context, id pgtype.UUID) (ParticipantSlot, error) {
@@ -124,12 +125,13 @@ func (q *Queries) GetSlot(ctx context.Context, id pgtype.UUID) (ParticipantSlot,
 		&i.CompletedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Content,
 	)
 	return i, err
 }
 
 const listSlotsByTask = `-- name: ListSlotsByTask :many
-SELECT id, task_id, slot_type, slot_order, participant_id, participant_type, responsibility, trigger, blocking, required, expected_output, status, timeout_seconds, started_at, completed_at, created_at, updated_at FROM participant_slot WHERE task_id = $1 ORDER BY slot_order ASC, created_at ASC
+SELECT id, task_id, slot_type, slot_order, participant_id, participant_type, responsibility, trigger, blocking, required, expected_output, status, timeout_seconds, started_at, completed_at, created_at, updated_at, content FROM participant_slot WHERE task_id = $1 ORDER BY slot_order ASC, created_at ASC
 `
 
 func (q *Queries) ListSlotsByTask(ctx context.Context, taskID pgtype.UUID) ([]ParticipantSlot, error) {
@@ -159,6 +161,7 @@ func (q *Queries) ListSlotsByTask(ctx context.Context, taskID pgtype.UUID) ([]Pa
 			&i.CompletedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Content,
 		); err != nil {
 			return nil, err
 		}
@@ -173,6 +176,7 @@ func (q *Queries) ListSlotsByTask(ctx context.Context, taskID pgtype.UUID) ([]Pa
 const resetSlotsForNewRun = `-- name: ResetSlotsForNewRun :exec
 UPDATE participant_slot SET
     status = 'waiting',
+    content = NULL,
     started_at = NULL,
     completed_at = NULL,
     updated_at = now()
@@ -191,7 +195,7 @@ UPDATE participant_slot SET
     completed_at = CASE WHEN $2 IN ('approved','revision_requested','rejected','expired','skipped','submitted') AND completed_at IS NULL THEN now() ELSE completed_at END,
     updated_at = now()
 WHERE id = $1
-RETURNING id, task_id, slot_type, slot_order, participant_id, participant_type, responsibility, trigger, blocking, required, expected_output, status, timeout_seconds, started_at, completed_at, created_at, updated_at
+RETURNING id, task_id, slot_type, slot_order, participant_id, participant_type, responsibility, trigger, blocking, required, expected_output, status, timeout_seconds, started_at, completed_at, created_at, updated_at, content
 `
 
 type UpdateSlotStatusParams struct {
@@ -220,6 +224,48 @@ func (q *Queries) UpdateSlotStatus(ctx context.Context, arg UpdateSlotStatusPara
 		&i.CompletedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Content,
+	)
+	return i, err
+}
+
+const updateSlotSubmission = `-- name: UpdateSlotSubmission :one
+UPDATE participant_slot SET
+    status = 'submitted',
+    content = $1,
+    completed_at = CASE WHEN completed_at IS NULL THEN now() ELSE completed_at END,
+    updated_at = now()
+WHERE id = $2
+RETURNING id, task_id, slot_type, slot_order, participant_id, participant_type, responsibility, trigger, blocking, required, expected_output, status, timeout_seconds, started_at, completed_at, created_at, updated_at, content
+`
+
+type UpdateSlotSubmissionParams struct {
+	Content []byte      `json:"content"`
+	ID      pgtype.UUID `json:"id"`
+}
+
+func (q *Queries) UpdateSlotSubmission(ctx context.Context, arg UpdateSlotSubmissionParams) (ParticipantSlot, error) {
+	row := q.db.QueryRow(ctx, updateSlotSubmission, arg.Content, arg.ID)
+	var i ParticipantSlot
+	err := row.Scan(
+		&i.ID,
+		&i.TaskID,
+		&i.SlotType,
+		&i.SlotOrder,
+		&i.ParticipantID,
+		&i.ParticipantType,
+		&i.Responsibility,
+		&i.Trigger,
+		&i.Blocking,
+		&i.Required,
+		&i.ExpectedOutput,
+		&i.Status,
+		&i.TimeoutSeconds,
+		&i.StartedAt,
+		&i.CompletedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Content,
 	)
 	return i, err
 }

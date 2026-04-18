@@ -2,20 +2,33 @@
 
 import { useEffect } from "react";
 import { useTaskStore } from "../task-store";
-import type { Task } from "@/shared/types";
+import type { ParticipantSlot, Task, TaskStatus } from "@/shared/types";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ArtifactReviewCard } from "./artifact-review-card";
+import { SlotInputForm } from "./slot-input-form";
 
-export function TaskDetail({ task }: { task: Task }) {
+interface TaskDetailProps {
+  task: Task;
+  currentUserId: string | null;
+  onTaskStatusChange?: (status: TaskStatus) => void;
+}
+
+export function TaskDetail({ task, currentUserId, onTaskStatusChange }: TaskDetailProps) {
   const slots = useTaskStore((s) => s.slotsByTask[task.id] ?? []);
   const executions = useTaskStore((s) => s.executionsByTask[task.id] ?? []);
   const artifacts = useTaskStore((s) => s.artifactsByTask[task.id] ?? []);
   const loadTaskDetails = useTaskStore((s) => s.loadTaskDetails);
+  const updateSlot = useTaskStore((s) => s.updateSlot);
 
   useEffect(() => {
     loadTaskDetails(task.id);
   }, [task.id, loadTaskDetails]);
+
+  const handleSlotSubmit = (slot: ParticipantSlot, taskStatus?: TaskStatus) => {
+    updateSlot(slot);
+    if (taskStatus) onTaskStatusChange?.(taskStatus);
+  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -39,20 +52,32 @@ export function TaskDetail({ task }: { task: Task }) {
           <div className="flex flex-col gap-2">
             {[...slots]
               .sort((a, b) => a.slot_order - b.slot_order)
-              .map((slot) => (
-                <Card
-                  key={slot.id}
-                  className="flex flex-row items-center justify-between p-2"
-                >
-                  <div>
-                    <div className="text-sm font-medium">{slot.slot_type}</div>
-                    <div className="text-muted-foreground text-xs">
-                      trigger: {slot.trigger}
+              .map((slot) => {
+                const canSubmitInput = Boolean(
+                  currentUserId &&
+                  slot.status === "ready" &&
+                  slot.slot_type === "human_input" &&
+                  slot.participant_type === "member" &&
+                  slot.participant_id === currentUserId,
+                );
+
+                return (
+                  <Card key={slot.id} className="p-2">
+                    <div className="flex flex-row items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-medium">{slot.slot_type}</div>
+                        <div className="text-muted-foreground text-xs">
+                          trigger: {slot.trigger}
+                        </div>
+                      </div>
+                      <Badge variant="outline">{slot.status}</Badge>
                     </div>
-                  </div>
-                  <Badge variant="outline">{slot.status}</Badge>
-                </Card>
-              ))}
+                    {canSubmitInput && (
+                      <SlotInputForm slot={slot} onSubmit={handleSlotSubmit} />
+                    )}
+                  </Card>
+                );
+              })}
           </div>
         )}
       </section>

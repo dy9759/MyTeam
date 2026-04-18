@@ -29,6 +29,7 @@ interface TaskActions {
   loadTaskDetails: (taskID: string) => Promise<void>;
   loadArtifactReviews: (artifactID: string) => Promise<void>;
   createTask: (req: CreateTaskRequest) => Promise<Task>;
+  updateSlot: (slot: ParticipantSlot) => void;
   submitReview: (req: CreateReviewRequest) => Promise<Review>;
   startRun: (runID: string) => Promise<void>;
 }
@@ -96,6 +97,18 @@ export const useTaskStore = create<TaskState & TaskActions>((set, get) => ({
       };
     });
     return task;
+  },
+
+  updateSlot(slot) {
+    set((s) => {
+      const list = s.slotsByTask[slot.task_id] ?? [];
+      return {
+        slotsByTask: {
+          ...s.slotsByTask,
+          [slot.task_id]: list.map((item) => item.id === slot.id ? slot : item),
+        },
+      };
+    });
   },
 
   async submitReview(req) {

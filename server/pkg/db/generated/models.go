@@ -490,6 +490,7 @@ type ParticipantSlot struct {
 	CompletedAt     pgtype.Timestamptz `json:"completed_at"`
 	CreatedAt       pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+	Content         []byte             `json:"content"`
 }
 
 type PersonalAccessToken struct {
