@@ -214,6 +214,38 @@ func (q *Queries) GetPlanBySourceRef(ctx context.Context, arg GetPlanBySourceRef
 	return i, err
 }
 
+const getPlanByThread = `-- name: GetPlanByThread :one
+SELECT id, workspace_id, title, description, source_type, source_ref_id, constraints, expected_output, created_by, created_at, updated_at, approval_status, approved_by, approved_at, project_id, version_id, task_brief, assigned_agents, risk_points, thread_id FROM plan WHERE thread_id = $1 LIMIT 1
+`
+
+func (q *Queries) GetPlanByThread(ctx context.Context, threadID pgtype.UUID) (Plan, error) {
+	row := q.db.QueryRow(ctx, getPlanByThread, threadID)
+	var i Plan
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Title,
+		&i.Description,
+		&i.SourceType,
+		&i.SourceRefID,
+		&i.Constraints,
+		&i.ExpectedOutput,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ApprovalStatus,
+		&i.ApprovedBy,
+		&i.ApprovedAt,
+		&i.ProjectID,
+		&i.VersionID,
+		&i.TaskBrief,
+		&i.AssignedAgents,
+		&i.RiskPoints,
+		&i.ThreadID,
+	)
+	return i, err
+}
+
 const listPlans = `-- name: ListPlans :many
 SELECT id, workspace_id, title, description, source_type, source_ref_id, constraints, expected_output, created_by, created_at, updated_at, approval_status, approved_by, approved_at, project_id, version_id, task_brief, assigned_agents, risk_points, thread_id FROM plan WHERE workspace_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3
 `

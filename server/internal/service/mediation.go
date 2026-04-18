@@ -271,12 +271,19 @@ func (s *MediationService) routeToMentioned(ctx context.Context, workspaceID, na
 	return &a, nil
 }
 
-// findPlanForThread is the Plan-thread lookup hook.
-//
-// TODO(plan5): plan.thread_id does not yet exist; Plan 5 adds it. Until then
-// this returns nil and routing falls through to the Issue branch.
-func (s *MediationService) findPlanForThread(_ context.Context, _ pgtype.UUID) *db.Plan {
-	return nil
+// findPlanForThread loads the plan (if any) bound to this thread via plan.thread_id.
+// Plan 5 added the FK; if no plan owns the thread, returns nil so routing can
+// fall through to the Issue branch.
+func (s *MediationService) findPlanForThread(ctx context.Context, threadID pgtype.UUID) *db.Plan {
+	plan, err := s.Queries.GetPlanByThread(ctx, threadID)
+	if err != nil {
+		if !errors.Is(err, pgx.ErrNoRows) {
+			slog.Warn("[mediation] findPlanForThread query failed", "error", err,
+				"thread_id", util.UUIDToString(threadID))
+		}
+		return nil
+	}
+	return &plan
 }
 
 // routeToPlan picks the agent owning a plan thread.
