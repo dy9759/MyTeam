@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/multica-ai/multica/server/internal/mcp/mcptool"
 	"github.com/multica-ai/multica/server/internal/service"
@@ -95,6 +96,16 @@ func (UploadArtifact) Exec(ctx context.Context, q *db.Queries, ws mcptool.Contex
 	if fileID, err := optionalUUIDArg(args, "file"); err != nil {
 		return mcptool.Result{}, err
 	} else if fileID != uuid.Nil {
+		fi, err := q.GetFileIndex(ctx, pgUUID(fileID))
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return notFoundResult("FILE"), nil
+			}
+			return mcptool.Result{}, fmt.Errorf("get file_index: %w", err)
+		}
+		if !sameUUID(fi.WorkspaceID, ws.WorkspaceID) {
+			return permissionDenied("file_index belongs to a different workspace"), nil
+		}
 		content, _ := mapArg(args, "content") // optional preview/summary
 		artifact, err := svc.CreateWithFile(ctx, service.CreateWithFileRequest{
 			TaskID:         taskID,

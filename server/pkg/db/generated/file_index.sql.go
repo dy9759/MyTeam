@@ -79,6 +79,33 @@ func (q *Queries) DeleteFileIndex(ctx context.Context, id pgtype.UUID) error {
 	return err
 }
 
+const getFileIndex = `-- name: GetFileIndex :one
+SELECT id, workspace_id, uploader_identity_id, uploader_identity_type, owner_id, source_type, source_id, file_name, file_size, content_type, storage_path, access_scope, channel_id, project_id, created_at FROM file_index WHERE id = $1
+`
+
+func (q *Queries) GetFileIndex(ctx context.Context, id pgtype.UUID) (FileIndex, error) {
+	row := q.db.QueryRow(ctx, getFileIndex, id)
+	var i FileIndex
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.UploaderIdentityID,
+		&i.UploaderIdentityType,
+		&i.OwnerID,
+		&i.SourceType,
+		&i.SourceID,
+		&i.FileName,
+		&i.FileSize,
+		&i.ContentType,
+		&i.StoragePath,
+		&i.AccessScope,
+		&i.ChannelID,
+		&i.ProjectID,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const listFilesByChannel = `-- name: ListFilesByChannel :many
 SELECT id, workspace_id, uploader_identity_id, uploader_identity_type, owner_id, source_type, source_id, file_name, file_size, content_type, storage_path, access_scope, channel_id, project_id, created_at FROM file_index WHERE channel_id = $1 ORDER BY created_at DESC
 `

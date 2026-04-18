@@ -1,3 +1,6 @@
+-- name: GetFileIndex :one
+SELECT * FROM file_index WHERE id = @id;
+
 -- name: CreateFileIndex :one
 INSERT INTO file_index (workspace_id, uploader_identity_id, uploader_identity_type, owner_id, source_type, source_id, file_name, file_size, content_type, storage_path, access_scope, channel_id, project_id)
 VALUES (@workspace_id, @uploader_identity_id, @uploader_identity_type, @owner_id, @source_type, @source_id, @file_name, @file_size, @content_type, @storage_path, @access_scope, @channel_id, @project_id)

@@ -53,9 +53,10 @@ func (CompleteTask) Exec(ctx context.Context, q *db.Queries, ws mcptool.Context,
 		return deny, nil
 	}
 
-	// Resolve the execution_id: prefer the explicit arg, otherwise pick
-	// the most-recent execution for the task. SchedulerService tolerates
-	// uuid.Nil but we surface the chosen id back so callers can audit.
+	// Resolve execution_id. Prefer the explicit arg; otherwise pick the
+	// newest execution for this task. If neither is available we refuse —
+	// completing without an execution_id leaves Bus/Hub events with no
+	// addressable execution and silently drops slot/run cascades.
 	execID, err := optionalUUIDArg(args, "execution_id")
 	if err != nil {
 		return mcptool.Result{}, err
@@ -65,10 +66,14 @@ func (CompleteTask) Exec(ctx context.Context, q *db.Queries, ws mcptool.Context,
 		if err != nil {
 			return mcptool.Result{}, fmt.Errorf("list executions: %w", err)
 		}
-		if len(execs) > 0 {
-			// ListExecutionsByTask orders newest-first per execution.sql.
-			execID = uuid.UUID(execs[0].ID.Bytes)
+		if len(execs) == 0 {
+			return mcptool.Result{
+				Errors: []string{"EXECUTION_REQUIRED"},
+				Note:   "no execution exists for task; pass execution_id explicitly",
+			}, nil
 		}
+		// ListExecutionsByTask orders newest-first per execution.sql.
+		execID = uuid.UUID(execs[0].ID.Bytes)
 	}
 
 	scheduler := buildScheduler(q)
@@ -84,10 +89,15 @@ func (CompleteTask) Exec(ctx context.Context, q *db.Queries, ws mcptool.Context,
 	return mcptool.Result{Data: completeTaskPayload(updated, execID)}, nil
 }
 
-// buildScheduler constructs a SchedulerService instance from the *db.Queries
-// available to MCP tools. Bus + Hub are nil — the scheduler tolerates that
-// (events / WS broadcasts become silent no-ops). MCP callers operate at the
-// daemon/cloud-executor layer and do not own a Bus/Hub reference.
+// buildScheduler constructs a SchedulerService for MCP tools.
+//
+// KNOWN GAP (Codex review B1.1, deferred): Bus + Hub are nil here, so
+// HandleTaskCompletion's WS broadcasts (task.completed, run.completed) and
+// internal event publishes are silently dropped. The fix needs the MCP
+// dispatcher (server/internal/mcp/dispatcher.go) to own a Bus + Hub and
+// inject them into Context, then thread through here. Tracked separately
+// because it touches the dispatcher contract — out of scope for the
+// task-tool hardening pass.
 func buildScheduler(q *db.Queries) *service.SchedulerService {
 	slots := service.NewSlotService(q)
 	artifacts := service.NewArtifactService(q)
