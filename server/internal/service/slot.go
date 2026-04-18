@@ -139,9 +139,10 @@ func (s *SlotService) activateByTrigger(ctx context.Context, taskID uuid.UUID, t
 
 // MarkSubmitted transitions a slot from ready or in_progress → submitted.
 // Used when an agent finishes execution work or a human submits their
-// input. Returns ErrSlotInvalidTransition if the slot is in any other
-// status (approved, expired, etc.).
-func (s *SlotService) MarkSubmitted(ctx context.Context, slotID uuid.UUID) (*db.ParticipantSlot, error) {
+// input. Human input callers may pass JSON content to persist on the slot.
+// Returns ErrSlotInvalidTransition if the slot is in any other status
+// (approved, expired, etc.).
+func (s *SlotService) MarkSubmitted(ctx context.Context, slotID uuid.UUID, content ...[]byte) (*db.ParticipantSlot, error) {
 	slot, err := s.Q.GetSlot(ctx, toPgUUID(slotID))
 	if err != nil {
 		return nil, fmt.Errorf("get slot %s: %w", slotID, err)
@@ -149,13 +150,38 @@ func (s *SlotService) MarkSubmitted(ctx context.Context, slotID uuid.UUID) (*db.
 	if slot.Status != SlotStatusReady && slot.Status != SlotStatusInProgress {
 		return nil, fmt.Errorf("%w: %s → submitted", ErrSlotInvalidTransition, slot.Status)
 	}
-	updated, err := s.Q.UpdateSlotStatus(ctx, db.UpdateSlotStatusParams{
-		ID:     toPgUUID(slotID),
-		Status: SlotStatusSubmitted,
-	})
+
+	var updated db.ParticipantSlot
+	if len(content) > 0 {
+		updated, err = s.Q.UpdateSlotSubmission(ctx, db.UpdateSlotSubmissionParams{
+			ID:      toPgUUID(slotID),
+			Content: content[0],
+		})
+	} else {
+		updated, err = s.Q.UpdateSlotStatus(ctx, db.UpdateSlotStatusParams{
+			ID:     toPgUUID(slotID),
+			Status: SlotStatusSubmitted,
+		})
+	}
 	if err != nil {
 		return nil, fmt.Errorf("update slot %s → submitted: %w", slotID, err)
 	}
+
+	if slot.SlotType == SlotTypeHumanInput {
+		task, err := s.Q.GetTask(ctx, slot.TaskID)
+		if err != nil {
+			return nil, fmt.Errorf("get task for slot %s: %w", slotID, err)
+		}
+		if task.Status == TaskStatusNeedsHuman {
+			if _, err := s.Q.UpdateTaskStatus(ctx, db.UpdateTaskStatusParams{
+				ID:     slot.TaskID,
+				Status: TaskStatusRunning,
+			}); err != nil {
+				return nil, fmt.Errorf("resume task for slot %s: %w", slotID, err)
+			}
+		}
+	}
+
 	return &updated, nil
 }
 

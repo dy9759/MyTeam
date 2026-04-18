@@ -11,12 +11,14 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/multica-ai/multica/server/internal/service"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
@@ -125,6 +127,105 @@ func (h *Handler) CreateTaskSlot(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, slotToResponse(s))
 }
 
+// ---------------------------------------------------------------------------
+// POST /api/slots/{id}/submit
+// ---------------------------------------------------------------------------
+
+type submitSlotInputRequest struct {
+	Content json.RawMessage `json:"content"`
+	Comment string          `json:"comment,omitempty"`
+}
+
+// SubmitSlotInput records a human_input slot submission and resumes the parent
+// task when it was waiting on that human handoff.
+func (h *Handler) SubmitSlotInput(w http.ResponseWriter, r *http.Request) {
+	slotID, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+
+	var req submitSlotInputRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if len(req.Content) == 0 {
+		writeError(w, http.StatusBadRequest, "content required")
+		return
+	}
+
+	userID, ok := requireUserID(w, r)
+	if !ok {
+		return
+	}
+	userUUID, err := uuid.Parse(userID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid user id")
+		return
+	}
+
+	slot, err := h.Queries.GetSlot(r.Context(), pgUUIDFrom(slotID))
+	if err != nil {
+		if isNotFound(err) {
+			writeError(w, http.StatusNotFound, "slot not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "get slot failed: "+err.Error())
+		return
+	}
+	if slot.SlotType != service.SlotTypeHumanInput {
+		writeError(w, http.StatusBadRequest, "slot is not human input")
+		return
+	}
+	if !slot.ParticipantType.Valid || slot.ParticipantType.String != "member" || !slot.ParticipantID.Valid {
+		writeError(w, http.StatusForbidden, "slot is not assigned to a member")
+		return
+	}
+	if uuid.UUID(slot.ParticipantID.Bytes) != userUUID {
+		writeError(w, http.StatusForbidden, "slot is assigned to another participant")
+		return
+	}
+
+	task, err := h.Queries.GetTask(r.Context(), slot.TaskID)
+	if err != nil {
+		if isNotFound(err) {
+			writeError(w, http.StatusNotFound, "task not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "get task failed: "+err.Error())
+		return
+	}
+	if workspaceID := resolveWorkspaceID(r); workspaceID != "" && uuidToString(task.WorkspaceID) != workspaceID {
+		writeError(w, http.StatusForbidden, "slot is outside the current workspace")
+		return
+	}
+
+	if h.Slots == nil {
+		writeError(w, http.StatusInternalServerError, "slot service unavailable")
+		return
+	}
+	updated, err := h.Slots.MarkSubmitted(r.Context(), slotID, []byte(req.Content))
+	if err != nil {
+		if errors.Is(err, service.ErrSlotInvalidTransition) {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	task, err = h.Queries.GetTask(r.Context(), updated.TaskID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "get task failed: "+err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"slot":            slotToResponse(*updated),
+		"task_new_status": task.Status,
+	})
+}
+
 // slotToResponse maps a db.ParticipantSlot into a JSON-friendly map. Mirrors
 // the apps/web/shared/types ParticipantSlot interface (Batch E1).
 func slotToResponse(s db.ParticipantSlot) map[string]any {
@@ -149,6 +250,9 @@ func slotToResponse(s db.ParticipantSlot) map[string]any {
 	}
 	if s.ExpectedOutput.Valid {
 		out["expected_output"] = s.ExpectedOutput.String
+	}
+	if len(s.Content) > 0 {
+		out["content"] = json.RawMessage(s.Content)
 	}
 	if s.TimeoutSeconds.Valid {
 		out["timeout_seconds"] = s.TimeoutSeconds.Int32

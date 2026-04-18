@@ -448,6 +448,7 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 					r.Get("/artifacts", h.ListTaskArtifacts)
 				})
 			})
+			r.Post("/api/slots/{id}/submit", h.SubmitSlotInput)
 			r.Route("/api/artifacts/{id}", func(r chi.Router) {
 				r.Get("/", h.GetArtifactHandler)
 				r.Get("/reviews", h.ListArtifactReviews)

@@ -41,9 +41,19 @@ UPDATE participant_slot SET
 WHERE id = $1
 RETURNING *;
 
+-- name: UpdateSlotSubmission :one
+UPDATE participant_slot SET
+    status = 'submitted',
+    content = @content,
+    completed_at = CASE WHEN completed_at IS NULL THEN now() ELSE completed_at END,
+    updated_at = now()
+WHERE id = @id
+RETURNING *;
+
 -- name: ResetSlotsForNewRun :exec
 UPDATE participant_slot SET
     status = 'waiting',
+    content = NULL,
     started_at = NULL,
     completed_at = NULL,
     updated_at = now()

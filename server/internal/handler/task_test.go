@@ -312,6 +312,77 @@ func TestListTaskSlots_EmptyAndCreate(t *testing.T) {
 	}
 }
 
+// TestSubmitSlotInput_SubmitsHumanSlotAndResumesTask verifies the human
+// input handoff: POST /api/slots/{id}/submit marks the participant slot as
+// submitted and moves the parent task out of needs_human.
+func TestSubmitSlotInput_SubmitsHumanSlotAndResumesTask(t *testing.T) {
+	env := setupProjectTaskEnv(t)
+	ctx := context.Background()
+
+	if _, err := testPool.Exec(ctx,
+		`UPDATE task SET status = 'needs_human' WHERE id = $1`,
+		env.TaskID,
+	); err != nil {
+		t.Fatalf("set task needs_human: %v", err)
+	}
+
+	var slotID string
+	if err := testPool.QueryRow(ctx, `
+		INSERT INTO participant_slot (
+			task_id, slot_type, slot_order, participant_id, participant_type,
+			trigger, blocking, required, status
+		)
+		VALUES ($1, 'human_input', 0, $2, 'member', 'before_execution', true, true, 'ready')
+		RETURNING id
+	`, env.TaskID, testUserID).Scan(&slotID); err != nil {
+		t.Fatalf("insert human input slot: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	req := newRequest("POST", "/api/slots/"+slotID+"/submit", map[string]any{
+		"content": map[string]any{"answer": "ship it"},
+		"comment": "ready for the agent",
+	})
+	req = withURLParam(req, "id", slotID)
+	testHandler.SubmitSlotInput(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("SubmitSlotInput: want 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]any
+	decodeJSON(t, w.Body, &resp)
+	if resp["task_new_status"] != "running" {
+		t.Fatalf("task_new_status: want running, got %v", resp["task_new_status"])
+	}
+	slot, _ := resp["slot"].(map[string]any)
+	if slot["status"] != "submitted" {
+		t.Fatalf("slot response status: want submitted, got %v", slot["status"])
+	}
+
+	var slotStatus, taskStatus, answer string
+	if err := testPool.QueryRow(ctx,
+		`SELECT status, content->>'answer' FROM participant_slot WHERE id = $1`,
+		slotID,
+	).Scan(&slotStatus, &answer); err != nil {
+		t.Fatalf("read slot after submit: %v", err)
+	}
+	if err := testPool.QueryRow(ctx,
+		`SELECT status FROM task WHERE id = $1`,
+		env.TaskID,
+	).Scan(&taskStatus); err != nil {
+		t.Fatalf("read task after submit: %v", err)
+	}
+	if slotStatus != "submitted" {
+		t.Fatalf("slot status after submit: want submitted, got %s", slotStatus)
+	}
+	if taskStatus != "running" {
+		t.Fatalf("task status after submit: want running, got %s", taskStatus)
+	}
+	if answer != "ship it" {
+		t.Fatalf("slot content answer: want ship it, got %q", answer)
+	}
+}
+
 // TestCreateReview_Approve_ReturnsTaskNewStatus drives a review through
 // ReviewService.Submit and asserts the response includes both the inserted
 // review and the resulting task status.
