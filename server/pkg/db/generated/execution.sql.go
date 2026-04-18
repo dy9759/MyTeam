@@ -341,6 +341,63 @@ func (q *Queries) ListExecutionsByTask(ctx context.Context, taskID pgtype.UUID) 
 	return items, nil
 }
 
+const listOrphanedClaimedExecutions = `-- name: ListOrphanedClaimedExecutions :many
+SELECT id, task_id, run_id, slot_id, agent_id, runtime_id, attempt, status, priority, payload, result, error, context_ref, log_retention_policy, logs_expires_at, cost_input_tokens, cost_output_tokens, cost_usd, cost_provider, claimed_at, started_at, completed_at, created_at, updated_at FROM execution
+WHERE status = 'claimed'
+  AND claimed_at IS NOT NULL
+  AND claimed_at < $1
+`
+
+// Finds executions stuck in 'claimed' whose claimed_at is older than the
+// supplied lease cutoff. CloudExecutorService.recoverOrphanedExecutions runs
+// this on startup so a server crash between ClaimExecution and StartExecution
+// doesn't leave the row claimed forever — each row gets failed and the
+// scheduler's retry policy decides what to do next.
+func (q *Queries) ListOrphanedClaimedExecutions(ctx context.Context, leaseCutoff pgtype.Timestamptz) ([]Execution, error) {
+	rows, err := q.db.Query(ctx, listOrphanedClaimedExecutions, leaseCutoff)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Execution{}
+	for rows.Next() {
+		var i Execution
+		if err := rows.Scan(
+			&i.ID,
+			&i.TaskID,
+			&i.RunID,
+			&i.SlotID,
+			&i.AgentID,
+			&i.RuntimeID,
+			&i.Attempt,
+			&i.Status,
+			&i.Priority,
+			&i.Payload,
+			&i.Result,
+			&i.Error,
+			&i.ContextRef,
+			&i.LogRetentionPolicy,
+			&i.LogsExpiresAt,
+			&i.CostInputTokens,
+			&i.CostOutputTokens,
+			&i.CostUsd,
+			&i.CostProvider,
+			&i.ClaimedAt,
+			&i.StartedAt,
+			&i.CompletedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPendingExecutionsForRuntime = `-- name: ListPendingExecutionsForRuntime :many
 SELECT id, task_id, run_id, slot_id, agent_id, runtime_id, attempt, status, priority, payload, result, error, context_ref, log_retention_policy, logs_expires_at, cost_input_tokens, cost_output_tokens, cost_usd, cost_provider, claimed_at, started_at, completed_at, created_at, updated_at FROM execution
 WHERE runtime_id = $1 AND status = 'queued'

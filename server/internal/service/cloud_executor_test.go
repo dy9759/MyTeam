@@ -371,6 +371,117 @@ func TestPollAndExecuteExecutions_OneClaimPerTick(t *testing.T) {
 	}
 }
 
+// TestRecoverOrphanedExecutions_FailsStaleClaimedRows seeds an execution that
+// looks like it was claimed by a previous server process (status='claimed',
+// claimed_at well past the orphan lease) and asserts the startup recovery
+// scan fails the row + cascades to the scheduler so retry runs. Per
+// cross-cutting PRD §6.4.
+func TestRecoverOrphanedExecutions_FailsStaleClaimedRows(t *testing.T) {
+	q := testDB(t)
+	env := setupCloudExecEnv(t, q)
+	ctx := context.Background()
+
+	task := makeSchedTask(t, q, env.schedTestEnv, "orphan-recovery", nil, env.AgentID)
+
+	payload, _ := json.Marshal(map[string]any{"task_id": uuid.UUID(task.ID.Bytes).String()})
+	exec, err := q.CreateExecution(ctx, db.CreateExecutionParams{
+		TaskID:    task.ID,
+		RunID:     env.RunID,
+		AgentID:   env.AgentID,
+		RuntimeID: env.RuntimeID,
+		Payload:   payload,
+	})
+	if err != nil {
+		t.Fatalf("create execution: %v", err)
+	}
+
+	// Force the row into the orphaned shape: status='claimed' with a
+	// claimed_at one hour in the past — well past orphanLeaseDuration.
+	pool := openTestPool(t)
+	staleClaimedAt := time.Now().Add(-1 * time.Hour)
+	if _, err := pool.Exec(ctx, `
+		UPDATE execution
+		SET status = 'claimed', claimed_at = $1
+		WHERE id = $2
+	`, staleClaimedAt, exec.ID); err != nil {
+		t.Fatalf("force orphan state: %v", err)
+	}
+
+	// Sanity-check the row really is in the orphan shape before the scan runs.
+	pre, err := q.GetExecution(ctx, exec.ID)
+	if err != nil {
+		t.Fatalf("get execution pre-recovery: %v", err)
+	}
+	if pre.Status != "claimed" {
+		t.Fatalf("pre-recovery status: want claimed, got %s", pre.Status)
+	}
+
+	env.Svc.recoverOrphanedExecutions(ctx)
+
+	got, err := q.GetExecution(ctx, exec.ID)
+	if err != nil {
+		t.Fatalf("get execution post-recovery: %v", err)
+	}
+	if got.Status != "failed" {
+		t.Fatalf("execution status: want failed after recovery, got %s", got.Status)
+	}
+	if !got.Error.Valid || got.Error.String != "lease_expired_orphan" {
+		t.Fatalf("execution error: want lease_expired_orphan, got %+v", got.Error)
+	}
+
+	// Scheduler.HandleTaskFailure must have fired — observable via a fresh
+	// retry execution row added for the same task (default max_retries=2).
+	execs, err := q.ListExecutionsByTask(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("list executions: %v", err)
+	}
+	if len(execs) < 2 {
+		t.Fatalf("expected scheduler to schedule a retry execution; only %d exec(s) exist", len(execs))
+	}
+}
+
+// TestRecoverOrphanedExecutions_LeavesFreshClaimsAlone confirms the scan
+// uses the lease cutoff: a row claimed seconds ago must NOT be failed.
+func TestRecoverOrphanedExecutions_LeavesFreshClaimsAlone(t *testing.T) {
+	q := testDB(t)
+	env := setupCloudExecEnv(t, q)
+	ctx := context.Background()
+
+	task := makeSchedTask(t, q, env.schedTestEnv, "fresh-claim", nil, env.AgentID)
+
+	payload, _ := json.Marshal(map[string]any{"task_id": uuid.UUID(task.ID.Bytes).String()})
+	exec, err := q.CreateExecution(ctx, db.CreateExecutionParams{
+		TaskID:    task.ID,
+		RunID:     env.RunID,
+		AgentID:   env.AgentID,
+		RuntimeID: env.RuntimeID,
+		Payload:   payload,
+	})
+	if err != nil {
+		t.Fatalf("create execution: %v", err)
+	}
+
+	// Claim the row "now" — well within the lease.
+	pool := openTestPool(t)
+	if _, err := pool.Exec(ctx, `
+		UPDATE execution
+		SET status = 'claimed', claimed_at = now()
+		WHERE id = $1
+	`, exec.ID); err != nil {
+		t.Fatalf("set fresh claim: %v", err)
+	}
+
+	env.Svc.recoverOrphanedExecutions(ctx)
+
+	got, err := q.GetExecution(ctx, exec.ID)
+	if err != nil {
+		t.Fatalf("get execution: %v", err)
+	}
+	if got.Status != "claimed" {
+		t.Fatalf("fresh claim should be untouched; status=%s", got.Status)
+	}
+}
+
 // guard: keep the linter happy if sync is imported elsewhere later. Not used
 // directly in the assertions, but kept here as a reminder that future tests
 // may want to fan out concurrent ticks.

@@ -80,3 +80,14 @@ SELECT * FROM execution
 WHERE runtime_id = @runtime_id AND status = 'queued'
 ORDER BY priority DESC, created_at ASC
 LIMIT 50;
+
+-- name: ListOrphanedClaimedExecutions :many
+-- Finds executions stuck in 'claimed' whose claimed_at is older than the
+-- supplied lease cutoff. CloudExecutorService.recoverOrphanedExecutions runs
+-- this on startup so a server crash between ClaimExecution and StartExecution
+-- doesn't leave the row claimed forever — each row gets failed and the
+-- scheduler's retry policy decides what to do next.
+SELECT * FROM execution
+WHERE status = 'claimed'
+  AND claimed_at IS NOT NULL
+  AND claimed_at < @lease_cutoff;

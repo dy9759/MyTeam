@@ -87,6 +87,17 @@ func runnerConfigFromRuntime(runtime db.AgentRuntime, systemPrompt string) agent
 	return cfg
 }
 
+// orphanLeaseDuration is the time after claimed_at past which a 'claimed'
+// execution row is considered orphaned (i.e. the server crashed between
+// ClaimExecution and StartExecution). Five minutes comfortably exceeds the
+// normal claim-to-running gap, which is sub-second.
+const orphanLeaseDuration = 5 * time.Minute
+
+// orphanRecoveryStartupDelay defers the orphan scan until after the database
+// pool is definitely up. Per PRD §6.4 the scan must not race the rest of
+// startup; cheaper than coordinating with a readiness signal.
+var orphanRecoveryStartupDelay = 5 * time.Second
+
 // Start subscribes to task:dispatch events and starts a poll loop for pending cloud tasks.
 func (s *CloudExecutorService) Start(ctx context.Context) {
 	// Subscribe to task:dispatch events.
@@ -94,10 +105,44 @@ func (s *CloudExecutorService) Start(ctx context.Context) {
 		go s.handleDispatch(ctx, e)
 	})
 
+	// Crash recovery: after a brief delay (so the DB pool is definitely
+	// up) scan for executions stranded in 'claimed' from a previous
+	// process. Best-effort; failures are logged and the poll loop still
+	// runs. Per cross-cutting PRD §6.4.
+	go func() {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(orphanRecoveryStartupDelay):
+		}
+		s.recoverOrphanedExecutions(ctx)
+	}()
+
 	// Start poll loop.
 	go s.pollLoop(ctx)
 
 	slog.Info("[cloud-executor] started")
+}
+
+// recoverOrphanedExecutions fails every execution stuck in 'claimed' whose
+// claimed_at is older than orphanLeaseDuration so SchedulerService.HandleTaskFailure
+// can run its retry policy. Best-effort: any per-row error is logged and the
+// scan continues with the next row.
+func (s *CloudExecutorService) recoverOrphanedExecutions(ctx context.Context) {
+	cutoff := pgtype.Timestamptz{Time: time.Now().Add(-orphanLeaseDuration), Valid: true}
+	orphans, err := s.Queries.ListOrphanedClaimedExecutions(ctx, cutoff)
+	if err != nil {
+		slog.Warn("[cloud-executor] orphan recovery scan failed", "error", err)
+		return
+	}
+	if len(orphans) == 0 {
+		slog.Info("[cloud-executor] orphan recovery: no stranded executions")
+		return
+	}
+	for _, exec := range orphans {
+		s.failExecution(ctx, exec, "lease_expired_orphan")
+	}
+	slog.Info("[cloud-executor] orphan recovery complete", "recovered", len(orphans))
 }
 
 func (s *CloudExecutorService) handleDispatch(ctx context.Context, e events.Event) {
