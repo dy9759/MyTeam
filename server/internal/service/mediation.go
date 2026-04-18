@@ -652,7 +652,7 @@ func (s *MediationService) escalateInbox(ctx context.Context, slot db.ReplySlot,
 		"channel_id": util.UUIDToString(slot.ChannelID),
 	})
 
-	_, err := s.Queries.CreateInboxItem(ctx, db.CreateInboxItemParams{
+	item, err := s.Queries.CreateInboxItem(ctx, db.CreateInboxItemParams{
 		WorkspaceID:   slot.WorkspaceID,
 		RecipientType: recipientType,
 		RecipientID:   recipientID,
@@ -669,6 +669,22 @@ func (s *MediationService) escalateInbox(ctx context.Context, slot db.ReplySlot,
 			"tier", severityLabel,
 		)
 		return
+	}
+
+	// Populate inbox_item.slot_id with the originating reply_slot so consumers
+	// can correlate the notification back to the stalled slot without parsing
+	// the details JSON. CreateInboxItem does not accept slot_id in its params.
+	if s.DB != nil {
+		if _, err := s.DB.Exec(ctx,
+			`UPDATE inbox_item SET slot_id = $1 WHERE id = $2`,
+			slot.ID, item.ID,
+		); err != nil {
+			slog.Warn("[mediation] failed to set inbox_item.slot_id",
+				"error", err,
+				"inbox_item_id", util.UUIDToString(item.ID),
+				"slot_id", util.UUIDToString(slot.ID),
+			)
+		}
 	}
 
 	slog.Info("[mediation] SLA inbox escalation",
