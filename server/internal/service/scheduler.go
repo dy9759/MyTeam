@@ -33,6 +33,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -574,22 +575,30 @@ func (s *SchedulerService) writeAttentionInbox(ctx context.Context, task db.Task
 	}
 }
 
-// findAvailableAgent walks the task's agent candidates and returns the
-// first one whose Agent.status is idle/busy AND its runtime is online/
-// degraded AND the runtime has spare capacity (current_load <
-// concurrency_limit).
+// findAvailableAgent picks the best candidate agent for a task using the
+// weighted scoring model from cross-cutting PRD §9.2:
 //
-// Candidate order: actual_agent_id (when set, so a fallback chosen by
-// HandleTaskFailure stays sticky on the next ScheduleTask), then the
-// primary, then the fallback list. Duplicates are skipped.
+//	skill 0.35 + load 0.20 + freshness 0.10 + primary 0.25 + history 0.10
+//
+// Stickiness for retries: if task.actual_agent_id is set (a fallback already
+// chosen by HandleTaskFailure), prefer that agent unconditionally. This keeps
+// the retry sticky on the same runtime so warm caches/auth survive.
+//
+// For initial scheduling we collect every viable candidate (primary +
+// fallbacks), score each, and return the highest. Viability gates are
+// unchanged: agent.status idle/busy, runtime online/degraded, runtime has
+// spare capacity.
 //
 // Returns (agentID, runtimeID, true) on success and (uuid.Nil, uuid.Nil,
 // false) when no candidate qualifies.
 func (s *SchedulerService) findAvailableAgent(ctx context.Context, task db.Task) (uuid.UUID, uuid.UUID, bool) {
-	candidates := make([]pgtype.UUID, 0, 2+len(task.FallbackAgentIds))
 	if task.ActualAgentID.Valid {
-		candidates = append(candidates, task.ActualAgentID)
+		if agentID, runtimeID, ok := s.tryViableAgent(ctx, task.ActualAgentID); ok {
+			return agentID, runtimeID, true
+		}
 	}
+
+	candidates := make([]pgtype.UUID, 0, 1+len(task.FallbackAgentIds))
 	if task.PrimaryAssigneeID.Valid {
 		candidates = append(candidates, task.PrimaryAssigneeID)
 	}
@@ -599,35 +608,147 @@ func (s *SchedulerService) findAvailableAgent(ctx context.Context, task db.Task)
 		}
 	}
 
+	type scored struct {
+		agentID, runtimeID uuid.UUID
+		score              float64
+	}
+	picks := make([]scored, 0, len(candidates))
 	seen := make(map[[16]byte]bool, len(candidates))
 	for _, candID := range candidates {
 		if seen[candID.Bytes] {
 			continue
 		}
 		seen[candID.Bytes] = true
-		agent, err := s.Q.GetAgent(ctx, candID)
-		if err != nil {
+		agent, runtime, ok := s.fetchViableAgent(ctx, candID)
+		if !ok {
 			continue
 		}
-		if agent.Status != "idle" && agent.Status != "busy" {
-			continue
-		}
-		if !agent.RuntimeID.Valid {
-			continue
-		}
-		runtime, err := s.Q.GetAgentRuntime(ctx, agent.RuntimeID)
-		if err != nil {
-			continue
-		}
-		if runtime.Status != "online" && runtime.Status != "degraded" {
-			continue
-		}
-		if runtime.CurrentLoad >= runtime.ConcurrencyLimit {
-			continue
-		}
-		return uuid.UUID(agent.ID.Bytes), uuid.UUID(runtime.ID.Bytes), true
+		isPrimary := task.PrimaryAssigneeID.Valid && task.PrimaryAssigneeID.Bytes == agent.ID.Bytes
+		picks = append(picks, scored{
+			agentID:   uuid.UUID(agent.ID.Bytes),
+			runtimeID: uuid.UUID(runtime.ID.Bytes),
+			score:     scoreAgentForTask(agent, runtime, task, isPrimary),
+		})
 	}
-	return uuid.Nil, uuid.Nil, false
+	if len(picks) == 0 {
+		return uuid.Nil, uuid.Nil, false
+	}
+
+	best := picks[0]
+	for _, p := range picks[1:] {
+		if p.score > best.score {
+			best = p
+		}
+	}
+	return best.agentID, best.runtimeID, true
+}
+
+// tryViableAgent is the boolean form used for the actual_agent_id stickiness
+// path — we only need (id,id,ok) without the underlying rows.
+func (s *SchedulerService) tryViableAgent(ctx context.Context, id pgtype.UUID) (uuid.UUID, uuid.UUID, bool) {
+	agent, runtime, ok := s.fetchViableAgent(ctx, id)
+	if !ok {
+		return uuid.Nil, uuid.Nil, false
+	}
+	return uuid.UUID(agent.ID.Bytes), uuid.UUID(runtime.ID.Bytes), true
+}
+
+// fetchViableAgent applies the same gate as before (agent status, runtime
+// status, capacity) and returns the underlying rows so callers can score
+// without re-fetching.
+func (s *SchedulerService) fetchViableAgent(ctx context.Context, id pgtype.UUID) (db.Agent, db.AgentRuntime, bool) {
+	agent, err := s.Q.GetAgent(ctx, id)
+	if err != nil {
+		return db.Agent{}, db.AgentRuntime{}, false
+	}
+	if agent.Status != "idle" && agent.Status != "busy" {
+		return db.Agent{}, db.AgentRuntime{}, false
+	}
+	if !agent.RuntimeID.Valid {
+		return db.Agent{}, db.AgentRuntime{}, false
+	}
+	runtime, err := s.Q.GetAgentRuntime(ctx, agent.RuntimeID)
+	if err != nil {
+		return db.Agent{}, db.AgentRuntime{}, false
+	}
+	if runtime.Status != "online" && runtime.Status != "degraded" {
+		return db.Agent{}, db.AgentRuntime{}, false
+	}
+	if runtime.CurrentLoad >= runtime.ConcurrencyLimit {
+		return db.Agent{}, db.AgentRuntime{}, false
+	}
+	return agent, runtime, true
+}
+
+// scoreAgentForTask implements the cross-cutting PRD §9.2 weighted score.
+// All factors are normalized to [0,1] before weighting; total stays in [0,1].
+//
+//	skill (0.35)     fraction of task.required_skills also present in agent.tags
+//	load  (0.20)     1 - current_load / concurrency_limit
+//	fresh (0.10)     1 if last_active_at within 1h, decaying linearly to 0 at 24h
+//	prim  (0.25)     1 if this candidate is the primary_assignee_id, else 0
+//	hist  (0.10)     placeholder constant 0.5 — no per-agent success-rate table yet
+//
+// Tie-breaks fall through to the candidate iteration order (primary first,
+// then fallbacks in declared order), which matches the legacy first-fit
+// behavior when all factors are equal.
+func scoreAgentForTask(agent db.Agent, runtime db.AgentRuntime, task db.Task, isPrimary bool) float64 {
+	const (
+		wSkill   = 0.35
+		wLoad    = 0.20
+		wFresh   = 0.10
+		wPrimary = 0.25
+		wHistory = 0.10
+	)
+
+	var skill float64
+	if len(task.RequiredSkills) > 0 {
+		have := make(map[string]bool, len(agent.Tags))
+		for _, t := range agent.Tags {
+			have[t] = true
+		}
+		matched := 0
+		for _, req := range task.RequiredSkills {
+			if have[req] {
+				matched++
+			}
+		}
+		skill = float64(matched) / float64(len(task.RequiredSkills))
+	} else {
+		// No required skills declared → don't punish; treat as full match.
+		skill = 1.0
+	}
+
+	var load float64
+	if runtime.ConcurrencyLimit > 0 {
+		load = 1.0 - float64(runtime.CurrentLoad)/float64(runtime.ConcurrencyLimit)
+		if load < 0 {
+			load = 0
+		}
+	}
+
+	fresh := 0.0
+	if agent.LastActiveAt.Valid {
+		ageHours := time.Since(agent.LastActiveAt.Time).Hours()
+		switch {
+		case ageHours <= 1:
+			fresh = 1.0
+		case ageHours >= 24:
+			fresh = 0.0
+		default:
+			fresh = 1.0 - (ageHours-1)/23.0
+		}
+	}
+
+	primary := 0.0
+	if isPrimary {
+		primary = 1.0
+	}
+
+	// History placeholder — neutral 0.5 until per-agent success rate is tracked.
+	history := 0.5
+
+	return wSkill*skill + wLoad*load + wFresh*fresh + wPrimary*primary + wHistory*history
 }
 
 // scheduleDownstreamReady is called after a task completes to look at the
