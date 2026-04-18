@@ -288,8 +288,60 @@ func (s *MediationService) findPlanForThread(ctx context.Context, threadID pgtyp
 
 // routeToPlan picks the agent owning a plan thread.
 //
-// TODO(plan5): wire to plan.assignee / owning agent.
-func (s *MediationService) routeToPlan(_ context.Context, _ *db.Plan) *db.Agent {
+// Strategy:
+//  1. If the plan has an active ProjectRun, find a task on that run that is
+//     currently 'running' with an actual_agent_id set; return that agent.
+//  2. Otherwise fall back to the first agent listed in plan.assigned_agents.
+//
+// Returns nil if no agent can be resolved.
+func (s *MediationService) routeToPlan(ctx context.Context, plan *db.Plan) *db.Agent {
+	if plan == nil {
+		return nil
+	}
+
+	// 1. Active run → currently-running task → its agent.
+	if plan.ProjectID.Valid {
+		run, err := s.Queries.GetActiveProjectRun(ctx, plan.ProjectID)
+		if err == nil {
+			tasks, err := s.Queries.ListTasksByRun(ctx, run.ID)
+			if err == nil {
+				for _, t := range tasks {
+					if !t.ActualAgentID.Valid || t.Status != "running" {
+						continue
+					}
+					a, err := s.Queries.GetAgent(ctx, t.ActualAgentID)
+					if err != nil || a.ArchivedAt.Valid {
+						continue
+					}
+					return &a
+				}
+			}
+		} else if !errors.Is(err, pgx.ErrNoRows) {
+			slog.Warn("[mediation] routeToPlan: GetActiveProjectRun failed",
+				"error", err, "plan_id", util.UUIDToString(plan.ID))
+		}
+	}
+
+	// 2. Fallback: plan.assigned_agents JSONB — shape is
+	// [{"local_id": "...", "agent_id": "..."}].
+	if len(plan.AssignedAgents) > 0 {
+		var assignments []struct {
+			AgentID string `json:"agent_id"`
+		}
+		if err := json.Unmarshal(plan.AssignedAgents, &assignments); err == nil {
+			for _, asn := range assignments {
+				if asn.AgentID == "" {
+					continue
+				}
+				a, err := s.Queries.GetAgent(ctx, util.ParseUUID(asn.AgentID))
+				if err != nil || a.ArchivedAt.Valid {
+					continue
+				}
+				return &a
+			}
+		}
+	}
+
 	return nil
 }
 
