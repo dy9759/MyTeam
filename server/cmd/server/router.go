@@ -278,6 +278,9 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 
 			// System Agent
 			r.Get("/api/system-agent", h.GetOrCreateSystemAgent)
+			r.Post("/api/system-agents", h.CreateSystemAgent)
+			r.Patch("/api/system-agents/{id}", h.UpdateSystemAgent)
+			r.Delete("/api/system-agents/{id}", h.ArchiveSystemAgent)
 
 			// Page system agents (account / session / project / file).
 			r.Get("/api/page-agents", h.ListPageAgents)
