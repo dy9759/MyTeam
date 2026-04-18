@@ -31,3 +31,10 @@ FROM member m
 JOIN "user" u ON u.id = m.user_id
 WHERE m.workspace_id = $1
 ORDER BY m.created_at ASC;
+
+-- name: ListWorkspaceAdmins :many
+-- Returns workspace owners and admins, used as the fallback notification
+-- target when a system-agent task escalates and there's no per-task owner.
+SELECT * FROM member
+WHERE workspace_id = $1 AND role IN ('owner', 'admin')
+ORDER BY created_at ASC;

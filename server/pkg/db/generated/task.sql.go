@@ -29,6 +29,28 @@ func (q *Queries) AssignTaskAgent(ctx context.Context, arg AssignTaskAgentParams
 	return err
 }
 
+const assignTaskFallbackAgent = `-- name: AssignTaskFallbackAgent :exec
+UPDATE task SET
+    actual_agent_id = $2,
+    current_retry = 0,
+    status = 'assigned',
+    updated_at = now()
+WHERE id = $1
+`
+
+type AssignTaskFallbackAgentParams struct {
+	ID            pgtype.UUID `json:"id"`
+	ActualAgentID pgtype.UUID `json:"actual_agent_id"`
+}
+
+// Switches the task to a fallback agent and zeroes current_retry in the same
+// statement so the new agent gets a fresh retry budget. Use this whenever the
+// scheduler hands the task off because the previous agent exhausted its budget.
+func (q *Queries) AssignTaskFallbackAgent(ctx context.Context, arg AssignTaskFallbackAgentParams) error {
+	_, err := q.db.Exec(ctx, assignTaskFallbackAgent, arg.ID, arg.ActualAgentID)
+	return err
+}
+
 const createTask = `-- name: CreateTask :one
 INSERT INTO task (
     plan_id, run_id, workspace_id,

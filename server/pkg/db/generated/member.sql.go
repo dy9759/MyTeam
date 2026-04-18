@@ -167,6 +167,40 @@ func (q *Queries) ListMembersWithUser(ctx context.Context, workspaceID pgtype.UU
 	return items, nil
 }
 
+const listWorkspaceAdmins = `-- name: ListWorkspaceAdmins :many
+SELECT id, workspace_id, user_id, role, created_at FROM member
+WHERE workspace_id = $1 AND role IN ('owner', 'admin')
+ORDER BY created_at ASC
+`
+
+// Returns workspace owners and admins, used as the fallback notification
+// target when a system-agent task escalates and there's no per-task owner.
+func (q *Queries) ListWorkspaceAdmins(ctx context.Context, workspaceID pgtype.UUID) ([]Member, error) {
+	rows, err := q.db.Query(ctx, listWorkspaceAdmins, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Member{}
+	for rows.Next() {
+		var i Member
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.UserID,
+			&i.Role,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateMemberRole = `-- name: UpdateMemberRole :one
 UPDATE member SET role = $2
 WHERE id = $1

@@ -58,6 +58,21 @@ INSERT INTO inbox_item (workspace_id, recipient_id, recipient_type, type, severi
 VALUES (@workspace_id, @recipient_id, @recipient_type, @type, @severity, @title, @body, @action_required, @action_type, @deadline, @related_project_id, @related_run_id, @actor_type, @actor_id)
 RETURNING *;
 
+-- name: CreateTaskAttentionInboxItem :one
+-- Specialized writer for task-level escalations (timeout/needs_attention) so
+-- the inbox row carries task_id for downstream filters. Used by
+-- SchedulerService when it parks a task in needs_attention.
+INSERT INTO inbox_item (
+    workspace_id, recipient_id, recipient_type,
+    type, severity, title, body,
+    action_required, task_id
+) VALUES (
+    @workspace_id, @recipient_id, @recipient_type,
+    @type, @severity, @title, @body,
+    @action_required, @task_id
+)
+RETURNING *;
+
 -- name: ListInboxUnresolved :many
 -- Plan 4 §8: paginated list of unresolved inbox items for a recipient.
 -- Uses idx_inbox_item_recipient_active partial index.

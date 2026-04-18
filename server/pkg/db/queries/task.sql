@@ -48,6 +48,17 @@ UPDATE task SET
     updated_at = now()
 WHERE id = $1;
 
+-- name: AssignTaskFallbackAgent :exec
+-- Switches the task to a fallback agent and zeroes current_retry in the same
+-- statement so the new agent gets a fresh retry budget. Use this whenever the
+-- scheduler hands the task off because the previous agent exhausted its budget.
+UPDATE task SET
+    actual_agent_id = @actual_agent_id,
+    current_retry = 0,
+    status = 'assigned',
+    updated_at = now()
+WHERE id = $1;
+
 -- name: UpdateTaskDependsOn :exec
 UPDATE task SET
     depends_on = @depends_on,

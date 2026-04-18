@@ -80,21 +80,40 @@ func (s *QuotaService) CheckBeforeClaim(ctx context.Context, workspaceID uuid.UU
 	return nil
 }
 
-// RecordCost adds the spend (in USD) to the workspace's monthly total.
-// Best-effort: errors are logged but never returned, since cost recording
-// must not block completion of a successful task.
-func (s *QuotaService) RecordCost(ctx context.Context, workspaceID uuid.UUID, usd float64) {
+// RecordCost adds the spend (in USD) to the workspace's monthly total and
+// surfaces the per-call token counts in the log line for downstream
+// observability. Best-effort: errors are logged but never returned, since
+// cost recording must not block completion of a successful task.
+//
+// The token args are accepted now even though workspace_quota only stores
+// USD — they keep the call sites stable for the day per-workspace token
+// roll-ups land. Callers that don't have token data should pass zeros.
+func (s *QuotaService) RecordCost(ctx context.Context, workspaceID uuid.UUID, usd float64, inputTokens, outputTokens int64) {
 	if s == nil || s.Q == nil {
 		return
 	}
-	if usd <= 0 {
+	// Always run AddWorkspaceCostUSD even when usd is 0 so the call
+	// observably touches workspace_quota.updated_at — the wiring is then
+	// visible in audit/dashboards regardless of whether the runner has
+	// surfaced a non-zero cost yet.
+	amount := float64ToNumeric(usd)
+	if usd < 0 {
+		// Negative cost is a bug upstream; refuse to corrupt the row and
+		// log the attempt so it surfaces.
+		slog.Warn("quota: refusing to record negative cost",
+			"ws", workspaceID.String(), "usd", usd)
 		return
 	}
 	if err := s.Q.AddWorkspaceCostUSD(ctx, db.AddWorkspaceCostUSDParams{
 		WorkspaceID: toPgUUID(workspaceID),
-		Amount:      float64ToNumeric(usd),
+		Amount:      amount,
 	}); err != nil {
-		slog.Warn("quota: cost record failed", "ws", workspaceID.String(), "usd", usd, "err", err)
+		slog.Warn("quota: cost record failed",
+			"ws", workspaceID.String(),
+			"usd", usd,
+			"input_tokens", inputTokens,
+			"output_tokens", outputTokens,
+			"err", err)
 	}
 }
 

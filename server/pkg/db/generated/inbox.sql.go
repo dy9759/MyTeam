@@ -277,6 +277,82 @@ func (q *Queries) CreateInboxItem(ctx context.Context, arg CreateInboxItemParams
 	return i, err
 }
 
+const createTaskAttentionInboxItem = `-- name: CreateTaskAttentionInboxItem :one
+INSERT INTO inbox_item (
+    workspace_id, recipient_id, recipient_type,
+    type, severity, title, body,
+    action_required, task_id
+) VALUES (
+    $1, $2, $3,
+    $4, $5, $6, $7,
+    $8, $9
+)
+RETURNING id, workspace_id, recipient_type, recipient_id, type, severity, issue_id, title, body, read, archived, created_at, actor_type, actor_id, details, action_required, action_type, deadline, resolution_status, related_project_id, related_run_id, related_conversation_id, plan_id, task_id, slot_id, thread_id, channel_id, resolved_at, resolution, resolution_by
+`
+
+type CreateTaskAttentionInboxItemParams struct {
+	WorkspaceID    pgtype.UUID `json:"workspace_id"`
+	RecipientID    pgtype.UUID `json:"recipient_id"`
+	RecipientType  string      `json:"recipient_type"`
+	Type           string      `json:"type"`
+	Severity       string      `json:"severity"`
+	Title          string      `json:"title"`
+	Body           pgtype.Text `json:"body"`
+	ActionRequired bool        `json:"action_required"`
+	TaskID         pgtype.UUID `json:"task_id"`
+}
+
+// Specialized writer for task-level escalations (timeout/needs_attention) so
+// the inbox row carries task_id for downstream filters. Used by
+// SchedulerService when it parks a task in needs_attention.
+func (q *Queries) CreateTaskAttentionInboxItem(ctx context.Context, arg CreateTaskAttentionInboxItemParams) (InboxItem, error) {
+	row := q.db.QueryRow(ctx, createTaskAttentionInboxItem,
+		arg.WorkspaceID,
+		arg.RecipientID,
+		arg.RecipientType,
+		arg.Type,
+		arg.Severity,
+		arg.Title,
+		arg.Body,
+		arg.ActionRequired,
+		arg.TaskID,
+	)
+	var i InboxItem
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.RecipientType,
+		&i.RecipientID,
+		&i.Type,
+		&i.Severity,
+		&i.IssueID,
+		&i.Title,
+		&i.Body,
+		&i.Read,
+		&i.Archived,
+		&i.CreatedAt,
+		&i.ActorType,
+		&i.ActorID,
+		&i.Details,
+		&i.ActionRequired,
+		&i.ActionType,
+		&i.Deadline,
+		&i.ResolutionStatus,
+		&i.RelatedProjectID,
+		&i.RelatedRunID,
+		&i.RelatedConversationID,
+		&i.PlanID,
+		&i.TaskID,
+		&i.SlotID,
+		&i.ThreadID,
+		&i.ChannelID,
+		&i.ResolvedAt,
+		&i.Resolution,
+		&i.ResolutionBy,
+	)
+	return i, err
+}
+
 const getInboxItem = `-- name: GetInboxItem :one
 SELECT id, workspace_id, recipient_type, recipient_id, type, severity, issue_id, title, body, read, archived, created_at, actor_type, actor_id, details, action_required, action_type, deadline, resolution_status, related_project_id, related_run_id, related_conversation_id, plan_id, task_id, slot_id, thread_id, channel_id, resolved_at, resolution, resolution_by FROM inbox_item
 WHERE id = $1

@@ -356,10 +356,8 @@ func (s *SchedulerService) HandleTaskCompletion(ctx context.Context, taskID, exe
 //     retries on it yet).
 //  2. Else if a fallback agent is available → switch to it and reset the
 //     retry counter, then re-ScheduleTask.
-//  3. Else mark the task needs_attention and persist the error message.
-//
-// TODO(plan5): create an inbox notification for the task owner when we
-// fall through to needs_attention. Wired in a follow-up batch.
+//  3. Else mark the task needs_attention, persist the error message, and
+//     notify the task owner via inbox so a human can intervene.
 func (s *SchedulerService) HandleTaskFailure(ctx context.Context, taskID, executionID uuid.UUID, errorMsg string) error {
 	_ = executionID // reserved for future per-execution audit; current path acts on Task.
 	task, err := s.Q.GetTask(ctx, toPgUUID(taskID))
@@ -395,7 +393,11 @@ func (s *SchedulerService) HandleTaskFailure(ctx context.Context, taskID, execut
 		if task.ActualAgentID.Valid && fbBytes.Bytes == task.ActualAgentID.Bytes {
 			continue
 		}
-		if err := s.Q.AssignTaskAgent(ctx, db.AssignTaskAgentParams{
+		// AssignTaskFallbackAgent both swaps the agent AND resets
+		// current_retry to 0 in a single statement. If we used AssignTaskAgent
+		// here the fallback would inherit the exhausted retry budget and
+		// surface as needs_attention on its first failure (codex IMPORTANT #2).
+		if err := s.Q.AssignTaskFallbackAgent(ctx, db.AssignTaskFallbackAgentParams{
 			ID:            task.ID,
 			ActualAgentID: toPgUUID(fbID),
 		}); err != nil {
@@ -423,17 +425,153 @@ func (s *SchedulerService) HandleTaskFailure(ctx context.Context, taskID, execut
 		return fmt.Errorf("set task error: %w", err)
 	}
 	s.publishTaskStatusChange(ctx, task, TaskStatusNeedsAttention)
-	// TODO(plan5): create an inbox notification for the task owner.
+	s.notifyTaskAttention(ctx, task, errorMsg)
 	return nil
 }
 
 // HandleTaskTimeout is the entry point for the lifecycle ticker when it
-// detects a task whose execution has exceeded its timeout. Currently this
-// is just HandleTaskFailure with a fixed error string; per PRD §5.4 the
-// timeout_rule.action ("retry"|"fail"|"escalate") will eventually steer
-// behaviour here.
+// detects a task whose execution has exceeded its timeout. Per PRD §5.4 the
+// timeout_rule.action steers the response:
+//
+//	retry    → run the standard retry/fallback policy (HandleTaskFailure).
+//	fail     → mark the task failed without consuming the retry budget.
+//	escalate → park the task in needs_attention and notify the owner.
+//
+// Defaults to retry when timeout_rule is missing or unparseable so unknown
+// policies degrade safely rather than dropping the timeout silently.
 func (s *SchedulerService) HandleTaskTimeout(ctx context.Context, taskID uuid.UUID) error {
-	return s.HandleTaskFailure(ctx, taskID, uuid.Nil, "task timeout")
+	const errMsg = "task timeout"
+
+	task, err := s.Q.GetTask(ctx, toPgUUID(taskID))
+	if err != nil {
+		return fmt.Errorf("get task: %w", err)
+	}
+
+	timeoutRule := TaskTimeoutRule{MaxDurationSeconds: 1800, Action: "retry"}
+	if len(task.TimeoutRule) > 0 {
+		if err := json.Unmarshal(task.TimeoutRule, &timeoutRule); err != nil {
+			slog.Warn("scheduler: parse timeout_rule failed, defaulting to retry",
+				"task", taskID, "err", err)
+			timeoutRule.Action = "retry"
+		}
+	}
+	if timeoutRule.Action == "" {
+		timeoutRule.Action = "retry"
+	}
+
+	switch timeoutRule.Action {
+	case "fail":
+		if err := s.Q.SetTaskError(ctx, db.SetTaskErrorParams{
+			ID:     task.ID,
+			Status: TaskStatusFailed,
+			Error:  toPgNullText(errMsg),
+		}); err != nil {
+			return fmt.Errorf("set task failed: %w", err)
+		}
+		s.publishTaskStatusChange(ctx, task, TaskStatusFailed)
+		return nil
+	case "escalate":
+		if err := s.Q.SetTaskError(ctx, db.SetTaskErrorParams{
+			ID:     task.ID,
+			Status: TaskStatusNeedsAttention,
+			Error:  toPgNullText(errMsg),
+		}); err != nil {
+			return fmt.Errorf("set task needs_attention: %w", err)
+		}
+		s.publishTaskStatusChange(ctx, task, TaskStatusNeedsAttention)
+		s.notifyTaskAttention(ctx, task, errMsg)
+		return nil
+	default: // "retry" + any unknown value
+		return s.HandleTaskFailure(ctx, taskID, uuid.Nil, errMsg)
+	}
+}
+
+// notifyTaskAttention writes inbox items so a human knows the task is stuck.
+// Best-effort: errors are logged but do not fail the caller, since we have
+// already updated task.status to needs_attention by this point and that's
+// the primary signal.
+//
+// Recipient resolution (first non-empty wins):
+//  1. task.actual_agent_id → agent.owner_id (user-owned agents).
+//  2. task.run_id → project_run.project_id → project.creator_owner_id
+//     (system agents have no owner, so we fall back to the project creator).
+//  3. workspace owners + admins (no project link, or project lookup failed).
+//
+// Step 3 fans out: every admin gets their own inbox row.
+func (s *SchedulerService) notifyTaskAttention(ctx context.Context, task db.Task, reason string) {
+	body := reason
+	if body == "" {
+		body = "Task requires attention"
+	}
+	title := fmt.Sprintf("Task needs attention: %s", task.Title)
+
+	// 1) Try the agent's owner.
+	if task.ActualAgentID.Valid {
+		agent, err := s.Q.GetAgent(ctx, task.ActualAgentID)
+		if err != nil {
+			slog.Warn("scheduler: load agent for inbox notification failed",
+				"task", task.ID, "agent", task.ActualAgentID, "err", err)
+		} else if agent.OwnerID.Valid {
+			s.writeAttentionInbox(ctx, task, agent.OwnerID, title, body)
+			return
+		}
+	}
+
+	// 2) Fall back to the project creator (per-project owner).
+	if task.RunID.Valid {
+		run, err := s.Q.GetProjectRun(ctx, task.RunID)
+		if err != nil {
+			slog.Warn("scheduler: load project_run for inbox fallback failed",
+				"task", task.ID, "run", task.RunID, "err", err)
+		} else {
+			project, err := s.Q.GetProject(ctx, run.ProjectID)
+			if err != nil {
+				slog.Warn("scheduler: load project for inbox fallback failed",
+					"task", task.ID, "project", run.ProjectID, "err", err)
+			} else if project.CreatorOwnerID.Valid {
+				s.writeAttentionInbox(ctx, task, project.CreatorOwnerID, title, body)
+				return
+			}
+		}
+	}
+
+	// 3) Last resort: notify every workspace owner/admin so something with
+	// human eyes on it sees the parked task.
+	admins, err := s.Q.ListWorkspaceAdmins(ctx, task.WorkspaceID)
+	if err != nil {
+		slog.Warn("scheduler: list workspace admins for inbox fallback failed",
+			"task", task.ID, "workspace", task.WorkspaceID, "err", err)
+		return
+	}
+	if len(admins) == 0 {
+		slog.Warn("scheduler: no recipient found for task_attention_needed inbox",
+			"task", task.ID, "workspace", task.WorkspaceID)
+		return
+	}
+	for _, m := range admins {
+		s.writeAttentionInbox(ctx, task, m.UserID, title, body)
+	}
+}
+
+// writeAttentionInbox is the shared writer for notifyTaskAttention so the
+// CreateTaskAttentionInboxItem payload stays in one place. Errors are
+// logged and swallowed because the caller treats notification as
+// best-effort.
+func (s *SchedulerService) writeAttentionInbox(ctx context.Context, task db.Task, recipient pgtype.UUID, title, body string) {
+	if _, err := s.Q.CreateTaskAttentionInboxItem(ctx, db.CreateTaskAttentionInboxItemParams{
+		WorkspaceID:    task.WorkspaceID,
+		RecipientID:    recipient,
+		RecipientType:  "member",
+		Type:           "task_attention_needed",
+		Severity:       "warning",
+		Title:          title,
+		Body:           toPgNullText(body),
+		ActionRequired: true,
+		TaskID:         task.ID,
+	}); err != nil {
+		slog.Warn("scheduler: create inbox notification failed",
+			"task", task.ID, "recipient", recipient, "err", err)
+	}
 }
 
 // findAvailableAgent walks the task's agent candidates and returns the

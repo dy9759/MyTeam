@@ -490,6 +490,262 @@ func TestHandleTaskFailure_FallbackAgent(t *testing.T) {
 	}
 }
 
+// TestHandleTaskFailure_FallbackResetsRetryBudget verifies that when the
+// scheduler swaps to a fallback agent because the primary exhausted its
+// retry budget, current_retry is reset to 0 so the fallback gets a fresh
+// budget rather than inheriting the exhausted one (codex review IMPORTANT #2).
+func TestHandleTaskFailure_FallbackResetsRetryBudget(t *testing.T) {
+	q := testDB(t)
+	env := setupSchedEnv(t, q)
+	svc := makeSchedulerService(q)
+	ctx := context.Background()
+
+	fallback, err := q.CreatePersonalAgent(ctx, db.CreatePersonalAgentParams{
+		WorkspaceID: env.WorkspaceID,
+		Name:        "Fallback " + t.Name(),
+		Description: "fallback agent",
+		RuntimeID:   env.RuntimeID,
+		OwnerID:     env.MemberID,
+	})
+	if err != nil {
+		t.Fatalf("create fallback agent: %v", err)
+	}
+	if _, err := q.UpdateAgentStatus(ctx, db.UpdateAgentStatusParams{
+		ID:     fallback.ID,
+		Status: "idle",
+	}); err != nil {
+		t.Fatalf("set fallback idle: %v", err)
+	}
+
+	task, err := q.CreateTask(ctx, db.CreateTaskParams{
+		PlanID:            env.PlanID,
+		RunID:             env.RunID,
+		WorkspaceID:       env.WorkspaceID,
+		Title:             "fallback-budget",
+		Description:       pgtype.Text{String: "exhaust primary, ensure fallback budget reset", Valid: true},
+		StepOrder:         pgtype.Int4{Int32: 0, Valid: true},
+		PrimaryAssigneeID: env.AgentID,
+		FallbackAgentIds:  []pgtype.UUID{fallback.ID},
+	})
+	if err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	if err := svc.ScheduleRun(ctx, pgxToUUID(t, env.PlanID), pgxToUUID(t, env.RunID)); err != nil {
+		t.Fatalf("ScheduleRun: %v", err)
+	}
+
+	// Default retry policy: max_retries=2. Three failures exhaust the
+	// primary's budget and trigger the fallback switch.
+	failOnce := func() {
+		execs, err := q.ListExecutionsByTask(ctx, task.ID)
+		if err != nil || len(execs) == 0 {
+			t.Fatalf("expected execution: err=%v len=%d", err, len(execs))
+		}
+		if err := svc.HandleTaskFailure(ctx,
+			pgxToUUID(t, task.ID),
+			pgxToUUID(t, execs[0].ID),
+			"primary failed",
+		); err != nil {
+			t.Fatalf("HandleTaskFailure: %v", err)
+		}
+	}
+	failOnce()
+	failOnce()
+	failOnce()
+
+	got, err := q.GetTask(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if !got.ActualAgentID.Valid || got.ActualAgentID.Bytes != fallback.ID.Bytes {
+		t.Fatalf("expected fallback agent assigned, got %+v", got.ActualAgentID)
+	}
+	if got.CurrentRetry != 0 {
+		t.Fatalf("expected current_retry reset to 0 after fallback switch, got %d", got.CurrentRetry)
+	}
+}
+
+// TestHandleTaskFailure_NeedsAttentionNotifiesOwner verifies that when
+// HandleTaskFailure exhausts retries and has no fallback, it not only parks
+// the task in needs_attention but also creates an inbox notification for
+// the agent's owner (project §10.6 — replaces the TODOs in HandleTaskFailure).
+func TestHandleTaskFailure_NeedsAttentionNotifiesOwner(t *testing.T) {
+	q := testDB(t)
+	env := setupSchedEnv(t, q)
+	svc := makeSchedulerService(q)
+	ctx := context.Background()
+
+	task := makeSchedTask(t, q, env, "no-fallback", nil, env.AgentID)
+	if err := svc.ScheduleRun(ctx, pgxToUUID(t, env.PlanID), pgxToUUID(t, env.RunID)); err != nil {
+		t.Fatalf("ScheduleRun: %v", err)
+	}
+
+	// max_retries=2 + no fallback → 3 failures (1 initial budget then 2
+	// retries) park the task in needs_attention.
+	failOnce := func() {
+		execs, err := q.ListExecutionsByTask(ctx, task.ID)
+		if err != nil || len(execs) == 0 {
+			t.Fatalf("expected execution: err=%v len=%d", err, len(execs))
+		}
+		if err := svc.HandleTaskFailure(ctx,
+			pgxToUUID(t, task.ID),
+			pgxToUUID(t, execs[0].ID),
+			"agent error",
+		); err != nil {
+			t.Fatalf("HandleTaskFailure: %v", err)
+		}
+	}
+	failOnce()
+	failOnce()
+	failOnce()
+
+	got, err := q.GetTask(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if got.Status != TaskStatusNeedsAttention {
+		t.Fatalf("status: want needs_attention, got %s", got.Status)
+	}
+
+	pool := openTestPool(t)
+	var inboxCount int
+	if err := pool.QueryRow(ctx, `
+		SELECT count(*) FROM inbox_item
+		WHERE task_id = $1 AND type = 'task_attention_needed'
+	`, task.ID).Scan(&inboxCount); err != nil {
+		t.Fatalf("count inbox: %v", err)
+	}
+	if inboxCount == 0 {
+		t.Fatalf("expected an inbox_item after retries exhausted, got 0")
+	}
+}
+
+// TestHandleTaskTimeout_RetryAction (default) follows the existing
+// HandleTaskFailure path: bumps current_retry and re-queues the task.
+func TestHandleTaskTimeout_RetryAction(t *testing.T) {
+	q := testDB(t)
+	env := setupSchedEnv(t, q)
+	svc := makeSchedulerService(q)
+	ctx := context.Background()
+
+	task := makeSchedTask(t, q, env, "timeout-retry", nil, env.AgentID)
+	if err := svc.ScheduleRun(ctx, pgxToUUID(t, env.PlanID), pgxToUUID(t, env.RunID)); err != nil {
+		t.Fatalf("ScheduleRun: %v", err)
+	}
+
+	// timeout_rule defaults to action=retry, so HandleTaskTimeout should
+	// take the retry branch.
+	if err := svc.HandleTaskTimeout(ctx, pgxToUUID(t, task.ID)); err != nil {
+		t.Fatalf("HandleTaskTimeout: %v", err)
+	}
+
+	got, err := q.GetTask(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if got.CurrentRetry != 1 {
+		t.Fatalf("current_retry: want 1, got %d", got.CurrentRetry)
+	}
+	if got.Status != TaskStatusQueued {
+		t.Fatalf("status: want queued, got %s", got.Status)
+	}
+}
+
+// TestHandleTaskTimeout_FailAction marks the task failed without consuming
+// the retry budget.
+func TestHandleTaskTimeout_FailAction(t *testing.T) {
+	q := testDB(t)
+	env := setupSchedEnv(t, q)
+	svc := makeSchedulerService(q)
+	ctx := context.Background()
+
+	task, err := q.CreateTask(ctx, db.CreateTaskParams{
+		PlanID:            env.PlanID,
+		RunID:             env.RunID,
+		WorkspaceID:       env.WorkspaceID,
+		Title:             "timeout-fail",
+		Description:       pgtype.Text{String: "fail action", Valid: true},
+		StepOrder:         pgtype.Int4{Int32: 0, Valid: true},
+		PrimaryAssigneeID: env.AgentID,
+		TimeoutRule:       []byte(`{"max_duration_seconds":1800,"action":"fail"}`),
+	})
+	if err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	if err := svc.HandleTaskTimeout(ctx, pgxToUUID(t, task.ID)); err != nil {
+		t.Fatalf("HandleTaskTimeout: %v", err)
+	}
+
+	got, err := q.GetTask(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if got.Status != TaskStatusFailed {
+		t.Fatalf("status: want failed, got %s", got.Status)
+	}
+	if got.CurrentRetry != 0 {
+		t.Fatalf("current_retry should not be incremented on fail action, got %d", got.CurrentRetry)
+	}
+}
+
+// TestHandleTaskTimeout_EscalateAction parks the task in needs_attention and
+// (per T2d) creates an inbox notification for the owner.
+func TestHandleTaskTimeout_EscalateAction(t *testing.T) {
+	q := testDB(t)
+	env := setupSchedEnv(t, q)
+	svc := makeSchedulerService(q)
+	ctx := context.Background()
+
+	task, err := q.CreateTask(ctx, db.CreateTaskParams{
+		PlanID:            env.PlanID,
+		RunID:             env.RunID,
+		WorkspaceID:       env.WorkspaceID,
+		Title:             "timeout-escalate",
+		Description:       pgtype.Text{String: "escalate action", Valid: true},
+		StepOrder:         pgtype.Int4{Int32: 0, Valid: true},
+		PrimaryAssigneeID: env.AgentID,
+		TimeoutRule:       []byte(`{"max_duration_seconds":1800,"action":"escalate"}`),
+	})
+	if err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	// Pretend the scheduler already assigned the primary — this is required
+	// for the inbox notification path to resolve the task owner.
+	if err := q.AssignTaskAgent(ctx, db.AssignTaskAgentParams{
+		ID:            task.ID,
+		ActualAgentID: env.AgentID,
+	}); err != nil {
+		t.Fatalf("AssignTaskAgent: %v", err)
+	}
+
+	if err := svc.HandleTaskTimeout(ctx, pgxToUUID(t, task.ID)); err != nil {
+		t.Fatalf("HandleTaskTimeout: %v", err)
+	}
+
+	got, err := q.GetTask(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if got.Status != TaskStatusNeedsAttention {
+		t.Fatalf("status: want needs_attention, got %s", got.Status)
+	}
+
+	// Confirm the inbox notification was created for the agent owner.
+	pool := openTestPool(t)
+	var inboxCount int
+	if err := pool.QueryRow(ctx, `
+		SELECT count(*) FROM inbox_item
+		WHERE task_id = $1 AND type = 'task_attention_needed'
+	`, task.ID).Scan(&inboxCount); err != nil {
+		t.Fatalf("count inbox: %v", err)
+	}
+	if inboxCount == 0 {
+		t.Fatalf("expected an inbox_item for the timeout escalation, got 0")
+	}
+}
+
 // guard: nil run id passed to checkRunCompletion must be a no-op rather
 // than blowing up on the db.UpdateProjectRunStatus call.
 func TestCheckRunCompletion_NilRunID_NoOp(t *testing.T) {
@@ -497,5 +753,177 @@ func TestCheckRunCompletion_NilRunID_NoOp(t *testing.T) {
 	svc := makeSchedulerService(q)
 	if err := svc.checkRunCompletion(context.Background(), uuid.Nil); err != nil {
 		t.Fatalf("expected nil err for empty run id, got %v", err)
+	}
+}
+
+// TestHandleTaskTimeout_MissingAction verifies that a task whose
+// timeout_rule has an empty action string falls through to the retry path
+// (default branch in HandleTaskTimeout). Mirrors the production safety net
+// where unparseable / missing actions degrade to retry rather than
+// silently dropping the timeout.
+func TestHandleTaskTimeout_MissingAction(t *testing.T) {
+	q := testDB(t)
+	env := setupSchedEnv(t, q)
+	svc := makeSchedulerService(q)
+	ctx := context.Background()
+
+	task, err := q.CreateTask(ctx, db.CreateTaskParams{
+		PlanID:            env.PlanID,
+		RunID:             env.RunID,
+		WorkspaceID:       env.WorkspaceID,
+		Title:             "timeout-missing-action",
+		Description:       pgtype.Text{String: "empty action -> retry", Valid: true},
+		StepOrder:         pgtype.Int4{Int32: 0, Valid: true},
+		PrimaryAssigneeID: env.AgentID,
+		// action explicitly empty so the empty-action branch is exercised.
+		TimeoutRule: []byte(`{"max_duration_seconds":1800,"action":""}`),
+	})
+	if err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	if err := svc.ScheduleRun(ctx, pgxToUUID(t, env.PlanID), pgxToUUID(t, env.RunID)); err != nil {
+		t.Fatalf("ScheduleRun: %v", err)
+	}
+
+	if err := svc.HandleTaskTimeout(ctx, pgxToUUID(t, task.ID)); err != nil {
+		t.Fatalf("HandleTaskTimeout: %v", err)
+	}
+
+	got, err := q.GetTask(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if got.CurrentRetry != 1 {
+		t.Fatalf("current_retry: want 1 (retry path), got %d", got.CurrentRetry)
+	}
+	if got.Status != TaskStatusQueued {
+		t.Fatalf("status: want queued (retry path), got %s", got.Status)
+	}
+}
+
+// TestHandleTaskTimeout_UnknownAction verifies that an unrecognized
+// timeout action ("bogus") also falls through to the retry path. This
+// keeps unknown policies from silently dropping timeouts.
+func TestHandleTaskTimeout_UnknownAction(t *testing.T) {
+	q := testDB(t)
+	env := setupSchedEnv(t, q)
+	svc := makeSchedulerService(q)
+	ctx := context.Background()
+
+	task, err := q.CreateTask(ctx, db.CreateTaskParams{
+		PlanID:            env.PlanID,
+		RunID:             env.RunID,
+		WorkspaceID:       env.WorkspaceID,
+		Title:             "timeout-unknown-action",
+		Description:       pgtype.Text{String: "unknown action -> retry", Valid: true},
+		StepOrder:         pgtype.Int4{Int32: 0, Valid: true},
+		PrimaryAssigneeID: env.AgentID,
+		TimeoutRule:       []byte(`{"max_duration_seconds":1800,"action":"bogus"}`),
+	})
+	if err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	if err := svc.ScheduleRun(ctx, pgxToUUID(t, env.PlanID), pgxToUUID(t, env.RunID)); err != nil {
+		t.Fatalf("ScheduleRun: %v", err)
+	}
+
+	if err := svc.HandleTaskTimeout(ctx, pgxToUUID(t, task.ID)); err != nil {
+		t.Fatalf("HandleTaskTimeout: %v", err)
+	}
+
+	got, err := q.GetTask(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if got.CurrentRetry != 1 {
+		t.Fatalf("current_retry: want 1 (retry path), got %d", got.CurrentRetry)
+	}
+	if got.Status != TaskStatusQueued {
+		t.Fatalf("status: want queued (retry path), got %s", got.Status)
+	}
+}
+
+// TestNotifyTaskAttention_SystemAgent_FallsBackToProjectCreator covers the
+// regression Codex flagged: when a needs_attention task is assigned to a
+// system agent (owner_id IS NULL), notifyTaskAttention used to bail out
+// silently. It now falls back to the project creator (per project.run).
+func TestNotifyTaskAttention_SystemAgent_FallsBackToProjectCreator(t *testing.T) {
+	q := testDB(t)
+	env := setupSchedEnv(t, q)
+	svc := makeSchedulerService(q)
+	ctx := context.Background()
+
+	// Create a workspace-level system agent (owner_id NULL by definition).
+	sysAgent, err := q.CreateSystemAgent(ctx, db.CreateSystemAgentParams{
+		WorkspaceID: env.WorkspaceID,
+		RuntimeID:   env.RuntimeID,
+	})
+	if err != nil {
+		t.Fatalf("create system agent: %v", err)
+	}
+	if sysAgent.OwnerID.Valid {
+		t.Fatalf("system agent should have NULL owner_id, got %+v", sysAgent.OwnerID)
+	}
+
+	task, err := q.CreateTask(ctx, db.CreateTaskParams{
+		PlanID:            env.PlanID,
+		RunID:             env.RunID,
+		WorkspaceID:       env.WorkspaceID,
+		Title:             "system-agent-escalate",
+		Description:       pgtype.Text{String: "system agent -> needs_attention", Valid: true},
+		StepOrder:         pgtype.Int4{Int32: 0, Valid: true},
+		PrimaryAssigneeID: sysAgent.ID,
+		TimeoutRule:       []byte(`{"max_duration_seconds":1800,"action":"escalate"}`),
+	})
+	if err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	if err := q.AssignTaskAgent(ctx, db.AssignTaskAgentParams{
+		ID:            task.ID,
+		ActualAgentID: sysAgent.ID,
+	}); err != nil {
+		t.Fatalf("AssignTaskAgent: %v", err)
+	}
+
+	if err := svc.HandleTaskTimeout(ctx, pgxToUUID(t, task.ID)); err != nil {
+		t.Fatalf("HandleTaskTimeout: %v", err)
+	}
+
+	got, err := q.GetTask(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if got.Status != TaskStatusNeedsAttention {
+		t.Fatalf("status: want needs_attention, got %s", got.Status)
+	}
+
+	// Confirm an inbox item was created for the project creator (the fallback
+	// recipient), not silently dropped because the agent has no owner.
+	pool := openTestPool(t)
+	rows, err := pool.Query(ctx, `
+		SELECT recipient_id
+		FROM inbox_item
+		WHERE task_id = $1 AND type = 'task_attention_needed'
+	`, task.ID)
+	if err != nil {
+		t.Fatalf("query inbox: %v", err)
+	}
+	defer rows.Close()
+	recipients := []pgtype.UUID{}
+	for rows.Next() {
+		var rid pgtype.UUID
+		if err := rows.Scan(&rid); err != nil {
+			t.Fatalf("scan inbox row: %v", err)
+		}
+		recipients = append(recipients, rid)
+	}
+	if len(recipients) == 0 {
+		t.Fatalf("expected inbox_item for system-agent escalation, got 0")
+	}
+	// Recipient should be the project creator we seeded in setupSchedEnv
+	// (creator_owner_id = MemberID).
+	if recipients[0].Bytes != env.MemberID.Bytes {
+		t.Fatalf("expected recipient=%x (project creator), got %x",
+			env.MemberID.Bytes, recipients[0].Bytes)
 	}
 }
