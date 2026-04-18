@@ -86,7 +86,7 @@ func setupProjectTaskEnv(t *testing.T) projectTaskTestEnv {
 	var projectID string
 	if err := testPool.QueryRow(ctx, `
 		INSERT INTO project (workspace_id, title, description, status, created_by, schedule_type, source_conversations, creator_owner_id)
-		VALUES ($1, $2, '', 'active', $3, 'one_time', '[]'::jsonb, $3)
+		VALUES ($1, $2, '', 'running', $3, 'one_time', '[]'::jsonb, $3)
 		RETURNING id
 	`, testWorkspaceID, "ProjProject "+suffix, testUserID).Scan(&projectID); err != nil {
 		t.Fatalf("create project: %v", err)

@@ -295,27 +295,43 @@ func (h *Handler) CreateProjectFromChat(w http.ResponseWriter, r *http.Request) 
 	// Step 7: Build source_conversations JSONB
 	sourceConvsJSON, _ := json.Marshal(sourceConversations)
 
-	// Step 8: Create Project record
-	// TODO(plan5-d): Use h.Queries.CreateProject() once sqlc query is generated.
-	// Plan/Task rows are persisted; the Project + ProjectVersion shells will
-	// follow in Batch D once the sqlc surface stabilizes.
-
-	channelIDStr := uuidToString(ch.ID)
-	now := time.Now().UTC().Format(time.RFC3339)
-
-	projectResp := ProjectResponse{
-		ID:                  "", // TODO(plan5-d): from created project
-		WorkspaceID:         workspaceID,
+	// Step 8: Create Project record and link Plan → Project so the plan-by-
+	// project lookups (RejectPlan, ApprovePlan, MediationService) can resolve.
+	project, err := h.Queries.CreateProject(ctx, db.CreateProjectParams{
+		WorkspaceID:         parseUUID(workspaceID),
 		Title:               req.Title,
-		Description:         &genResult.Plan.Description,
+		Description:         strToText(genResult.Plan.Description),
 		Status:              "not_started",
 		ScheduleType:        scheduleType,
-		CronExpr:            req.CronExpr,
+		CronExpr:            ptrToText(req.CronExpr),
 		SourceConversations: sourceConvsJSON,
-		ChannelID:           &channelIDStr,
-		CreatorOwnerID:      userID,
-		CreatedAt:           now,
-		UpdatedAt:           now,
+		ChannelID:           ch.ID,
+		CreatorOwnerID:      parseUUID(userID),
+	})
+	if err != nil {
+		slog.Error("create project (from-chat) failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to create project")
+		return
+	}
+
+	// Link the freshly-created plan to this project. version_id is left null
+	// here — ProjectVersion is post-MVP per Plan 5 §13. Without this link, a
+	// later RejectPlan / ApprovePlan call (which uses GetPlanByProject) cannot
+	// find the plan.
+	if err := h.Queries.UpdatePlanProject(ctx, db.UpdatePlanProjectParams{
+		ID:        plan.ID,
+		ProjectID: project.ID,
+	}); err != nil {
+		slog.Warn("link plan to project failed", "error", err, "plan_id", uuidToString(plan.ID), "project_id", uuidToString(project.ID))
+	}
+
+	channelIDStr := uuidToString(ch.ID)
+	projectResp := projectToResponse(project)
+	// from-chat returns the channel id at the response level for convenience —
+	// the helper sets it from project.ChannelID, but make sure it's there even
+	// when the row write skipped the channel link for any reason.
+	if projectResp.ChannelID == nil {
+		projectResp.ChannelID = &channelIDStr
 	}
 
 	planResp := &CreateFromChatPlanResp{

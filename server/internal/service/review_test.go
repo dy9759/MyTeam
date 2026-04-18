@@ -61,7 +61,7 @@ func setupReviewEnv(t *testing.T, q *db.Queries) reviewTestEnv {
 	var projectID pgtype.UUID
 	err = pool.QueryRow(ctx, `
 		INSERT INTO project (workspace_id, title, description, status, created_by, schedule_type, source_conversations, creator_owner_id)
-		VALUES ($1, $2, '', 'active', $3, 'one_time', '[]'::jsonb, $3)
+		VALUES ($1, $2, '', 'running', $3, 'one_time', '[]'::jsonb, $3)
 		RETURNING id
 	`, wsID, "Project for "+t.Name(), memberID).Scan(&projectID)
 	if err != nil {
