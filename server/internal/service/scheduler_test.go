@@ -417,13 +417,17 @@ func TestHandleTaskFailure_FallbackAgent(t *testing.T) {
 	svc := makeSchedulerService(q)
 	ctx := context.Background()
 
+	// Migration 062 requires a distinct owner for each personal_agent in
+	// a workspace, so create a fresh user for the fallback.
+	fallbackOwner := createTestUser(t, q, "fallback@example.com", "Fallback Owner")
+
 	// Spin up a second agent on the same runtime to act as the fallback.
 	fallback, err := q.CreatePersonalAgent(ctx, db.CreatePersonalAgentParams{
 		WorkspaceID: env.WorkspaceID,
 		Name:        "Fallback " + t.Name(),
 		Description: "fallback agent",
 		RuntimeID:   env.RuntimeID,
-		OwnerID:     env.MemberID,
+		OwnerID:     fallbackOwner,
 	})
 	if err != nil {
 		t.Fatalf("create fallback agent: %v", err)
@@ -500,12 +504,15 @@ func TestHandleTaskFailure_FallbackResetsRetryBudget(t *testing.T) {
 	svc := makeSchedulerService(q)
 	ctx := context.Background()
 
+	// See migration 062: each personal_agent in a workspace needs a unique owner.
+	fallbackOwner := createTestUser(t, q, "fallback-reset@example.com", "Fallback Reset Owner")
+
 	fallback, err := q.CreatePersonalAgent(ctx, db.CreatePersonalAgentParams{
 		WorkspaceID: env.WorkspaceID,
 		Name:        "Fallback " + t.Name(),
 		Description: "fallback agent",
 		RuntimeID:   env.RuntimeID,
-		OwnerID:     env.MemberID,
+		OwnerID:     fallbackOwner,
 	})
 	if err != nil {
 		t.Fatalf("create fallback agent: %v", err)

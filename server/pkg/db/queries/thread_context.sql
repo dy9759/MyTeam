@@ -33,6 +33,9 @@ SELECT * FROM thread_context_item
 WHERE thread_id = $1 AND item_type = $2
 ORDER BY created_at ASC;
 
+-- name: UpdateThreadContextItemMetadata :exec
+UPDATE thread_context_item SET metadata = $2 WHERE id = $1;
+
 -- name: DeleteThreadContextItem :exec
 DELETE FROM thread_context_item WHERE id = $1;
 

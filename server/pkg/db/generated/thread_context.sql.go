@@ -211,3 +211,17 @@ func (q *Queries) ListThreadContextItemsByType(ctx context.Context, arg ListThre
 	}
 	return items, nil
 }
+
+const updateThreadContextItemMetadata = `-- name: UpdateThreadContextItemMetadata :exec
+UPDATE thread_context_item SET metadata = $2 WHERE id = $1
+`
+
+type UpdateThreadContextItemMetadataParams struct {
+	ID       pgtype.UUID `json:"id"`
+	Metadata []byte      `json:"metadata"`
+}
+
+func (q *Queries) UpdateThreadContextItemMetadata(ctx context.Context, arg UpdateThreadContextItemMetadataParams) error {
+	_, err := q.db.Exec(ctx, updateThreadContextItemMetadata, arg.ID, arg.Metadata)
+	return err
+}

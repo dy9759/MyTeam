@@ -52,19 +52,22 @@ func newMediationFixture(t *testing.T) *mediationFixture {
 	return &mediationFixture{t: t, q: q, pool: pool, svc: svc, wsID: wsID, userID: userID}
 }
 
-// insertMediationAgent creates a personal agent with a runtime.
+// insertMediationAgent creates a personal agent with a runtime. Each
+// call gets a fresh owner since migration 062 enforces one personal_agent
+// per (workspace_id, owner_id).
 func (f *mediationFixture) insertAgent(name string) db.Agent {
 	f.t.Helper()
 	rt, err := f.q.EnsureCloudRuntime(context.Background(), f.wsID)
 	if err != nil {
 		f.t.Fatalf("ensure runtime: %v", err)
 	}
+	owner := createTestUser(f.t, f.q, "mediation-"+name+"@example.com", "Mediation Owner "+name)
 	a, err := f.q.CreatePersonalAgent(context.Background(), db.CreatePersonalAgentParams{
 		WorkspaceID: f.wsID,
 		Name:        name,
 		Description: "test agent",
 		RuntimeID:   rt.ID,
-		OwnerID:     f.userID,
+		OwnerID:     owner,
 	})
 	if err != nil {
 		f.t.Fatalf("create agent: %v", err)

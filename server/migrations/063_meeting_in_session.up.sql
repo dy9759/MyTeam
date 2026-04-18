@@ -34,3 +34,12 @@ CREATE INDEX IF NOT EXISTS idx_thread_meeting_workspace
 CREATE INDEX IF NOT EXISTS idx_thread_metadata_kind
     ON thread ((metadata->>'kind'))
     WHERE metadata ? 'kind';
+
+-- Extend thread_context_item.item_type to allow 'action_item' (the new
+-- meeting-extracted todo) and 'briefing' (pre-meeting summary). The
+-- original CHECK constraint in migration 051 was decision/file/code_snippet/
+-- summary/reference only.
+ALTER TABLE thread_context_item DROP CONSTRAINT IF EXISTS thread_context_item_item_type_check;
+ALTER TABLE thread_context_item
+    ADD CONSTRAINT thread_context_item_item_type_check
+    CHECK (item_type IN ('decision','file','code_snippet','summary','reference','action_item','briefing'));
