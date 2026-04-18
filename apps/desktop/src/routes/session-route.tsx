@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import type { Channel, Conversation, Message } from "@myteam/client-core";
+import type { Agent, Channel, Conversation, Message } from "@myteam/client-core";
 import { RouteShell } from "@/components/route-shell";
-import { useDesktopWorkspaceStore } from "@/lib/desktop-client";
+import { desktopApi, useDesktopWorkspaceStore } from "@/lib/desktop-client";
 import {
   FileList,
   MessageInput,
@@ -21,6 +21,7 @@ type Selection =
 export function SessionRoute() {
   const agents = useDesktopWorkspaceStore((s) => s.agents);
   const members = useDesktopWorkspaceStore((s) => s.members);
+  const workspaceId = useDesktopWorkspaceStore((s) => s.workspace?.id);
 
   const {
     currentMessages,
@@ -40,9 +41,16 @@ export function SessionRoute() {
   const [typingAgent, setTypingAgent] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"messages" | "files">("messages");
   const [threadMessage, setThreadMessage] = useState<Message | null>(null);
+  const [personalAgent, setPersonalAgent] = useState<Agent | null>(null);
+
+  const visibleAgents = useMemo(() => {
+    if (!personalAgent) return agents;
+    if (agents.some((agent) => agent.id === personalAgent.id)) return agents;
+    return [personalAgent, ...agents];
+  }, [agents, personalAgent]);
 
   const mentionCandidates = useMemo(() => {
-    const personalAgents = agents.filter(
+    const personalAgents = visibleAgents.filter(
       (a) => !((a as any).agent_type === "system_agent" || (a as any).agent_type === "page_system_agent" || (a as any).is_system)
     );
     return [
@@ -57,14 +65,65 @@ export function SessionRoute() {
         kind: "owner" as const,
       })),
     ];
-  }, [agents, members]);
+  }, [visibleAgents, members]);
 
   const dmCandidates: DMCandidate[] = mentionCandidates;
+
+  const dmConversations = useMemo(() => {
+    if (!personalAgent) return conversations;
+
+    const personalName = personalAgent.display_name ?? personalAgent.name;
+    const existingConversation = conversations.find(
+      (conversation) =>
+        conversation.peer_type === "agent" &&
+        conversation.peer_id === personalAgent.id,
+    );
+    const personalConversation: Conversation = {
+      ...(existingConversation ?? {
+        peer_id: personalAgent.id,
+        peer_type: "agent",
+        unread_count: 0,
+      }),
+      peer_name: existingConversation?.peer_name ?? personalName,
+    };
+
+    return [
+      personalConversation,
+      ...conversations.filter(
+        (conversation) =>
+          !(
+            conversation.peer_type === "agent" &&
+            conversation.peer_id === personalAgent.id
+          ),
+      ),
+    ];
+  }, [conversations, personalAgent]);
 
   useEffect(() => {
     void loadConversations();
     void loadChannels();
   }, [loadConversations, loadChannels]);
+
+  useEffect(() => {
+    if (!workspaceId) return;
+    let cancelled = false;
+
+    void desktopApi
+      .getPersonalAgent()
+      .then((agent) => {
+        if (!cancelled) {
+          setPersonalAgent(agent);
+        }
+      })
+      .catch((error) => {
+        // eslint-disable-next-line no-console
+        console.warn("[session] failed to load personal agent:", error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [workspaceId]);
 
   useEffect(() => {
     if (!selection) return;
@@ -82,7 +141,7 @@ export function SessionRoute() {
 
   const resolveName = (senderId: string, senderType: "member" | "agent") => {
     if (senderType === "agent") {
-      return agents.find((a) => a.id === senderId)?.name ?? "Agent";
+      return visibleAgents.find((a) => a.id === senderId)?.name ?? "Agent";
     }
     return members.find((m) => m.id === senderId)?.name ?? "User";
   };
@@ -160,7 +219,7 @@ export function SessionRoute() {
             Direct Messages
           </p>
           <div className="mt-2 space-y-1">
-            {conversations.map((conversation) => (
+            {dmConversations.map((conversation) => (
               <SidebarItem
                 key={`${conversation.peer_type}:${conversation.peer_id}`}
                 active={
@@ -169,7 +228,12 @@ export function SessionRoute() {
                 }
                 onClick={() => setSelection({ kind: "dm", conversation })}
                 title={conversation.peer_name ?? conversation.peer_id}
-                subtitle={conversation.peer_type}
+                subtitle={
+                  personalAgent?.id === conversation.peer_id &&
+                  conversation.peer_type === "agent"
+                    ? `agent · ${agentAvailabilityLabel(personalAgent.status)}`
+                    : conversation.peer_type
+                }
               />
             ))}
           </div>
@@ -313,6 +377,13 @@ function SidebarItem({
       ) : null}
     </button>
   );
+}
+
+function agentAvailabilityLabel(status?: Agent["status"]) {
+  if (!status || status === "offline") {
+    return "available";
+  }
+  return status;
 }
 
 function EmptyPane({ message }: { message: string }) {

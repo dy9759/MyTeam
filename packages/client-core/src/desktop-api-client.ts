@@ -209,6 +209,10 @@ export class DesktopApiClient {
     return this.request("/api/system-agent");
   }
 
+  async getPersonalAgent(): Promise<Agent> {
+    return this.request("/api/personal-agent");
+  }
+
   async sendMessage(params: {
     channel_id?: string;
     recipient_id?: string;
