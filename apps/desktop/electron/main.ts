@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, shell } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Store from "electron-store";
+import { isAllowedExternalURL, safeIPC, validateOpenablePath } from "./security";
 import type { SessionUser } from "@myteam/client-core";
 import {
   IPC_CHANNELS,
@@ -41,7 +42,17 @@ function createMainWindow() {
     trafficLightPosition: { x: 16, y: 18 },
     webPreferences: {
       preload: path.join(moduleDir, "preload.mjs"),
-      webSecurity: !VITE_DEV_SERVER_URL, // disable CORS in dev mode only
+      // Hardening per Electron security guide. Defaults are already
+      // secure in Electron 20+, but explicit pins protect against
+      // future regressions if a contributor copy-pastes from old docs.
+      // Issue #43.
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      // webSecurity off only in dev so the renderer can hit the API on
+      // a different origin without a CORS proxy. Production keeps it
+      // on (CORS is configured server-side via FRONTEND_ORIGIN).
+      webSecurity: !VITE_DEV_SERVER_URL,
     },
   });
 
@@ -166,9 +177,15 @@ function registerIpc() {
     store.delete("workspaceId");
   });
 
-  ipcMain.handle(IPC_CHANNELS.shellOpenExternal, async (_event, url: string) => {
-    await shell.openExternal(url);
-  });
+  ipcMain.handle(
+    IPC_CHANNELS.shellOpenExternal,
+    safeIPC(IPC_CHANNELS.shellOpenExternal, async (_event, url: string) => {
+      if (!isAllowedExternalURL(url)) {
+        throw new Error(`shell.openExternal: blocked scheme in ${url}`);
+      }
+      await shell.openExternal(url);
+    }),
+  );
   ipcMain.handle(IPC_CHANNELS.shellGetConfig, async (): Promise<DesktopShellConfig> => ({
     apiBaseUrl,
     appUrl,
@@ -200,29 +217,41 @@ function registerIpc() {
   });
   ipcMain.handle(IPC_CHANNELS.windowClose, async () => mainWindow?.close());
 
-  ipcMain.handle(IPC_CHANNELS.runtimeStartDaemon, async () => {
-    await runtimeController.startDaemon();
-  });
-  ipcMain.handle(IPC_CHANNELS.runtimeStopDaemon, async () => {
-    await runtimeController.stopDaemon();
-  });
-  ipcMain.handle(IPC_CHANNELS.runtimeList, async () => runtimeController.listRuntimes());
+  ipcMain.handle(
+    IPC_CHANNELS.runtimeStartDaemon,
+    safeIPC(IPC_CHANNELS.runtimeStartDaemon, async () => {
+      await runtimeController.startDaemon();
+    }),
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.runtimeStopDaemon,
+    safeIPC(IPC_CHANNELS.runtimeStopDaemon, async () => {
+      await runtimeController.stopDaemon();
+    }),
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.runtimeList,
+    safeIPC(IPC_CHANNELS.runtimeList, async () => runtimeController.listRuntimes()),
+  );
   ipcMain.handle(
     IPC_CHANNELS.runtimeWatchWorkspace,
-    async (_event, workspaceId: string) => {
+    safeIPC(IPC_CHANNELS.runtimeWatchWorkspace, async (_event, workspaceId: string) => {
       store.set("workspaceId", workspaceId);
       await runtimeController.watchWorkspace(workspaceId);
-    },
+    }),
   );
 
-  ipcMain.handle(IPC_CHANNELS.fileOpenPath, async (_event, targetPath: string) => {
-    await nativeBridge.openPath(targetPath);
-  });
+  ipcMain.handle(
+    IPC_CHANNELS.fileOpenPath,
+    safeIPC(IPC_CHANNELS.fileOpenPath, async (_event, targetPath: string) => {
+      await nativeBridge.openPath(validateOpenablePath(targetPath));
+    }),
+  );
   ipcMain.handle(
     IPC_CHANNELS.fileRevealPath,
-    async (_event, targetPath: string) => {
-      await nativeBridge.revealPath(targetPath);
-    },
+    safeIPC(IPC_CHANNELS.fileRevealPath, async (_event, targetPath: string) => {
+      await nativeBridge.revealPath(validateOpenablePath(targetPath));
+    }),
   );
   ipcMain.handle(IPC_CHANNELS.fileOpenPanel, async () => nativeBridge.openPanel());
   ipcMain.on(IPC_CHANNELS.notificationShow, (_event, payload: { title: string; body: string }) => {
@@ -249,7 +278,13 @@ app.on("window-all-closed", () => {
 
 app.on("web-contents-created", (_event, contents) => {
   contents.setWindowOpenHandler(({ url }) => {
-    void shell.openExternal(url);
+    // Same scheme whitelist as the IPC handler — protects against
+    // window.open('javascript:...') bypassing the explicit IPC path.
+    if (isAllowedExternalURL(url)) {
+      void shell.openExternal(url);
+    } else {
+      console.warn(`[window-open] blocked: ${url}`);
+    }
     return { action: "deny" };
   });
 });

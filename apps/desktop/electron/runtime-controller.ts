@@ -5,6 +5,11 @@ import type { SessionRuntime } from "@myteam/client-core";
 
 const execFileAsync = promisify(execFile);
 
+// CLI commands should return well under 10s. Longer means daemon is
+// hung (port collision, db unreachable). Killing here prevents zombie
+// processes accumulating across renderer reconnects. Issue #45.
+const CLI_TIMEOUT_MS = 10_000;
+
 export class DesktopRuntimeController {
   constructor(
     private readonly projectRoot: string,
@@ -22,28 +27,30 @@ export class DesktopRuntimeController {
     };
   }
 
-  async startDaemon(): Promise<void> {
-    await execFileAsync(this.getCliPath(), ["daemon", "start"], {
+  // execOpts centralizes timeout + cwd + env so every call honors the
+  // same kill deadline.
+  private execOpts() {
+    return {
       cwd: this.projectRoot,
       env: this.baseEnv(),
-    });
+      timeout: CLI_TIMEOUT_MS,
+      killSignal: "SIGKILL" as const,
+    };
+  }
+
+  async startDaemon(): Promise<void> {
+    await execFileAsync(this.getCliPath(), ["daemon", "start"], this.execOpts());
   }
 
   async stopDaemon(): Promise<void> {
-    await execFileAsync(this.getCliPath(), ["daemon", "stop"], {
-      cwd: this.projectRoot,
-      env: this.baseEnv(),
-    });
+    await execFileAsync(this.getCliPath(), ["daemon", "stop"], this.execOpts());
   }
 
   async listRuntimes(): Promise<SessionRuntime[]> {
     const { stdout } = await execFileAsync(
       this.getCliPath(),
       ["runtime", "list", "--output", "json"],
-      {
-        cwd: this.projectRoot,
-        env: this.baseEnv(),
-      },
+      this.execOpts(),
     );
     return JSON.parse(stdout) as SessionRuntime[];
   }
@@ -52,10 +59,7 @@ export class DesktopRuntimeController {
     await execFileAsync(
       this.getCliPath(),
       ["workspace", "watch", workspaceId],
-      {
-        cwd: this.projectRoot,
-        env: this.baseEnv(),
-      },
+      this.execOpts(),
     );
   }
 }
