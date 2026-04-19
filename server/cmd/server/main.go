@@ -61,6 +61,9 @@ func main() {
 	// memory.confirmed gates cloud-sync escalation per scope; today
 	// it just logs (no separate cloud DB), but the seam is wired.
 	registerMemoryListeners(bus, queries, hub)
+	// Phase T: bounded worker pool for outbound MyMemo Hub POSTs.
+	// No-op when MEMORY_HUB_URL is unset.
+	defaultMemoryHubPoster.Start(ctx)
 
 	r := NewRouter(pool, hub, bus)
 
@@ -88,6 +91,7 @@ func main() {
 
 	slog.Info("shutting down server")
 	sweepCancel()
+	defaultMemoryHubPoster.Stop(5 * time.Second)
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 

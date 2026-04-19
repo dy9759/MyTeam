@@ -1,14 +1,9 @@
 package main
 
 import (
-	"bytes"
-	"context"
 	"encoding/json"
-	"io"
 	"log/slog"
-	"net/http"
 	"os"
-	"time"
 
 	"github.com/multica-ai/multica/server/internal/events"
 	"github.com/multica-ai/multica/server/internal/realtime"
@@ -16,62 +11,13 @@ import (
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
-// memoryHubPoster is the optional outbound sync target. When set
-// (MEMORY_HUB_URL env), confirmed sharable memories are POSTed to
-// {url}/api/v1/memories with a derived JSON body. Mirrors the
-// MyMemo Memory Hub HTTP contract per reference doc §五.
-//
-// Phase R: pluggable cloud-sync. Default nil — listener stays
-// log-only. Production sets MEMORY_HUB_URL to enable.
+// memoryHubURL / memoryHubBearer are the env-supplied target. Read once
+// at process start. Empty url => cloud-sync disabled (poster Enqueue is
+// a no-op). Per MyMemo Memory Hub HTTP contract (reference doc §五).
 var (
 	memoryHubURL    = os.Getenv("MEMORY_HUB_URL")
 	memoryHubBearer = os.Getenv("MEMORY_HUB_TOKEN")
-	memoryHubClient = &http.Client{Timeout: 10 * time.Second}
 )
-
-// postToMemoryHub fires a best-effort POST. Errors logged, never
-// retried (caller bus is sync — retries belong in a dedicated worker).
-func postToMemoryHub(ctx context.Context, eventType, workspaceID string, payload map[string]any) {
-	if memoryHubURL == "" {
-		return
-	}
-	body, err := json.Marshal(map[string]any{
-		"event_type":   eventType,
-		"workspace_id": workspaceID,
-		"payload":      payload,
-		"sent_at":      time.Now().UTC(),
-	})
-	if err != nil {
-		slog.Warn("memory hub: marshal failed", "err", err)
-		return
-	}
-	req, err := http.NewRequestWithContext(ctx, "POST",
-		memoryHubURL+"/api/v1/memories", bytes.NewReader(body))
-	if err != nil {
-		slog.Warn("memory hub: build request failed", "err", err)
-		return
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if memoryHubBearer != "" {
-		req.Header.Set("Authorization", "Bearer "+memoryHubBearer)
-	}
-	resp, err := memoryHubClient.Do(req)
-	if err != nil {
-		slog.Warn("memory hub: post failed", "url", memoryHubURL, "err", err)
-		return
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode/100 != 2 {
-		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		slog.Warn("memory hub: non-2xx",
-			"status", resp.StatusCode, "body", string(raw))
-		return
-	}
-	slog.Info("memory hub: synced",
-		"event_type", eventType,
-		"workspace_id", workspaceID,
-		"memory_id", payload["memory_id"])
-}
 
 // memorySyncEnabled is exposed for tests.
 func memorySyncEnabled() bool { return memoryHubURL != "" }
@@ -122,9 +68,10 @@ func registerMemoryListeners(bus *events.Bus, _ *db.Queries, hub *realtime.Hub) 
 			// poll. workspace-scoped — only members see their
 			// confirmed memories.
 			broadcastMemoryEvent(hub, "memory.confirmed", e.WorkspaceID, payload)
-			// Phase R: pluggable cloud-sync. Async fire-and-forget
-			// so bus doesn't block on a slow MyMemo Hub.
-			go postToMemoryHub(context.Background(), "memory.confirmed", e.WorkspaceID, payload)
+			// Phase R+T: cloud-sync via bounded worker pool. Drops
+			// when queue full to keep bus latency bounded; never
+			// blocks. Server lifecycle owns Start/Stop.
+			defaultMemoryHubPoster.Enqueue("memory.confirmed", e.WorkspaceID, payload)
 		default:
 			slog.Warn("memory: confirmed with unknown scope",
 				"workspace_id", e.WorkspaceID,
