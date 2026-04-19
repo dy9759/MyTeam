@@ -6,6 +6,7 @@ import {
   Routes,
 } from "react-router-dom";
 import { DesktopShell } from "@/components/desktop-shell";
+import { Toaster } from "@/components/ui/sonner";
 import { bootstrapDesktopApp, useDesktopAuthStore } from "@/lib/desktop-client";
 import { LoginRoute } from "@/routes/login-route";
 import { SessionRoute } from "@/routes/session-route";
@@ -34,6 +35,7 @@ export function App() {
 
   return (
     <BrowserRouter>
+      <Toaster />
       <Routes>
         <Route
           path="/login"
