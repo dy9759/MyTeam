@@ -314,11 +314,15 @@ func (s *MeetingService) Summarize(ctx context.Context, threadID uuid.UUID, audi
 				return fmt.Errorf("persist action item %q: %w", ai.Task, err)
 			}
 			// Phase 2 dual-write: parallel memory_record row pointing at
-			// this thread_context_item. Status=candidate (per reference
-			// §七.4 — agents write candidates, humans confirm).
-			// memorySvc bound to the same tx so the whole batch is atomic.
+			// this thread_context_item. Default status=candidate (per
+			// reference §七.4 — agents write candidates, humans confirm).
+			//
+			// Phase S: auto-promote when ai.Confidence >= AutoApproveThreshold
+			// (0.85). Skip the human gate for high-confidence extractions —
+			// they trigger the full Promote pipeline (auto-index + Bus
+			// memory.confirmed event + downstream sync).
 			if memorySvc != nil {
-				if _, err := memorySvc.Append(ctx, memory.AppendInput{
+				appended, err := memorySvc.Append(ctx, memory.AppendInput{
 					WorkspaceID: uuid.UUID(thread.WorkspaceID.Bytes),
 					Type:        memory.TypeTask,
 					Scope:       memory.ScopeSharedSummary,
@@ -331,8 +335,18 @@ func (s *MeetingService) Summarize(ctx context.Context, threadID uuid.UUID, audi
 					Body:       string(bodyBytes),
 					Confidence: ai.Confidence,
 					Status:     memory.StatusCandidate,
-				}); err != nil {
+				})
+				if err != nil {
 					return fmt.Errorf("dual-write memory_record for action %q: %w", ai.Task, err)
+				}
+				if ai.Confidence >= AutoApproveThreshold {
+					if _, err := memorySvc.Promote(ctx, appended.ID); err != nil {
+						// Don't fail the meeting on auto-promote error —
+						// item is still in DB as candidate, human can
+						// approve manually.
+						slog.Warn("meeting: auto-promote failed",
+							"action", ai.Task, "confidence", ai.Confidence, "err", err)
+					}
 				}
 			}
 		}

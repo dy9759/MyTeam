@@ -1,7 +1,12 @@
+"use client";
+
 import { MemoryList } from "@/features/memories/components/memory-list";
 import { MemorySearch } from "@/features/memories/components/memory-search";
+import { useMemoryRealtime } from "@/features/memories";
 
 export default function MemoriesPage() {
+  useMemoryRealtime();
+
   return (
     <div className="flex flex-1 min-h-0 flex-col">
       <header className="flex h-12 shrink-0 items-center border-b border-border px-4">

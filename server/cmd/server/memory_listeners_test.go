@@ -1,7 +1,11 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/multica-ai/multica/server/internal/events"
@@ -15,7 +19,7 @@ import (
 // purpose here is the smoke-test of the registration shape.
 func TestRegisterMemoryListeners_RegistersConfirmedHandler(t *testing.T) {
 	bus := events.New()
-	registerMemoryListeners(bus, nil, nil) // queries unused by current handlers
+	registerMemoryListeners(bus, nil, nil) // queries + hub unused here
 
 	// Publish each scope variant — handler must accept all without panic.
 	for _, scope := range []memory.MemoryScope{
@@ -42,7 +46,6 @@ func TestRegisterMemoryListeners_RegistersConfirmedHandler(t *testing.T) {
 		})
 	}
 
-	// Archive too.
 	bus.Publish(events.Event{
 		Type:        memory.EventMemoryArchived,
 		WorkspaceID: "ws-1",
@@ -108,5 +111,58 @@ func TestRegisterMemoryListeners_HubBranchSafe(t *testing.T) {
 	}
 	if !json.Valid(out) {
 		t.Errorf("invalid json: %s", out)
+	}
+}
+
+// TestPostToMemoryHub_NoOpWhenURLUnset — without MEMORY_HUB_URL the
+// poster returns immediately, no HTTP call.
+func TestPostToMemoryHub_NoOpWhenURLUnset(t *testing.T) {
+	prev := memoryHubURL
+	memoryHubURL = ""
+	t.Cleanup(func() { memoryHubURL = prev })
+
+	if memorySyncEnabled() {
+		t.Fatal("expected sync disabled with empty URL")
+	}
+	postToMemoryHub(context.Background(), "memory.confirmed", "ws-1",
+		map[string]any{"memory_id": "x"})
+	// No assertion — would fail-fast on a panic or HTTP attempt.
+}
+
+// TestPostToMemoryHub_PostsWhenURLSet — set MEMORY_HUB_URL to an
+// httptest server, verify request shape (POST, path, bearer, body).
+func TestPostToMemoryHub_PostsWhenURLSet(t *testing.T) {
+	called := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		if r.Method != "POST" || r.URL.Path != "/api/v1/memories" {
+			t.Errorf("path/method: %s %s", r.Method, r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer tok-test" {
+			t.Errorf("Authorization: %q", got)
+		}
+		raw, _ := io.ReadAll(r.Body)
+		var got map[string]any
+		_ = json.Unmarshal(raw, &got)
+		if got["event_type"] != "memory.confirmed" || got["workspace_id"] != "ws-9" {
+			t.Errorf("body: %#v", got)
+		}
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer srv.Close()
+
+	prevURL, prevTok := memoryHubURL, memoryHubBearer
+	memoryHubURL = srv.URL
+	memoryHubBearer = "tok-test"
+	t.Cleanup(func() {
+		memoryHubURL = prevURL
+		memoryHubBearer = prevTok
+	})
+
+	postToMemoryHub(context.Background(), "memory.confirmed", "ws-9",
+		map[string]any{"memory_id": "abc", "scope": "team"})
+	if !called {
+		t.Fatal("upstream not called")
 	}
 }

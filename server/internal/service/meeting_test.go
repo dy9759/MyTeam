@@ -245,8 +245,17 @@ func TestMeetingService_HappyPath(t *testing.T) {
 			if m.Type != memory.TypeTask {
 				t.Errorf("memory type: want task, got %s", m.Type)
 			}
-			if m.Status != memory.StatusCandidate {
-				t.Errorf("memory status: want candidate, got %s", m.Status)
+			// Phase S: high-confidence (>= AutoApproveThreshold=0.85)
+			// rows are auto-promoted to confirmed; low-confidence stay
+			// candidate. Test action items: 0.95 (auto) + 0.4 (candidate).
+			if m.Confidence >= AutoApproveThreshold {
+				if m.Status != memory.StatusConfirmed {
+					t.Errorf("high-conf memory: want confirmed, got %s", m.Status)
+				}
+			} else {
+				if m.Status != memory.StatusCandidate {
+					t.Errorf("low-conf memory: want candidate, got %s", m.Status)
+				}
 			}
 			if m.Scope != memory.ScopeSharedSummary {
 				t.Errorf("memory scope: want shared_summary, got %s", m.Scope)
