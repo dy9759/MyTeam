@@ -27,7 +27,11 @@ const store = new Store<Record<string, string>>({
 });
 
 const nativeBridge = new NativeBridge(projectRoot);
-const runtimeController = new DesktopRuntimeController(projectRoot, apiBaseUrl);
+const runtimeController = new DesktopRuntimeController(
+  projectRoot,
+  apiBaseUrl,
+  Boolean(VITE_DEV_SERVER_URL),
+);
 
 let mainWindow: BrowserWindow | null = null;
 
