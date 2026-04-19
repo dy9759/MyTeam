@@ -9,6 +9,7 @@ import {
   User,
   Plus,
   Check,
+  Brain,
   SquarePen,
   MessageSquare,
   FolderGit2,
@@ -44,6 +45,7 @@ import { useModalStore } from "@/features/modals";
 
 const navItems = [
   { href: "/session", label: "会话", icon: MessageSquare },
+  { href: "/memories", label: "Memories", icon: Brain },
   { href: "/projects", label: "项目", icon: FolderGit2 },
   { href: "/files", label: "文件", icon: FileText },
   { href: "/account", label: "身份", icon: User },

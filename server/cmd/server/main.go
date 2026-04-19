@@ -60,7 +60,7 @@ func main() {
 	// Memory lifecycle subscribers — phase M of the memory plan.
 	// memory.confirmed gates cloud-sync escalation per scope; today
 	// it just logs (no separate cloud DB), but the seam is wired.
-	registerMemoryListeners(bus, queries)
+	registerMemoryListeners(bus, queries, hub)
 
 	r := NewRouter(pool, hub, bus)
 

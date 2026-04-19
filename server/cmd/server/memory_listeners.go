@@ -1,9 +1,11 @@
 package main
 
 import (
+	"encoding/json"
 	"log/slog"
 
 	"github.com/multica-ai/multica/server/internal/events"
+	"github.com/multica-ai/multica/server/internal/realtime"
 	"github.com/multica-ai/multica/server/internal/service/memory"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
@@ -24,7 +26,9 @@ import (
 //
 // All handlers are best-effort: errors are logged, never re-published.
 // The Bus already recovers from panics per bus.go.
-func registerMemoryListeners(bus *events.Bus, _ *db.Queries) {
+//
+// hub is optional — pass nil to disable WS broadcasts (tests).
+func registerMemoryListeners(bus *events.Bus, _ *db.Queries, hub *realtime.Hub) {
 	bus.Subscribe(memory.EventMemoryConfirmed, func(e events.Event) {
 		payload, ok := e.Payload.(map[string]any)
 		if !ok {
@@ -33,16 +37,13 @@ func registerMemoryListeners(bus *events.Bus, _ *db.Queries) {
 		scope, _ := payload["scope"].(string)
 		switch memory.MemoryScope(scope) {
 		case memory.ScopePrivateLocal:
-			// Per reference doc: private memories stay local. Skip.
+			// Per reference doc: private memories stay local. Skip
+			// both log + WS broadcast — owner is the only audience.
 			return
 		case memory.ScopeSharedSummary,
 			memory.ScopeTeam,
 			memory.ScopeAgentState,
 			memory.ScopeArchive:
-			// Sharable scopes — log the confirmation. A future
-			// cloud-sync handler hooks here to write a derived row
-			// to the cross-org store; today the local memory_record
-			// IS the source of truth, so this is just observability.
 			slog.Info("memory: confirmed for sharable scope",
 				"workspace_id", e.WorkspaceID,
 				"memory_id", payload["memory_id"],
@@ -51,6 +52,10 @@ func registerMemoryListeners(bus *events.Bus, _ *db.Queries) {
 				"raw_kind", payload["raw_kind"],
 				"version", payload["version"],
 			)
+			// Phase P: WS broadcast so frontend can update without
+			// poll. workspace-scoped — only members see their
+			// confirmed memories.
+			broadcastMemoryEvent(hub, "memory.confirmed", e.WorkspaceID, payload)
 		default:
 			slog.Warn("memory: confirmed with unknown scope",
 				"workspace_id", e.WorkspaceID,
@@ -70,5 +75,25 @@ func registerMemoryListeners(bus *events.Bus, _ *db.Queries) {
 			"memory_id", payload["memory_id"],
 			"type", payload["type"],
 		)
+		broadcastMemoryEvent(hub, "memory.archived", e.WorkspaceID, payload)
 	})
+}
+
+// broadcastMemoryEvent fans the event out to every WS client in the
+// workspace. Marshalling errors are logged but never propagate — WS
+// is best-effort.
+func broadcastMemoryEvent(hub *realtime.Hub, eventType, workspaceID string, payload map[string]any) {
+	if hub == nil || workspaceID == "" {
+		return
+	}
+	body, err := json.Marshal(map[string]any{
+		"type":         eventType,
+		"workspace_id": workspaceID,
+		"payload":      payload,
+	})
+	if err != nil {
+		slog.Warn("memory listener: marshal failed", "type", eventType, "err", err)
+		return
+	}
+	hub.BroadcastToWorkspace(workspaceID, body)
 }

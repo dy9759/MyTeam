@@ -20,6 +20,7 @@ import (
 	"github.com/multica-ai/multica/server/internal/middleware"
 	"github.com/multica-ai/multica/server/internal/realtime"
 	"github.com/multica-ai/multica/server/internal/service"
+	"github.com/multica-ai/multica/server/internal/service/embed"
 	"github.com/multica-ai/multica/server/internal/service/memory"
 	"github.com/multica-ai/multica/server/internal/storage"
 	"github.com/multica-ai/multica/server/pkg/agent_runner"
@@ -56,6 +57,18 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 	s3 := storage.NewS3StorageFromEnv()
 	cfSigner := auth.NewCloudFrontSignerFromEnv()
 	memorySvc := memory.NewService(queries).WithBus(bus)
+	// Phase N: wire embedder + vector store when DASHSCOPE_API_KEY is set.
+	// Without it, Search returns ErrIndexingNotWired (handler maps to 503),
+	// CRUD/List still work — graceful degradation per env config.
+	if apiKey := os.Getenv("DASHSCOPE_API_KEY"); apiKey != "" {
+		model := os.Getenv("DASHSCOPE_EMBED_MODEL")
+		if model == "" {
+			model = "text-embedding-v4"
+		}
+		embedder := embed.NewDashScopeClient(apiKey, model)
+		store := memory.NewPgvectorStore(pool, embedder.Dim())
+		memorySvc = memorySvc.WithIndexing(memory.NewMarkdownChunker(), embedder, store)
+	}
 	h := handler.New(queries, pool, hub, bus, emailSvc, s3, cfSigner, memorySvc)
 	// Single Claude Agent SDK runner shared across every cloud-mode invocation
 	// path so a system / personal / project agent's cloud_llm_config controls
