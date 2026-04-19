@@ -13,40 +13,51 @@ import (
 func TestMiaojiClient_BatchSummarize_HappyPath(t *testing.T) {
 	var submitCalls, queryCalls int
 
+	// Sub-server hosts the result-file URLs that query points at.
+	resultMux := http.NewServeMux()
+	resultMux.HandleFunc("/transcription.json", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"utterances":[{"speaker":"A","text":"hello","start_time":0,"end_time":1500}]}`))
+	})
+	resultMux.HandleFunc("/information.json", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"todo_list":[{"task":"draft prd","owner":"alice","due_date":"2026-04-30"}],"decisions":["ship phase 1"]}`))
+	})
+	resultMux.HandleFunc("/summary.json", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"summary":"sprint review concluded with 2 actions"}`))
+	})
+	resultSrv := httptest.NewServer(resultMux)
+	defer resultSrv.Close()
+
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/submit"):
 			submitCalls++
 			if r.Header.Get("X-Api-App-Key") != "app-id-1" {
-				t.Errorf("X-Api-App-Key not propagated, got %q", r.Header.Get("X-Api-App-Key"))
+				t.Errorf("X-Api-App-Key: %q", r.Header.Get("X-Api-App-Key"))
 			}
-			if r.Header.Get("X-Api-Access-Key") != "tok-1" {
-				t.Errorf("X-Api-Access-Key not propagated, got %q", r.Header.Get("X-Api-Access-Key"))
+			if r.Header.Get("X-Api-Sequence") != "-1" {
+				t.Errorf("X-Api-Sequence missing: %q", r.Header.Get("X-Api-Sequence"))
 			}
-			w.WriteHeader(200)
-			_, _ = w.Write([]byte(`{"resp":{"id":"task-42"}}`))
+			// Verify the spec-shaped body — Input.Offline.FileURL.
+			var got map[string]interface{}
+			_ = json.NewDecoder(r.Body).Decode(&got)
+			input, _ := got["Input"].(map[string]interface{})
+			offline, _ := input["Offline"].(map[string]interface{})
+			if offline["FileURL"] != "https://example.com/audio.mp3" {
+				t.Errorf("FileURL not in body: %#v", offline)
+			}
+			_, _ = w.Write([]byte(`{"TaskID":"task-42"}`))
 		case strings.HasSuffix(r.URL.Path, "/query"):
 			queryCalls++
 			// First query returns running, second returns success.
 			if queryCalls < 2 {
-				_, _ = w.Write([]byte(`{"resp":{"status":"running"}}`))
+				_, _ = w.Write([]byte(`{"Status":"running"}`))
 				return
 			}
-			payload := map[string]any{
-				"resp": map[string]any{
-					"status": "success",
-					"result": map[string]any{
-						"sections":  []string{"intro", "decisions"},
-						"decisions": []string{"ship phase 1"},
-						"action_items": []map[string]any{
-							{"task": "draft prd", "owner": "alice", "confidence": 0.9},
-							{"task": "review code", "owner": "", "confidence": 0},
-						},
-						"segments": []map[string]any{
-							{"speaker": "A", "text": "hello", "start_ms": 0, "end_ms": 1500},
-						},
-					},
-				},
+			payload := map[string]interface{}{
+				"Status":           "success",
+				"TranscriptionURL": resultSrv.URL + "/transcription.json",
+				"InformationURL":   resultSrv.URL + "/information.json",
+				"SummaryURL":       resultSrv.URL + "/summary.json",
 			}
 			b, _ := json.Marshal(payload)
 			_, _ = w.Write(b)
@@ -59,7 +70,7 @@ func TestMiaojiClient_BatchSummarize_HappyPath(t *testing.T) {
 	c := &MiaojiClient{
 		HTTP:       srv.Client(),
 		Endpoint:   srv.URL,
-		ResourceID: "volc.bigasr.auc.lark",
+		ResourceID: "volc.lark.minutes",
 		PollEvery:  10 * time.Millisecond,
 		PollMax:    2 * time.Second,
 	}
@@ -79,17 +90,17 @@ func TestMiaojiClient_BatchSummarize_HappyPath(t *testing.T) {
 	if bundle.Provider != "doubao_miaoji" {
 		t.Errorf("provider: want doubao_miaoji, got %q", bundle.Provider)
 	}
-	if len(bundle.ActionItems) != 2 {
-		t.Fatalf("action items: want 2, got %d", len(bundle.ActionItems))
+	if len(bundle.ActionItems) != 1 {
+		t.Fatalf("action items: want 1, got %d (full bundle: %+v)", len(bundle.ActionItems), bundle)
 	}
-	if bundle.ActionItems[0].Owner != "alice" || bundle.ActionItems[0].Confidence != 0.9 {
+	if bundle.ActionItems[0].Owner != "alice" || bundle.ActionItems[0].Task != "draft prd" {
 		t.Errorf("action item 0: %+v", bundle.ActionItems[0])
-	}
-	if bundle.ActionItems[1].Confidence != 0.5 {
-		t.Errorf("zero-confidence should default to 0.5, got %v", bundle.ActionItems[1].Confidence)
 	}
 	if len(bundle.Segments) != 1 || bundle.Segments[0].End != 1500*time.Millisecond {
 		t.Errorf("segments: %+v", bundle.Segments)
+	}
+	if len(bundle.Decisions) != 1 || bundle.Decisions[0] != "ship phase 1" {
+		t.Errorf("decisions: %+v", bundle.Decisions)
 	}
 }
 
@@ -97,9 +108,9 @@ func TestMiaojiClient_BatchSummarize_UpstreamFailure(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/submit"):
-			_, _ = w.Write([]byte(`{"resp":{"id":"t1"}}`))
+			_, _ = w.Write([]byte(`{"TaskID":"t1"}`))
 		case strings.HasSuffix(r.URL.Path, "/query"):
-			_, _ = w.Write([]byte(`{"resp":{"status":"failed"}}`))
+			_, _ = w.Write([]byte(`{"Status":"failed","ErrMessage":"audio unreadable"}`))
 		}
 	}))
 	defer srv.Close()
@@ -120,9 +131,9 @@ func TestMiaojiClient_BatchSummarize_DeadlineExceeded(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/submit"):
-			_, _ = w.Write([]byte(`{"resp":{"id":"t1"}}`))
+			_, _ = w.Write([]byte(`{"TaskID":"t1"}`))
 		default:
-			_, _ = w.Write([]byte(`{"resp":{"status":"running"}}`))
+			_, _ = w.Write([]byte(`{"Status":"running"}`))
 		}
 	}))
 	defer srv.Close()
