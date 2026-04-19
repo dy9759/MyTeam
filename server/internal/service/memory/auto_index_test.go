@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+
+	"github.com/multica-ai/multica/server/internal/events"
 )
 
 // fakeEmbedder + fakeStore exercise the WithIndexing wiring without a
@@ -155,5 +157,72 @@ func TestSearch_RequiresIndexing(t *testing.T) {
 	})
 	if err != ErrIndexingNotWired {
 		t.Fatalf("want ErrIndexingNotWired, got %v", err)
+	}
+}
+
+func TestService_EmitsBusEventsOnLifecycle(t *testing.T) {
+	q := newTestQ(t)
+	ctx := context.Background()
+	wsID, userID, fileID := seedFile(t, q)
+
+	bus := events.New()
+	var seen []events.Event
+	bus.SubscribeAll(func(e events.Event) { seen = append(seen, e) })
+
+	svc := NewService(q).WithBus(bus)
+
+	mem, err := svc.Append(ctx, AppendInput{
+		WorkspaceID: wsID,
+		Type:        TypeFact,
+		Scope:       ScopeSharedSummary,
+		Source:      "test",
+		Raw:         RawRef{Kind: RawFileIndex, ID: fileID},
+		Summary:     "bus test",
+		CreatedBy:   userID,
+	})
+	if err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+	if _, err := svc.Promote(ctx, mem.ID); err != nil {
+		t.Fatalf("Promote: %v", err)
+	}
+	if _, err := svc.Archive(ctx, mem.ID); err != nil {
+		t.Fatalf("Archive: %v", err)
+	}
+
+	wantTypes := []string{EventMemoryAppended, EventMemoryConfirmed, EventMemoryArchived}
+	if len(seen) != 3 {
+		t.Fatalf("expected 3 events, got %d (%+v)", len(seen), seen)
+	}
+	for i, want := range wantTypes {
+		if seen[i].Type != want {
+			t.Errorf("event %d: want type %s, got %s", i, want, seen[i].Type)
+		}
+		if seen[i].WorkspaceID != wsID.String() {
+			t.Errorf("event %d: workspace_id mismatch", i)
+		}
+		payload, ok := seen[i].Payload.(map[string]any)
+		if !ok || payload["memory_id"] != mem.ID.String() {
+			t.Errorf("event %d: payload memory_id mismatch (%+v)", i, seen[i].Payload)
+		}
+	}
+}
+
+func TestService_NilBus_NoEmit(t *testing.T) {
+	q := newTestQ(t)
+	wsID, userID, fileID := seedFile(t, q)
+	// Bus nil — Append must not panic.
+	svc := NewService(q)
+	_, err := svc.Append(context.Background(), AppendInput{
+		WorkspaceID: wsID,
+		Type:        TypeFact,
+		Scope:       ScopeSharedSummary,
+		Source:      "test",
+		Raw:         RawRef{Kind: RawFileIndex, ID: fileID},
+		Summary:     "nil bus",
+		CreatedBy:   userID,
+	})
+	if err != nil {
+		t.Fatalf("Append: %v", err)
 	}
 }

@@ -17,8 +17,17 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/multica-ai/multica/server/internal/events"
 	"github.com/multica-ai/multica/server/internal/service/embed"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
+)
+
+// Event type constants. Bus subscribers (cloud-sync handler, audit
+// writer, future analytics) match on these strings.
+const (
+	EventMemoryAppended  = "memory.appended"
+	EventMemoryConfirmed = "memory.confirmed"
+	EventMemoryArchived  = "memory.archived"
 )
 
 // ErrInvalidRaw signals RawRef points at a row that doesn't exist or
@@ -37,6 +46,7 @@ type Service struct {
 	Chunker  Chunker
 	Embedder embed.Embedder
 	Store    Store
+	Bus      *events.Bus // optional; nil disables event emission
 }
 
 func NewService(q *db.Queries) *Service { return &Service{Q: q} }
@@ -50,6 +60,37 @@ func (s *Service) WithIndexing(c Chunker, e embed.Embedder, st Store) *Service {
 	s.Embedder = e
 	s.Store = st
 	return s
+}
+
+// WithBus enables event emission on Append/Promote/Archive. Production
+// wires the same Bus the rest of the platform uses; tests pass nil
+// (default) or events.New() with subscribers.
+func (s *Service) WithBus(b *events.Bus) *Service {
+	s.Bus = b
+	return s
+}
+
+// emit publishes an event when Bus is wired. Safe to call with nil.
+func (s *Service) emit(eventType string, mem Memory) {
+	if s.Bus == nil {
+		return
+	}
+	s.Bus.Publish(events.Event{
+		Type:        eventType,
+		WorkspaceID: mem.WorkspaceID.String(),
+		ActorType:   "system",
+		ActorID:     mem.CreatedBy.String(),
+		Payload: map[string]any{
+			"memory_id": mem.ID.String(),
+			"type":      string(mem.Type),
+			"scope":     string(mem.Scope),
+			"status":    string(mem.Status),
+			"raw_kind":  string(mem.Raw.Kind),
+			"raw_id":    mem.Raw.ID.String(),
+			"version":   mem.Version,
+			"summary":   mem.Summary,
+		},
+	})
 }
 
 // indexingWired returns true when all 3 dependencies are present.
@@ -110,7 +151,9 @@ func (s *Service) Append(ctx context.Context, in AppendInput) (Memory, error) {
 	if err != nil {
 		return Memory{}, fmt.Errorf("create memory_record: %w", err)
 	}
-	return rowToMemory(row), nil
+	mem := rowToMemory(row)
+	s.emit(EventMemoryAppended, mem)
+	return mem, nil
 }
 
 // Promote moves status from candidate → confirmed. Bumps version.
@@ -141,6 +184,11 @@ func (s *Service) Promote(ctx context.Context, id uuid.UUID) (Memory, error) {
 				"memory_id", mem.ID, "err", err)
 		}
 	}
+	// Emit memory.confirmed so cloud-sync handler / audit writer /
+	// future analytics can react. Per user reference doc §三 ("通过
+	// 事件总线同步"), confirmed is the gate that lets a private_local
+	// memory escalate to shared_summary on the cloud side.
+	s.emit(EventMemoryConfirmed, mem)
 	return mem, nil
 }
 
@@ -199,7 +247,9 @@ func (s *Service) Archive(ctx context.Context, id uuid.UUID) (Memory, error) {
 		}
 		return Memory{}, fmt.Errorf("archive: %w", err)
 	}
-	return rowToMemory(row), nil
+	mem := rowToMemory(row)
+	s.emit(EventMemoryArchived, mem)
+	return mem, nil
 }
 
 // ListFilter narrows ListByWorkspace. Empty values mean no narrowing.
