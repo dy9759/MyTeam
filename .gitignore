@@ -37,6 +37,9 @@ apps/web/test-results/
 # local settings
 .claude/
 .tool-versions
+.pnpm-store/
+.worktrees/
+agent-skills/
 
 # feature tracking
 _features/
