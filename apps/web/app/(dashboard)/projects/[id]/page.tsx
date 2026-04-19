@@ -109,6 +109,11 @@ export default function ProjectDetailPage({ projectId }: ProjectDetailProps) {
   } = useProjectStore();
 
   const [loading, setLoading] = useState(true);
+  const [loadErrors, setLoadErrors] = useState<{
+    project?: string;
+    versions?: string;
+    runs?: string;
+  }>({});
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleValue, setTitleValue] = useState("");
   const [forkOpen, setForkOpen] = useState(false);
@@ -206,21 +211,71 @@ export default function ProjectDetailPage({ projectId }: ProjectDetailProps) {
   useEffect(() => {
     if (!id) return;
     setLoading(true);
-    const load = async () => {
+    setLoadErrors({});
+    const controller = new AbortController();
+    const signal = controller.signal;
+
+    const describe = (err: unknown, fallback: string) => {
+      if (err instanceof Error && err.message) return err.message;
+      return fallback;
+    };
+
+    const isAbort = (err: unknown) =>
+      signal.aborted || (err as Error)?.name === "AbortError";
+
+    // Bypass the store's built-in try/catch so we can classify each fetch
+    // independently and expose per-call error state to the UI. On success
+    // we still push the results into the store so the rest of the page
+    // reacts as it did before.
+    const loadProject = async () => {
       try {
-        await Promise.all([
-          fetchProject(id),
-          fetchVersions(id),
-          fetchRuns(id),
-        ]);
-      } catch {
-        toast.error("加载项目失败");
-      } finally {
-        setLoading(false);
+        const project = await api.getProject(id, { signal });
+        if (signal.aborted) return;
+        useProjectStore.setState({ currentProject: project });
+      } catch (err) {
+        if (isAbort(err)) return;
+        setLoadErrors((prev) => ({
+          ...prev,
+          project: describe(err, "加载项目详情失败"),
+        }));
       }
     };
+    const loadVersions = async () => {
+      try {
+        const versions = await api.listProjectVersions(id, { signal });
+        if (signal.aborted) return;
+        useProjectStore.setState({ versions });
+      } catch (err) {
+        if (isAbort(err)) return;
+        setLoadErrors((prev) => ({
+          ...prev,
+          versions: describe(err, "加载版本失败"),
+        }));
+      }
+    };
+    const loadRuns = async () => {
+      try {
+        const runs = await api.listProjectRuns(id, { signal });
+        if (signal.aborted) return;
+        useProjectStore.setState({ runs });
+      } catch (err) {
+        if (isAbort(err)) return;
+        setLoadErrors((prev) => ({
+          ...prev,
+          runs: describe(err, "加载运行记录失败"),
+        }));
+      }
+    };
+
+    const load = async () => {
+      await Promise.allSettled([loadProject(), loadVersions(), loadRuns()]);
+      if (signal.aborted) return;
+      setLoading(false);
+    };
     load();
-  }, [id, fetchProject, fetchVersions, fetchRuns]);
+
+    return () => controller.abort();
+  }, [id]);
 
   // Sync title and plan steps when project loads
   useEffect(() => {
@@ -373,8 +428,14 @@ export default function ProjectDetailPage({ projectId }: ProjectDetailProps) {
 
   if (!currentProject) {
     return (
-      <div className="flex-1 p-6">
-        <p className="text-muted-foreground">未找到项目。</p>
+      <div className="flex-1 p-6 space-y-3">
+        {loadErrors.project ? (
+          <p className="text-sm text-destructive">
+            加载项目详情失败：{loadErrors.project}
+          </p>
+        ) : (
+          <p className="text-muted-foreground">未找到项目。</p>
+        )}
       </div>
     );
   }
@@ -383,8 +444,18 @@ export default function ProjectDetailPage({ projectId }: ProjectDetailProps) {
   const approvalStatus = (plan as any)?.approval_status as string | undefined;
   const activeRun = currentProject.active_run;
 
+  const nonFatalLoadErrors = [
+    loadErrors.versions ? `版本：${loadErrors.versions}` : null,
+    loadErrors.runs ? `运行记录：${loadErrors.runs}` : null,
+  ].filter(Boolean) as string[];
+
   return (
     <div className="flex flex-1 min-h-0 flex-col overflow-auto p-6">
+      {nonFatalLoadErrors.length > 0 && (
+        <div className="mb-4 border border-destructive/40 bg-destructive/10 text-destructive text-sm rounded-md px-3 py-2">
+          部分数据加载失败：{nonFatalLoadErrors.join("；")}
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
         {!isInline && (

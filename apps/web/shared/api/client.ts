@@ -832,8 +832,8 @@ export class ApiClient {
     return this.fetch('/api/projects');
   }
 
-  async getProject(id: string): Promise<Project> {
-    return this.fetch(`/api/projects/${id}`);
+  async getProject(id: string, init?: RequestInit): Promise<Project> {
+    return this.fetch(`/api/projects/${id}`, init);
   }
 
   async createProject(data: { title: string; description?: string; schedule_type: string }): Promise<Project> {
@@ -856,12 +856,12 @@ export class ApiClient {
     return this.fetch(`/api/projects/${id}/fork`, { method: 'POST', body: JSON.stringify(data) });
   }
 
-  async listProjectVersions(id: string): Promise<ProjectVersion[]> {
-    return this.fetch(`/api/projects/${id}/versions`);
+  async listProjectVersions(id: string, init?: RequestInit): Promise<ProjectVersion[]> {
+    return this.fetch(`/api/projects/${id}/versions`, init);
   }
 
-  async listProjectRuns(id: string): Promise<ProjectRun[]> {
-    return this.fetch(`/api/projects/${id}/runs`);
+  async listProjectRuns(id: string, init?: RequestInit): Promise<ProjectRun[]> {
+    return this.fetch(`/api/projects/${id}/runs`, init);
   }
 
   async approvePlan(projectId: string): Promise<void> {

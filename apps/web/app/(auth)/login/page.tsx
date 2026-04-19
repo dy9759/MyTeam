@@ -182,13 +182,13 @@ function LoginPageContent() {
   // CLI confirm step: user is already logged in, just authorize.
   if (step === "cli_confirm" && existingUser) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#08090a]">
-        <Card className="w-full max-w-sm bg-[#0f1011] border-[rgba(255,255,255,0.08)] rounded-xl">
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <Card className="w-full max-w-sm rounded-xl">
           <CardHeader className="text-center">
-            <CardTitle className="text-2xl text-[#f7f8f8]">授权 CLI</CardTitle>
-            <CardDescription className="text-[#8a8f98]">
+            <CardTitle className="text-2xl">授权 CLI</CardTitle>
+            <CardDescription>
               允许 CLI 以{" "}
-              <span className="font-medium text-[#f7f8f8]">
+              <span className="font-medium text-foreground">
                 {existingUser.email}
               </span>{" "}
               的身份访问 My Team？
@@ -198,14 +198,14 @@ function LoginPageContent() {
             <Button
               onClick={handleCliAuthorize}
               disabled={submitting}
-              className="w-full bg-[#5e6ad2] hover:bg-[#828fff] text-white border-0"
+              className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
               size="lg"
             >
               {submitting ? "授权中..." : "授权"}
             </Button>
             <Button
               variant="ghost"
-              className="w-full text-[#8a8f98] hover:text-[#d0d6e0] hover:bg-[rgba(255,255,255,0.05)]"
+              className="w-full"
               onClick={() => {
                 setExistingUser(null);
                 setStep("email");
@@ -221,13 +221,13 @@ function LoginPageContent() {
 
   if (step === "code") {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#08090a]">
-        <Card className="w-full max-w-sm bg-[#0f1011] border-[rgba(255,255,255,0.08)] rounded-xl">
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <Card className="w-full max-w-sm rounded-xl">
           <CardHeader className="text-center">
-            <CardTitle className="text-2xl text-[#f7f8f8]">查看你的邮箱</CardTitle>
-            <CardDescription className="text-[#8a8f98]">
+            <CardTitle className="text-2xl">查看你的邮箱</CardTitle>
+            <CardDescription>
               我们已将验证码发送至{" "}
-              <span className="font-medium text-[#f7f8f8]">{email}</span>
+              <span className="font-medium text-foreground">{email}</span>
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col items-center gap-4">
@@ -252,12 +252,12 @@ function LoginPageContent() {
             {error && (
               <p className="text-sm text-destructive">{error}</p>
             )}
-            <div className="flex items-center gap-2 text-sm text-[#8a8f98]">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <button
                 type="button"
                 onClick={handleResend}
                 disabled={cooldown > 0}
-                className="text-[#7170ff] underline-offset-4 hover:underline disabled:text-[#8a8f98] disabled:no-underline disabled:cursor-not-allowed"
+                className="text-primary underline-offset-4 hover:underline disabled:text-muted-foreground disabled:no-underline disabled:cursor-not-allowed"
               >
                 {cooldown > 0 ? `${cooldown}秒后重新发送` : "重新发送验证码"}
               </button>
@@ -266,7 +266,7 @@ function LoginPageContent() {
           <CardFooter>
             <Button
               variant="ghost"
-              className="w-full text-[#7170ff] hover:text-[#828fff] hover:bg-[rgba(255,255,255,0.05)]"
+              className="w-full text-primary"
               onClick={() => {
                 setStep("email");
                 setCode("");
@@ -282,16 +282,16 @@ function LoginPageContent() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#08090a]">
-      <Card className="w-full max-w-sm bg-[#0f1011] border-[rgba(255,255,255,0.08)] rounded-xl">
+    <div className="flex min-h-screen items-center justify-center bg-background">
+      <Card className="w-full max-w-sm rounded-xl">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold text-[#f7f8f8]">My Team</CardTitle>
-          <CardDescription className="text-[#8a8f98]">让编程 Agent 成为真正的队友</CardDescription>
+          <CardTitle className="text-2xl font-bold">My Team</CardTitle>
+          <CardDescription>让编程 Agent 成为真正的队友</CardDescription>
         </CardHeader>
         <CardContent>
           <form id="login-form" onSubmit={handleSendCode} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="email" className="text-[#d0d6e0]">邮箱</Label>
+              <Label htmlFor="email">邮箱</Label>
               <Input
                 id="email"
                 type="email"
@@ -299,7 +299,6 @@ function LoginPageContent() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="bg-[rgba(255,255,255,0.02)] border-[rgba(255,255,255,0.08)] text-[#f7f8f8] placeholder:text-[#8a8f98]"
               />
             </div>
             {error && (
@@ -312,7 +311,7 @@ function LoginPageContent() {
             type="submit"
             form="login-form"
             disabled={submitting}
-            className="w-full bg-[#5e6ad2] hover:bg-[#828fff] text-white border-0"
+            className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
             size="lg"
           >
             {submitting ? "发送验证码中..." : "继续"}

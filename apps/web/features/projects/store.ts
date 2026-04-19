@@ -18,14 +18,14 @@ interface ProjectState {
 
 interface ProjectActions {
   fetch: () => Promise<void>;
-  fetchProject: (id: string) => Promise<void>;
+  fetchProject: (id: string, signal?: AbortSignal) => Promise<void>;
   createProject: (data: { title: string; description?: string; schedule_type: string }) => Promise<Project>;
   createFromChat: (data: CreateProjectFromChatRequest) => Promise<Project>;
   updateProject: (id: string, data: Partial<Project>) => Promise<void>;
   deleteProject: (id: string) => Promise<void>;
   forkProject: (id: string, branchName: string, reason?: string) => Promise<void>;
-  fetchVersions: (id: string) => Promise<void>;
-  fetchRuns: (id: string) => Promise<void>;
+  fetchVersions: (id: string, signal?: AbortSignal) => Promise<void>;
+  fetchRuns: (id: string, signal?: AbortSignal) => Promise<void>;
   approvePlan: (projectId: string) => Promise<void>;
   rejectPlan: (projectId: string, reason: string) => Promise<void>;
 }
@@ -53,12 +53,14 @@ export const useProjectStore = create<ProjectState & ProjectActions>((set, get) 
     }
   },
 
-  fetchProject: async (id: string) => {
+  fetchProject: async (id: string, signal?: AbortSignal) => {
     logger.debug("fetch project", id);
     try {
-      const project = await api.getProject(id);
+      const project = await api.getProject(id, signal ? { signal } : undefined);
+      if (signal?.aborted) return;
       set({ currentProject: project });
     } catch (err) {
+      if ((err as Error)?.name === "AbortError") return;
       logger.error("fetch project failed", err);
       toast.error("加载项目详情失败");
     }
@@ -113,20 +115,24 @@ export const useProjectStore = create<ProjectState & ProjectActions>((set, get) 
     }
   },
 
-  fetchVersions: async (id) => {
+  fetchVersions: async (id, signal) => {
     try {
-      const versions = await api.listProjectVersions(id);
+      const versions = await api.listProjectVersions(id, signal ? { signal } : undefined);
+      if (signal?.aborted) return;
       set({ versions });
     } catch (err) {
+      if ((err as Error)?.name === "AbortError") return;
       logger.error("fetch versions failed", err);
     }
   },
 
-  fetchRuns: async (id) => {
+  fetchRuns: async (id, signal) => {
     try {
-      const runs = await api.listProjectRuns(id);
+      const runs = await api.listProjectRuns(id, signal ? { signal } : undefined);
+      if (signal?.aborted) return;
       set({ runs });
     } catch (err) {
+      if ((err as Error)?.name === "AbortError") return;
       logger.error("fetch runs failed", err);
     }
   },
