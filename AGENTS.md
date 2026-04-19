@@ -51,6 +51,49 @@ apps/web/
 - `shared/types/` — Domain types (Issue, Agent, Workspace, etc.) and WebSocket event types.
 - `shared/logger.ts` — Logger utility.
 
+### Desktop App Structure (`apps/desktop/`)
+
+Electron + Vite + React Router v7. React 19, Tailwind v4, shadcn via `@base-ui/react`. Shares **logic and types** with Web via `@myteam/client-core` (workspace dep); **does NOT share UI components** — Desktop has its own `src/components/ui/*` copy-paste shadcn set.
+
+Key paths:
+- `apps/desktop/electron/` — main process + preload (IPC bridge)
+- `apps/desktop/src/app.tsx` — React Router root
+- `apps/desktop/src/routes/` — route components
+- `apps/desktop/src/components/ui/` — shadcn primitives (copy-paste from `apps/web/components/ui/`)
+- `apps/desktop/src/styles.css` — Tailwind v4 + token mirror of web `globals.css`
+
+#### Route Coverage Rules (hard constraint)
+
+Desktop is a **focused workspace control plane**, not a full port of Web. Routes are grouped into three tiers. Agents working on Desktop **MUST** respect this classification before adding new routes.
+
+**Tier 1 — Desktop MUST cover (shipped)**
+
+| Route | Desktop file | Web source |
+|---|---|---|
+| `/login` | `routes/login-route.tsx` | `app/(auth)/login/` |
+| `/session` | `routes/session-route.tsx` | `app/(dashboard)/session/` |
+| `/projects` | `routes/projects-route.tsx` | `app/(dashboard)/projects/` |
+| `/files` | `routes/files-route.tsx` | `app/(dashboard)/files/` |
+| `/account` | `routes/account-route.tsx` | `app/(dashboard)/account/` |
+| `/settings` | `routes/settings-route.tsx` | `app/(dashboard)/settings/` |
+
+**Tier 2 — Desktop MAY cover (next milestone, not blocking)**
+
+`/inbox`, `/my-issues`, `/agents`, `/runtimes`, `/chat`, `/channels`, `/sessions`
+
+(Rationale: adjacent to session/projects flow; low lift once Tier 1 is stable.)
+
+**Tier 3 — Desktop DOES NOT cover**
+
+`/issues`, `/board`, `/plans`, `/tasks`, `/workflows`, `/skills`, `/search`, landing pages (`/about`, `/changelog`, `/homepage`)
+
+(Rationale: Desktop is a native control plane — issue tracking + planning stays in Web where data-dense tabular UI is cheaper. Landing pages are marketing-only.)
+
+**Rules for agents:**
+- Adding a Tier 1 or Tier 2 route on Desktop requires updating the nav in `src/components/desktop-shell.tsx` and router in `src/app.tsx`.
+- Never add a Tier 3 route to Desktop without promoting it first (edit this table).
+- When in doubt, ask the user — don't silently promote.
+
 ### State Management
 
 - **Zustand** for global client state — one store per feature domain (`features/auth/store.ts`, `features/workspace/store.ts`, `features/issues/store.ts`, `features/inbox/store.ts`).
