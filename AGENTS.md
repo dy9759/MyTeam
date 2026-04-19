@@ -196,7 +196,7 @@ make db-down          # Stop shared PostgreSQL
 
 ### CI Requirements
 
-CI runs on Node 22 and Go 1.24 with a `pgvector/pgvector:pg17` PostgreSQL service. See `.github/workflows/ci.yml`.
+CI runs on Node 22 and Go 1.26.1 with a `pgvector/pgvector:pg17` PostgreSQL service. The Go version in `.github/workflows/ci.yml` and `server/go.mod` must stay in sync — bump both when upgrading. See `.github/workflows/ci.yml`.
 
 ### Worktree Support
 

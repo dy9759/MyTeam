@@ -82,18 +82,22 @@ echo "==> Checking PostgreSQL..."
 bash scripts/ensure-postgres.sh "$ENV_FILE"
 
 # --------------------------------------------------------------------------
-# Step 1: TypeScript typecheck
+# Step 1: TypeScript typecheck (web + desktop)
+# Root `pnpm typecheck` only filters @multica/web — explicitly include
+# @myteam/desktop so electron regressions don't ship silently. Issue #52.
 # --------------------------------------------------------------------------
 echo ""
 echo "==> [1/5] TypeScript typecheck..."
 pnpm typecheck || { EXIT_CODE=1; exit 1; }
+pnpm --filter @myteam/desktop typecheck || { EXIT_CODE=1; exit 1; }
 
 # --------------------------------------------------------------------------
-# Step 2: TypeScript unit tests (Vitest)
+# Step 2: TypeScript unit tests (Vitest, web + desktop)
 # --------------------------------------------------------------------------
 echo ""
 echo "==> [2/5] TypeScript unit tests..."
 pnpm test || { EXIT_CODE=1; exit 1; }
+pnpm --filter @myteam/desktop test || { EXIT_CODE=1; exit 1; }
 
 # --------------------------------------------------------------------------
 # Step 3: Go tests
