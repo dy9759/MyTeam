@@ -155,7 +155,11 @@ func (s *MeetingService) StartMeeting(ctx context.Context, threadID uuid.UUID, a
 // Requires Storage to be wired (WithStorage). Returns an error
 // otherwise — non-storage callers must use AttachAudio directly with
 // a pre-existing file_index id.
-func (s *MeetingService) UploadAudio(ctx context.Context, threadID, ownerID uuid.UUID, body io.Reader, filename, contentType string) (MeetingMeta, uuid.UUID, error) {
+//
+// size is the byte length of body (-1 when unknown); when known we
+// record it on file_index so the dashboard / billing can show real
+// usage. Issue #62.
+func (s *MeetingService) UploadAudio(ctx context.Context, threadID, ownerID uuid.UUID, body io.Reader, filename, contentType string, size int64) (MeetingMeta, uuid.UUID, error) {
 	if s.Storage == nil {
 		return MeetingMeta{}, uuid.Nil, errors.New("meeting: Storage not wired (use WithStorage or AttachAudio)")
 	}
@@ -176,6 +180,10 @@ func (s *MeetingService) UploadAudio(ctx context.Context, threadID, ownerID uuid
 	if err != nil {
 		return MeetingMeta{}, uuid.Nil, fmt.Errorf("storage put: %w", err)
 	}
+	fileSize := pgtype.Int8{}
+	if size > 0 {
+		fileSize = pgtype.Int8{Int64: size, Valid: true}
+	}
 	row, err := s.Q.CreateFileIndex(ctx, db.CreateFileIndexParams{
 		WorkspaceID:          thread.WorkspaceID,
 		UploaderIdentityID:   pgUUIDFromUUID(ownerID),
@@ -184,7 +192,7 @@ func (s *MeetingService) UploadAudio(ctx context.Context, threadID, ownerID uuid
 		SourceType:           "thread",
 		SourceID:             thread.ID,
 		FileName:             filename,
-		FileSize:             pgtype.Int8{Valid: true}, // size unknown post-stream; ok for MVP
+		FileSize:             fileSize,
 		ContentType:          pgtype.Text{String: contentType, Valid: contentType != ""},
 		StoragePath:          pgtype.Text{String: storagePath, Valid: true},
 		AccessScope:          []byte(`{"scope":"channel"}`),

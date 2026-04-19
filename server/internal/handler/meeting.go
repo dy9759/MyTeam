@@ -18,6 +18,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -27,9 +28,44 @@ import (
 	"github.com/multica-ai/multica/server/internal/storage"
 )
 
-// maxAudioUpload caps multipart parsing buffer to 32MiB; bigger files
-// stream directly to storage via the part body.
-const maxAudioUpload = 32 << 20
+// maxAudioUploadMem caps the in-memory multipart parsing buffer at
+// 32 MiB; larger parts spill to a temp file via Go's mime/multipart.
+const maxAudioUploadMem = 32 << 20
+
+// maxAudioUploadBytes is the hard total cap on the request body. A
+// 60-minute mp3 at 128kbps ≈ 60 MiB; 500 MiB headroom covers
+// uncompressed wav fallbacks. Wraps the body in http.MaxBytesReader so
+// a malicious client can't fill the temp dir. Issue #62.
+const maxAudioUploadBytes = 500 << 20
+
+// allowedAudioMIMEs gates Content-Type at the IPC boundary so a
+// renamed `.mp3` containing executable bytes can't get forwarded to
+// ASR. Issue #62.
+var allowedAudioMIMEs = map[string]bool{
+	"audio/mpeg":  true, // mp3
+	"audio/mp4":   true, // m4a
+	"audio/wav":   true,
+	"audio/x-wav": true,
+	"audio/webm":  true,
+	"audio/ogg":   true,
+	"audio/flac":  true,
+	"audio/aac":   true,
+}
+
+// isAllowedAudioMIME accepts only the well-known audio/* types we
+// know Doubao 妙记 can transcribe; rejects anything else (including
+// bare "audio/" since some browsers send empty subtypes).
+func isAllowedAudioMIME(ct string) bool {
+	if ct == "" {
+		return false
+	}
+	// Strip parameters like `; charset=binary`.
+	if idx := strings.Index(ct, ";"); idx >= 0 {
+		ct = ct[:idx]
+	}
+	ct = strings.TrimSpace(strings.ToLower(ct))
+	return allowedAudioMIMEs[ct]
+}
 
 type startMeetingRequest struct {
 	Agenda []string `json:"agenda,omitempty"`
@@ -148,8 +184,14 @@ func (h *Handler) UploadMeetingAudio(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := r.ParseMultipartForm(maxAudioUpload); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid multipart form")
+	// Hard cap total request body — protects the temp dir from a
+	// malicious client streaming infinite bytes. Issue #62.
+	r.Body = http.MaxBytesReader(w, r.Body, maxAudioUploadBytes)
+
+	if err := r.ParseMultipartForm(maxAudioUploadMem); err != nil {
+		// MaxBytesReader returns its own error when the cap is hit;
+		// either way the client gets 413/400 with a clear message.
+		writeError(w, http.StatusRequestEntityTooLarge, "invalid multipart form or too large")
 		return
 	}
 	file, header, err := r.FormFile("file")
@@ -160,7 +202,12 @@ func (h *Handler) UploadMeetingAudio(w http.ResponseWriter, r *http.Request) {
 	defer file.Close()
 
 	contentType := header.Header.Get("Content-Type")
-	meta, fileID, err := svc.UploadAudio(r.Context(), threadID, ownerID, file, header.Filename, contentType)
+	if !isAllowedAudioMIME(contentType) {
+		writeError(w, http.StatusUnsupportedMediaType,
+			"file Content-Type must be a supported audio/* mime")
+		return
+	}
+	meta, fileID, err := svc.UploadAudio(r.Context(), threadID, ownerID, file, header.Filename, contentType, header.Size)
 	if err != nil {
 		if errors.Is(err, service.ErrNotMeeting) {
 			writeError(w, http.StatusBadRequest, "thread is not a meeting; call /start first")

@@ -133,7 +133,7 @@ func TestMeetingService_E2E_TOSPlusDoubao(t *testing.T) {
 	// Upload to TOS via Storage interface; sets audio_file_id +
 	// status=transcribing.
 	meta, fileID, err := svc.UploadAudio(ctx, threadID, uuid.UUID(userID.Bytes),
-		bytes.NewReader(audioBytes), "sample.mp3", "audio/mpeg")
+		bytes.NewReader(audioBytes), "sample.mp3", "audio/mpeg", int64(len(audioBytes)))
 	if err != nil {
 		t.Fatalf("UploadAudio: %v", err)
 	}
