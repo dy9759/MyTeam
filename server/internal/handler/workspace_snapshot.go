@@ -10,10 +10,10 @@ import (
 	"net/url"
 	"strings"
 
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
 type WorkspaceCollaboratorResponse struct {
@@ -469,8 +469,14 @@ func (h *Handler) GetWorkspaceSnapshot(w http.ResponseWriter, r *http.Request) {
 		runtimeResp[i] = runtimeToResponse(runtime)
 	}
 
+	workspaceResp, err := workspaceToResponse(workspace)
+	if err != nil {
+		writeWorkspaceResponseError(w, r, uuidToString(workspace.ID), err)
+		return
+	}
+
 	writeJSON(w, http.StatusOK, WorkspaceSnapshotResponse{
-		Workspace:       workspaceToResponse(workspace),
+		Workspace:       workspaceResp,
 		Agents:          agentResp,
 		Conversations:   conversations,
 		Channels:        channelResp,

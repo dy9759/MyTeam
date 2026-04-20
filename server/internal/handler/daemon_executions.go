@@ -42,7 +42,9 @@ func (h *Handler) ListPendingExecutions(w http.ResponseWriter, r *http.Request) 
 
 	rows, err := h.Queries.ListPendingExecutionsForRuntime(r.Context(), pgUUIDFrom(runtimeID))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "list failed: "+err.Error())
+		writeDaemonExecutionInternalError(w, "failed to list executions", "list pending executions failed",
+			"runtime_id", runtimeID, "error", err,
+		)
 		return
 	}
 
@@ -122,7 +124,9 @@ func (h *Handler) ClaimExecution(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "claim failed: "+err.Error())
+		writeDaemonExecutionInternalError(w, "failed to claim execution", "claim execution failed",
+			"runtime_id", runtimeID, "error", err,
+		)
 		return
 	}
 
@@ -148,7 +152,8 @@ type startExecutionRequest struct {
 
 // StartExecution moves a claimed execution into running. Optional
 // context_ref override lets the daemon attach the session id of the
-// agent CLI process.
+// agent CLI process. Returns the updated execution JSON so callers get
+// the same response shape family as claim/list endpoints.
 func (h *Handler) StartExecution(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
@@ -176,11 +181,29 @@ func (h *Handler) StartExecution(w http.ResponseWriter, r *http.Request) {
 		ID:         pgUUIDFrom(id),
 		ContextRef: ctxRefJSON,
 	}); err != nil {
-		writeError(w, http.StatusInternalServerError, "start failed: "+err.Error())
+		writeDaemonExecutionInternalError(w, "failed to start execution", "start execution failed",
+			"execution_id", id, "error", err,
+		)
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
+	e, err := h.Queries.GetExecution(r.Context(), pgUUIDFrom(id))
+	if err != nil {
+		slog.Warn("execution started but reload failed", "execution_id", id, "error", err)
+		resp := map[string]any{
+			"id":     id.String(),
+			"status": "running",
+		}
+		if req.ContextRef != nil {
+			resp["context_ref"] = req.ContextRef
+		} else {
+			resp["context_ref"] = map[string]any{}
+		}
+		writeJSON(w, http.StatusOK, resp)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, executionToResponse(e))
 }
 
 // ---------------------------------------------------------------------------
@@ -267,7 +290,9 @@ func (h *Handler) CompleteExecution(w http.ResponseWriter, r *http.Request) {
 
 	rowsAffected, err := h.Queries.CompleteExecution(r.Context(), params)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "complete failed: "+err.Error())
+		writeDaemonExecutionInternalError(w, "failed to complete execution", "complete execution failed",
+			"execution_id", id, "error", err,
+		)
 		return
 	}
 	// Idempotency: the SQL guard means a second complete (e.g. CloudExecutor
@@ -340,7 +365,9 @@ func (h *Handler) FailExecution(w http.ResponseWriter, r *http.Request) {
 		Status: req.Status,
 		Error:  pgtype.Text{String: req.Error, Valid: req.Error != ""},
 	}); err != nil {
-		writeError(w, http.StatusInternalServerError, "fail failed: "+err.Error())
+		writeDaemonExecutionInternalError(w, "failed to fail execution", "fail execution failed",
+			"execution_id", id, "error", err,
+		)
 		return
 	}
 
@@ -431,6 +458,11 @@ func decodeRequestJSONOptional(w http.ResponseWriter, r *http.Request, dst any) 
 		return false
 	}
 	return true
+}
+
+func writeDaemonExecutionInternalError(w http.ResponseWriter, clientMessage string, logMessage string, attrs ...any) {
+	slog.Warn(logMessage, attrs...)
+	writeError(w, http.StatusInternalServerError, clientMessage)
 }
 
 // publishExecutionEvent fans out an execution-scoped WS event when the

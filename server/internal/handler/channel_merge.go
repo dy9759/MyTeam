@@ -133,7 +133,11 @@ func (h *Handler) ApproveMergeRequest(w http.ResponseWriter, r *http.Request) {
 
 	// Check caller is a required founder.
 	var founders []string
-	_ = json.Unmarshal(foundersRaw, &founders)
+	if err := json.Unmarshal(foundersRaw, &founders); err != nil {
+		slog.Warn("decode merge request founders failed", "merge_id", mergeID, "error", err)
+		writeError(w, http.StatusInternalServerError, "invalid merge request data")
+		return
+	}
 	isFounder := false
 	for _, f := range founders {
 		if f == userID {
@@ -148,7 +152,11 @@ func (h *Handler) ApproveMergeRequest(w http.ResponseWriter, r *http.Request) {
 
 	// Add approval.
 	var approvals []map[string]any
-	_ = json.Unmarshal(approvalsRaw, &approvals)
+	if err := json.Unmarshal(approvalsRaw, &approvals); err != nil {
+		slog.Warn("decode merge request approvals failed", "merge_id", mergeID, "error", err)
+		writeError(w, http.StatusInternalServerError, "invalid merge request data")
+		return
+	}
 	for _, a := range approvals {
 		if a["founder_id"] == userID {
 			writeError(w, http.StatusBadRequest, "already approved")

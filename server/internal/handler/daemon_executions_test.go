@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -11,7 +12,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/multica-ai/multica/server/internal/events"
+	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
 // daemonExecTestEnv bundles the IDs needed to insert an execution row:
@@ -204,6 +208,15 @@ func TestClaimExecution_HappyPath(t *testing.T) {
 		t.Fatalf("StartExecution: want 200, got %d: %s", w.Code, w.Body.String())
 	}
 
+	var started map[string]any
+	decodeJSON(t, w.Body, &started)
+	if started["id"] != execID {
+		t.Fatalf("StartExecution: want id=%s, got %v", execID, started["id"])
+	}
+	if started["status"] != "running" {
+		t.Fatalf("StartExecution: want status=running, got %v", started["status"])
+	}
+
 	var status string
 	if err := testPool.QueryRow(context.Background(),
 		`SELECT status FROM execution WHERE id = $1`, execID,
@@ -231,10 +244,10 @@ func TestClaimExecution_HappyPath(t *testing.T) {
 
 	// DB row reflects the completion + cost.
 	var (
-		gotStatus  string
-		gotIn      int
-		gotOut     int
-		gotProv    string
+		gotStatus string
+		gotIn     int
+		gotOut    int
+		gotProv   string
 	)
 	if err := testPool.QueryRow(context.Background(),
 		`SELECT status, cost_input_tokens, cost_output_tokens, cost_provider
@@ -325,9 +338,9 @@ func TestFailExecution_FailedStatus(t *testing.T) {
 	// current_retry to 1 and re-schedule. The task ends up back in
 	// queued with a fresh execution row.
 	var (
-		taskStatus  string
-		retryCount  int
-		execCount   int
+		taskStatus string
+		retryCount int
+		execCount  int
 	)
 	if err := testPool.QueryRow(context.Background(),
 		`SELECT status, current_retry FROM task WHERE id = $1`, env.TaskID,
@@ -377,6 +390,16 @@ func TestStartExecution_ContextRef(t *testing.T) {
 		t.Fatalf("StartExecution: want 200, got %d: %s", w.Code, w.Body.String())
 	}
 
+	var started map[string]any
+	decodeJSON(t, w.Body, &started)
+	ctxRefBody, ok := started["context_ref"].(map[string]any)
+	if !ok {
+		t.Fatalf("StartExecution: expected context_ref object, got %T", started["context_ref"])
+	}
+	if ctxRefBody["session_id"] != "claude-session-xyz" {
+		t.Fatalf("StartExecution: expected session_id in response, got %v", ctxRefBody)
+	}
+
 	var ctxRef []byte
 	if err := testPool.QueryRow(context.Background(),
 		`SELECT context_ref FROM execution WHERE id = $1`, execID,
@@ -389,6 +412,59 @@ func TestStartExecution_ContextRef(t *testing.T) {
 	}
 	if got["session_id"] != "claude-session-xyz" {
 		t.Errorf("context_ref.session_id missing: %v", got)
+	}
+}
+
+type daemonExecFailingRow struct {
+	err error
+}
+
+func (r daemonExecFailingRow) Scan(...any) error {
+	return r.err
+}
+
+type daemonExecFailingDB struct {
+	execErr error
+}
+
+func (db daemonExecFailingDB) Exec(context.Context, string, ...any) (pgconn.CommandTag, error) {
+	return pgconn.CommandTag{}, db.execErr
+}
+
+func (db daemonExecFailingDB) Query(context.Context, string, ...any) (pgx.Rows, error) {
+	return nil, db.execErr
+}
+
+func (db daemonExecFailingDB) QueryRow(context.Context, string, ...any) pgx.Row {
+	return daemonExecFailingRow{err: db.execErr}
+}
+
+func TestStartExecution_InternalErrorsDoNotLeakBackendDetails(t *testing.T) {
+	rawErr := errors.New(`pq: duplicate key value violates unique constraint "execution_pkey"`)
+	failingDB := daemonExecFailingDB{execErr: rawErr}
+	h := &Handler{
+		Queries: db.New(failingDB),
+	}
+
+	w := httptest.NewRecorder()
+	req := newDaemonRequest("POST", "/api/daemon/executions/00000000-0000-0000-0000-000000000001/start", nil)
+	req = withURLParam(req, "id", "00000000-0000-0000-0000-000000000001")
+	h.StartExecution(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("StartExecution: want 500, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]string
+	decodeJSON(t, w.Body, &resp)
+	if resp["error"] == "" {
+		t.Fatalf("expected error message, got %+v", resp)
+	}
+	if resp["error"] == rawErr.Error() {
+		t.Fatalf("response leaked raw backend error: %q", resp["error"])
+	}
+	if bytes.Contains([]byte(resp["error"]), []byte("duplicate key")) {
+		t.Fatalf("response leaked backend details: %q", resp["error"])
 	}
 }
 
@@ -550,4 +626,3 @@ func newDaemonRequest(method, path string, body any) *http.Request {
 	req.Header.Set("Content-Type", "application/json")
 	return req
 }
-
