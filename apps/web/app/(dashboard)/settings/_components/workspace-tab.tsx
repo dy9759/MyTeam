@@ -18,15 +18,10 @@ import {
   AlertDialogAction,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { useAuthStore } from "@/features/auth";
-import { useWorkspaceStore } from "@/features/workspace";
-import { api } from "@/shared/api";
+import { useWorkspaceManagement, useWorkspaceStore } from "@/features/workspace";
 
 export function WorkspaceTab() {
-  const user = useAuthStore((s) => s.user);
-  const workspace = useWorkspaceStore((s) => s.workspace);
-  const members = useWorkspaceStore((s) => s.members);
-  const updateWorkspace = useWorkspaceStore((s) => s.updateWorkspace);
+  const { workspace, canManageWorkspace, isOwner, saveWorkspace } = useWorkspaceManagement();
   const leaveWorkspace = useWorkspaceStore((s) => s.leaveWorkspace);
   const deleteWorkspace = useWorkspaceStore((s) => s.deleteWorkspace);
 
@@ -44,10 +39,6 @@ export function WorkspaceTab() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteConfirmName, setDeleteConfirmName] = useState("");
 
-  const currentMember = members.find((m) => m.user_id === user?.id) ?? null;
-  const canManageWorkspace = currentMember?.role === "owner" || currentMember?.role === "admin";
-  const isOwner = currentMember?.role === "owner";
-
   useEffect(() => {
     setName(workspace?.name ?? "");
     setDescription(workspace?.description ?? "");
@@ -58,12 +49,11 @@ export function WorkspaceTab() {
     if (!workspace) return;
     setSaving(true);
     try {
-      const updated = await api.updateWorkspace(workspace.id, {
+      await saveWorkspace({
         name,
         description,
         context,
       });
-      updateWorkspace(updated);
       toast.success("工作区设置已保存");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "保存工作区设置失败");

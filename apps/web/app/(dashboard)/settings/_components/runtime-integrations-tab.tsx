@@ -8,8 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { useAuthStore } from "@/features/auth";
-import { useWorkspaceStore } from "@/features/workspace";
+import { useWorkspaceManagement } from "@/features/workspace";
 import { api } from "@/shared/api";
 import type { AgentRuntime } from "@/shared/types";
 
@@ -30,16 +29,10 @@ const defaultSettings: RuntimeSettings = {
 };
 
 export function RuntimeIntegrationsTab() {
-  const user = useAuthStore((s) => s.user);
-  const workspace = useWorkspaceStore((s) => s.workspace);
-  const members = useWorkspaceStore((s) => s.members);
-  const updateWorkspace = useWorkspaceStore((s) => s.updateWorkspace);
+  const { workspace, canManageWorkspace, saveWorkspaceSettings } = useWorkspaceManagement();
   const [runtimes, setRuntimes] = useState<AgentRuntime[]>([]);
   const [values, setValues] = useState<RuntimeSettings>(defaultSettings);
   const [saving, setSaving] = useState(false);
-
-  const currentMember = members.find((member) => member.user_id === user?.id) ?? null;
-  const canManageWorkspace = currentMember?.role === "owner" || currentMember?.role === "admin";
 
   useEffect(() => {
     let cancelled = false;
@@ -77,12 +70,10 @@ export function RuntimeIntegrationsTab() {
     if (!workspace) return;
     setSaving(true);
     try {
-      const nextSettings = {
-        ...((workspace.settings ?? {}) as Record<string, unknown>),
+      await saveWorkspaceSettings((currentSettings) => ({
+        ...currentSettings,
         runtime_integrations: values,
-      };
-      const updated = await api.updateWorkspace(workspace.id, { settings: nextSettings });
-      updateWorkspace(updated);
+      }));
       toast.success("Runtime & Integrations 已保存");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "保存运行策略失败");

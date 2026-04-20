@@ -37,8 +37,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { useAuthStore } from "@/features/auth";
-import { useWorkspaceStore } from "@/features/workspace";
-import { api } from "@/shared/api";
+import { useWorkspaceManagement } from "@/features/workspace";
 
 const roleConfig: Record<MemberRole, { label: string; icon: typeof Crown; description: string }> = {
   owner: { label: "所有者", icon: Crown, description: "完全访问权限，管理所有设置" },
@@ -139,9 +138,15 @@ function MemberRow({
 
 export function MembersTab() {
   const user = useAuthStore((s) => s.user);
-  const workspace = useWorkspaceStore((s) => s.workspace);
-  const members = useWorkspaceStore((s) => s.members);
-  const refreshMembers = useWorkspaceStore((s) => s.refreshMembers);
+  const {
+    workspace,
+    members,
+    canManageWorkspace,
+    isOwner,
+    inviteMember,
+    changeMemberRole,
+    removeMember,
+  } = useWorkspaceManagement();
 
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<MemberRole>("member");
@@ -154,21 +159,16 @@ export function MembersTab() {
     onConfirm: () => Promise<void>;
   } | null>(null);
 
-  const currentMember = members.find((m) => m.user_id === user?.id) ?? null;
-  const canManageWorkspace = currentMember?.role === "owner" || currentMember?.role === "admin";
-  const isOwner = currentMember?.role === "owner";
-
   const handleAddMember = async () => {
     if (!workspace) return;
     setInviteLoading(true);
     try {
-      await api.createMember(workspace.id, {
+      await inviteMember({
         email: inviteEmail,
         role: inviteRole,
       });
       setInviteEmail("");
       setInviteRole("member");
-      await refreshMembers();
       toast.success("已添加成员");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "添加成员失败");
@@ -181,8 +181,7 @@ export function MembersTab() {
     if (!workspace) return;
     setMemberActionId(memberId);
     try {
-      await api.updateMember(workspace.id, memberId, { role });
-      await refreshMembers();
+      await changeMemberRole(memberId, role);
       toast.success("角色已更新");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "更新成员失败");
@@ -200,8 +199,7 @@ export function MembersTab() {
       onConfirm: async () => {
         setMemberActionId(member.id);
         try {
-          await api.deleteMember(workspace.id, member.id);
-          await refreshMembers();
+          await removeMember(member.id);
           toast.success("成员已移除");
         } catch (e) {
           toast.error(e instanceof Error ? e.message : "移除成员失败");

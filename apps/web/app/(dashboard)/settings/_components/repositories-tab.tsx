@@ -6,22 +6,14 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
-import { useAuthStore } from "@/features/auth";
-import { useWorkspaceStore } from "@/features/workspace";
-import { api } from "@/shared/api";
+import { useWorkspaceManagement } from "@/features/workspace";
 import type { WorkspaceRepo } from "@/shared/types";
 
 export function RepositoriesTab() {
-  const user = useAuthStore((s) => s.user);
-  const workspace = useWorkspaceStore((s) => s.workspace);
-  const members = useWorkspaceStore((s) => s.members);
-  const updateWorkspace = useWorkspaceStore((s) => s.updateWorkspace);
+  const { workspace, canManageWorkspace, saveWorkspace } = useWorkspaceManagement();
 
   const [repos, setRepos] = useState<WorkspaceRepo[]>(workspace?.repos ?? []);
   const [saving, setSaving] = useState(false);
-
-  const currentMember = members.find((m) => m.user_id === user?.id) ?? null;
-  const canManageWorkspace = currentMember?.role === "owner" || currentMember?.role === "admin";
 
   useEffect(() => {
     setRepos(workspace?.repos ?? []);
@@ -31,8 +23,7 @@ export function RepositoriesTab() {
     if (!workspace) return;
     setSaving(true);
     try {
-      const updated = await api.updateWorkspace(workspace.id, { repos });
-      updateWorkspace(updated);
+      await saveWorkspace({ repos });
       toast.success("仓库已保存");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "保存仓库失败");

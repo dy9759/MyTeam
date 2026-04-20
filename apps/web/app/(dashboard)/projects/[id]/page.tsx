@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -43,6 +43,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { api } from "@/shared/api";
+import { useRetryingPoll } from "./polling";
 import type {
   ProjectStatus,
   ProjectRun,
@@ -125,10 +126,7 @@ export default function ProjectDetailPage({ projectId }: ProjectDetailProps) {
 
   // Channel messages for channel tab
   const [channelMessages, setChannelMessages] = useState<Message[]>([]);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Execution polling
-  const execPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [executionTasks, setExecutionTasks] = useState<Task[]>([]);
   const [startingExecution, setStartingExecution] = useState(false);
 
@@ -287,82 +285,75 @@ export default function ProjectDetailPage({ projectId }: ProjectDetailProps) {
     }
   }, [currentProject]);
 
-  // Poll channel messages
+  const channelId = currentProject?.channel_id ?? null;
   useEffect(() => {
-    if (pollRef.current) clearInterval(pollRef.current);
-    const channelId = currentProject?.channel_id;
-    if (!channelId) return;
+    setChannelMessages([]);
+  }, [channelId]);
 
-    async function loadMessages() {
-      try {
-        const res = await api.getChannelMessages(channelId!);
-        setChannelMessages(res.messages);
-      } catch {
-        // silently fail
-      }
-    }
+  const channelPollError = useRetryingPoll({
+    enabled: Boolean(channelId),
+    fallbackError: "加载项目频道消息失败",
+    resetKey: channelId ?? "no-channel",
+    poll: useCallback(async () => {
+      if (!channelId) return;
+      const res = await api.getChannelMessages(channelId);
+      setChannelMessages(res.messages);
+    }, [channelId]),
+  });
 
-    loadMessages();
-    pollRef.current = setInterval(loadMessages, 3000);
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
-  }, [currentProject?.channel_id]);
+  const activeRun = currentProject?.active_run;
+  const isExecutionPollingActive =
+    Boolean(activeRun) &&
+    (activeRun?.status === "running" || activeRun?.status === "paused");
 
-  // Fetch execution tasks when project has a plan / active run
-  const fetchExecutionTasks = useCallback(async () => {
+  useEffect(() => {
     if (!currentProject?.plan?.id) {
       setExecutionTasks([]);
-      return;
-    }
-    try {
-      const tasks = await api.listTasksByPlan(currentProject.plan.id);
-      setExecutionTasks(tasks);
-    } catch {
-      // silently fail
     }
   }, [currentProject?.plan?.id]);
 
-  // Poll execution status
   useEffect(() => {
-    if (execPollRef.current) clearInterval(execPollRef.current);
-    const activeRun = currentProject?.active_run;
-    const isActive =
-      activeRun &&
-      (activeRun.status === "running" || activeRun.status === "paused");
-    if (!isActive) return;
+    const planID = currentProject?.plan?.id;
+    if (!planID) return;
 
-    async function pollExecution() {
-      try {
-        await Promise.all([
-          fetchRuns(id),
-          fetchProject(id),
-          fetchExecutionTasks(),
-        ]);
-      } catch {
-        // silently fail
-      }
-    }
+    let cancelled = false;
+    void api
+      .listTasksByPlan(planID)
+      .then((tasks) => {
+        if (!cancelled) {
+          setExecutionTasks(tasks);
+        }
+      })
+      .catch(() => {
+        // Keep the most recent execution task snapshot if a refresh fails.
+      });
 
-    fetchExecutionTasks();
-
-    execPollRef.current = setInterval(pollExecution, 3000);
     return () => {
-      if (execPollRef.current) clearInterval(execPollRef.current);
+      cancelled = true;
     };
-  }, [
-    currentProject?.active_run?.status,
-    id,
-    fetchRuns,
-    fetchProject,
-    fetchExecutionTasks,
-  ]);
+  }, [currentProject?.plan?.id, currentProject?.active_run?.id, currentProject?.active_run?.status]);
 
-  useEffect(() => {
-    if (currentProject?.active_run) {
-      fetchExecutionTasks();
-    }
-  }, [currentProject?.active_run, fetchExecutionTasks]);
+  const executionPollError = useRetryingPoll({
+    enabled: isExecutionPollingActive,
+    fallbackError: "同步执行状态失败",
+    resetKey: id ?? "no-project",
+    poll: useCallback(async () => {
+      if (!id) return;
+      const [project, runs] = await Promise.all([
+        api.getProject(id),
+        api.listProjectRuns(id),
+      ]);
+      useProjectStore.setState({ currentProject: project, runs });
+
+      if (!project.plan?.id) {
+        setExecutionTasks([]);
+        return;
+      }
+
+      const tasks = await api.listTasksByPlan(project.plan.id);
+      setExecutionTasks(tasks);
+    }, [id]),
+  });
 
   async function handleTitleSave() {
     if (!titleValue.trim() || !id) return;
@@ -442,7 +433,10 @@ export default function ProjectDetailPage({ projectId }: ProjectDetailProps) {
 
   const plan = currentProject.plan;
   const approvalStatus = (plan as any)?.approval_status as string | undefined;
-  const activeRun = currentProject.active_run;
+  const pollingErrors = [
+    channelPollError.error ? `频道：${channelPollError.error}` : null,
+    executionPollError.error ? `执行：${executionPollError.error}` : null,
+  ].filter(Boolean) as string[];
 
   const nonFatalLoadErrors = [
     loadErrors.versions ? `版本：${loadErrors.versions}` : null,
@@ -451,6 +445,15 @@ export default function ProjectDetailPage({ projectId }: ProjectDetailProps) {
 
   return (
     <div className="flex flex-1 min-h-0 flex-col overflow-auto p-6">
+      {pollingErrors.length > 0 && (
+        <div
+          className="mb-4 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning"
+          role="status"
+          aria-live="polite"
+        >
+          实时同步暂时受阻，正在自动重试：{pollingErrors.join("；")}
+        </div>
+      )}
       {nonFatalLoadErrors.length > 0 && (
         <div className="mb-4 border border-destructive/40 bg-destructive/10 text-destructive text-sm rounded-md px-3 py-2">
           部分数据加载失败：{nonFatalLoadErrors.join("；")}

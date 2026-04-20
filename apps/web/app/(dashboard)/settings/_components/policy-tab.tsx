@@ -8,9 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { useAuthStore } from "@/features/auth";
-import { useWorkspaceStore } from "@/features/workspace";
-import { api } from "@/shared/api";
+import { useWorkspaceManagement } from "@/features/workspace";
 
 type PolicyField =
   | {
@@ -48,15 +46,9 @@ function defaultValueForField(field: PolicyField): string | boolean {
 }
 
 export function PolicyTab({ scope, title, description, fields }: PolicyTabProps) {
-  const user = useAuthStore((s) => s.user);
-  const workspace = useWorkspaceStore((s) => s.workspace);
-  const members = useWorkspaceStore((s) => s.members);
-  const updateWorkspace = useWorkspaceStore((s) => s.updateWorkspace);
+  const { workspace, canManageWorkspace, saveWorkspaceSettings } = useWorkspaceManagement();
   const [saving, setSaving] = useState(false);
   const [values, setValues] = useState<Record<string, string | boolean>>({});
-
-  const currentMember = members.find((member) => member.user_id === user?.id) ?? null;
-  const canManageWorkspace = currentMember?.role === "owner" || currentMember?.role === "admin";
 
   const defaultValues = useMemo(
     () =>
@@ -87,15 +79,10 @@ export function PolicyTab({ scope, title, description, fields }: PolicyTabProps)
     if (!workspace) return;
     setSaving(true);
     try {
-      const currentSettings = (workspace.settings ?? {}) as Record<string, unknown>;
-      const nextSettings = {
+      await saveWorkspaceSettings((currentSettings) => ({
         ...currentSettings,
         [scope]: values,
-      };
-      const updated = await api.updateWorkspace(workspace.id, {
-        settings: nextSettings,
-      });
-      updateWorkspace(updated);
+      }));
       toast.success(`${title}已保存`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : `保存${title}失败`);
