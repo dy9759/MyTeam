@@ -33,10 +33,8 @@ type ProjectResponse struct {
 }
 
 // ProjectVersionResponse is the JSON response for a project version.
-//
-// TODO(plan5): plan_snapshot and workflow_snapshot were dropped in
-// migration 059. Versions will be rebuilt around the Task/Slot/Execution
-// surface in Batch D.
+// Migration 059 removed the legacy plan_snapshot and workflow_snapshot
+// columns, so this shape only exposes the remaining version metadata.
 type ProjectVersionResponse struct {
 	ID              string  `json:"id"`
 	ProjectID       string  `json:"project_id"`
@@ -50,10 +48,8 @@ type ProjectVersionResponse struct {
 }
 
 // ProjectRunResponse is the JSON response for a project run.
-//
-// TODO(plan5): retry_count was dropped from project_run in migration 059.
-// step_logs / output_refs may also be replaced by execution-level surfaces
-// in Batch D.
+// Migration 059 removed retry_count from project_run, so this response maps
+// only the current run fields.
 type ProjectRunResponse struct {
 	ID            string          `json:"id"`
 	PlanID        string          `json:"plan_id"`

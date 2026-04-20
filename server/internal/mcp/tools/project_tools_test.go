@@ -235,6 +235,27 @@ func TestListAssignedProjectsReturnsOnlyAssignedWorkspaceProjects(t *testing.T) 
 	}
 }
 
+func TestListAssignedProjectsDeniesHumanCaller(t *testing.T) {
+	f := newMCPToolFixture(t)
+	f.addProject("Assigned running project", "running")
+
+	result, err := (ListAssignedProjects{}).Exec(f.ctx, f.q, mcptool.Context{
+		WorkspaceID: f.workspaceID,
+		UserID:      f.userID,
+		RuntimeMode: mcptool.RuntimeCloud,
+	}, map[string]any{})
+	if err != nil {
+		t.Fatalf("exec: %v", err)
+	}
+
+	if !containsError(result.Errors, errcode.MCPPermissionDenied.Code) {
+		t.Fatalf("expected MCP_PERMISSION_DENIED, got %#v", result)
+	}
+	if result.Note != "agent context required to list assigned projects" {
+		t.Fatalf("unexpected note %q", result.Note)
+	}
+}
+
 func TestGetProjectReturnsProjectFromCallerWorkspace(t *testing.T) {
 	f := newMCPToolFixture(t)
 	projectID := f.addProject("Readable project", "not_started")

@@ -12,8 +12,9 @@ import (
 )
 
 // ListAssignedProjects returns projects the calling agent has at least one
-// task assignment in (actual_agent_id or primary_assignee_id). Filters by
-// status when supplied. Workspace-scoped.
+// task assignment in (actual_agent_id or primary_assignee_id). Human callers
+// are denied instead of falling back to the full workspace project list.
+// Filters by status when supplied. Workspace-scoped.
 type ListAssignedProjects struct{}
 
 func (ListAssignedProjects) Name() string { return "list_assigned_projects" }
@@ -37,6 +38,9 @@ func (ListAssignedProjects) Exec(ctx context.Context, q *db.Queries, ws mcptool.
 			return r, nil
 		}
 		return mcptool.Result{}, err
+	}
+	if ws.AgentID == uuid.Nil {
+		return permissionDenied("agent context required to list assigned projects"), nil
 	}
 
 	wantStatus := stringArg(args, "status")

@@ -73,7 +73,14 @@ export interface LoginResponse {
   user: User;
 }
 
-export class ApiClient {
+export interface ApiTransport {
+  getBaseUrl(): string;
+  getAuthHeaders(): Record<string, string>;
+  handleUnauthorized(): void;
+  parseErrorMessage(res: Response, fallback: string): Promise<string>;
+}
+
+export class ApiClient implements ApiTransport {
   private baseUrl: string;
   private token: string | null = null;
   private workspaceId: string | null = null;
@@ -92,14 +99,18 @@ export class ApiClient {
     this.workspaceId = id;
   }
 
-  private authHeaders(): Record<string, string> {
+  getBaseUrl(): string {
+    return this.baseUrl;
+  }
+
+  getAuthHeaders(): Record<string, string> {
     const headers: Record<string, string> = {};
     if (this.token) headers["Authorization"] = `Bearer ${this.token}`;
     if (this.workspaceId) headers["X-Workspace-ID"] = this.workspaceId;
     return headers;
   }
 
-  private handleUnauthorized() {
+  handleUnauthorized() {
     if (typeof window !== "undefined") {
       localStorage.removeItem("multica_token");
       localStorage.removeItem("multica_workspace_id");
@@ -111,7 +122,7 @@ export class ApiClient {
     }
   }
 
-  private async parseErrorMessage(res: Response, fallback: string): Promise<string> {
+  async parseErrorMessage(res: Response, fallback: string): Promise<string> {
     try {
       const data = await res.json() as { error?: string };
       if (typeof data.error === "string" && data.error) return data.error;
@@ -129,7 +140,7 @@ export class ApiClient {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       "X-Request-ID": rid,
-      ...this.authHeaders(),
+      ...this.getAuthHeaders(),
       ...((init?.headers as Record<string, string>) ?? {}),
     };
 
@@ -645,7 +656,7 @@ export class ApiClient {
 
     const res = await fetch(`${this.baseUrl}/api/upload-file`, {
       method: "POST",
-      headers: this.authHeaders(),
+      headers: this.getAuthHeaders(),
       body: formData,
       credentials: "include",
     });

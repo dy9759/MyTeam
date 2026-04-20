@@ -130,10 +130,8 @@ func (s *ArtifactService) CreateHeadless(ctx context.Context, req CreateHeadless
 }
 
 // CreateWithFileRequest creates an Artifact backed by a FileIndex + FileSnapshot.
-// The FileIndex MUST be access_scope='project' and project_id matching the
-// Artifact's project (resolved task→plan→project). For Plan 5 MVP this
-// alignment is enforced by FileService at upload time; see TODO in
-// CreateWithFile.
+// The file row must already belong to the caller workspace; `CreateWithFile`
+// does not manage uploads or validate the final task→project match.
 type CreateWithFileRequest struct {
 	TaskID         uuid.UUID
 	SlotID         uuid.UUID
@@ -168,11 +166,10 @@ func (s *ArtifactService) CreateWithFile(ctx context.Context, req CreateWithFile
 		req.ArtifactType = ArtifactTypeFile
 	}
 
-	// TODO(plan5): cross-check file_index.access_scope='project' AND
-	// file_index.project_id matches the artifact's project (resolved
-	// task→plan→project). For MVP this is enforced by FileService at
-	// upload time; harden here once FileService writes the project_id
-	// consistently.
+	// TODO(plan5): validate file_index.project_id against the artifact's
+	// resolved project (task→plan→project). UploadArtifact already checks the
+	// file belongs to the caller workspace before reaching this service, but
+	// CreateWithFile still trusts the caller for the final project match.
 
 	var contentJSON []byte
 	if req.Content != nil {

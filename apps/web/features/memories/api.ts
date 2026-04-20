@@ -1,4 +1,5 @@
 import { api } from "@/shared/api";
+import type { ApiTransport } from "@/shared/api/client";
 
 export type MemoryStatus = "candidate" | "confirmed" | "archived";
 
@@ -59,13 +60,6 @@ export type SearchInput = {
   status?: MemoryStatus[];
 };
 
-type ApiTransport = {
-  baseUrl: string;
-  authHeaders: () => Record<string, string>;
-  handleUnauthorized: () => void;
-  parseErrorMessage: (res: Response, fallback: string) => Promise<string>;
-};
-
 type ListMemoriesResponse = {
   memories: Memory[];
 };
@@ -84,18 +78,18 @@ export class MemoryApiError extends Error {
   }
 }
 
-const transport = api as unknown as ApiTransport;
+const transport: ApiTransport = api;
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const method = init?.method ?? "GET";
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     "X-Request-ID": crypto.randomUUID().slice(0, 8),
-    ...transport.authHeaders(),
+    ...transport.getAuthHeaders(),
     ...((init?.headers as Record<string, string>) ?? {}),
   };
 
-  const res = await fetch(`${transport.baseUrl}${path}`, {
+  const res = await fetch(`${transport.getBaseUrl()}${path}`, {
     ...init,
     method,
     headers,
