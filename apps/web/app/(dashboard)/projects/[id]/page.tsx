@@ -1148,32 +1148,13 @@ function PlanContextSection({
               <div className="text-[10px] text-muted-foreground/80 font-mono uppercase tracking-wider mb-1.5">
                 会话引用
               </div>
-              <ul className="space-y-1">
-                {convs.map((c, i) => {
-                  const subset = (c as any).type === "message_subset";
-                  const msgIds =
-                    subset && Array.isArray((c as any).message_ids)
-                      ? (c as any).message_ids
-                      : [];
-                  return (
-                    <li
-                      key={`${c.conversation_id}-${i}`}
-                      className="flex items-center gap-2 text-xs font-mono text-muted-foreground"
-                    >
-                      <Badge variant="outline" className="text-[10px]">
-                        {c.type}
-                      </Badge>
-                      <span className="truncate">
-                        {c.conversation_id.slice(0, 12)}…
-                      </span>
-                      {subset && (
-                        <span className="text-[10px] text-muted-foreground/70">
-                          {msgIds.length} 条消息
-                        </span>
-                      )}
-                    </li>
-                  );
-                })}
+              <ul className="space-y-2">
+                {convs.map((c, i) => (
+                  <ConversationRefItem
+                    key={`${c.conversation_id}-${i}`}
+                    conv={c}
+                  />
+                ))}
               </ul>
             </div>
           )}
@@ -1232,6 +1213,126 @@ function PlanContextSection({
         />
       )}
     </div>
+  );
+}
+
+// ConversationRefItem loads a 1-2 line preview of the referenced
+// messages so the 上下文 block is readable instead of just showing
+// opaque conversation UUIDs. Uses listMessages({channel_id}) + filters
+// by the subset's message_ids when present; otherwise takes the last
+// few messages. Fetches once per mount and caches in component state.
+function ConversationRefItem({
+  conv,
+}: {
+  conv: {
+    conversation_id: string;
+    type: string;
+    message_ids?: string[];
+    peer_type?: "member" | "agent";
+  };
+}) {
+  const subset = conv.type === "message_subset";
+  const msgIds: string[] = Array.isArray(conv.message_ids)
+    ? conv.message_ids
+    : [];
+  const [previews, setPreviews] = useState<
+    { id: string; sender_id: string; content: string; created_at: string }[]
+  >([]);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const members = useWorkspaceStore((s) => s.members);
+  const agents = useWorkspaceStore((s) => s.agents);
+
+  useEffect(() => {
+    let cancel = false;
+    (async () => {
+      setLoading(true);
+      setErr(null);
+      try {
+        // DM conversations need peer_type hint; channel/thread take
+        // channel_id. When the backend accepts both in the same call,
+        // we pass channel_id as the canonical id — conversation_id is
+        // already a channel id for both channel and thread types.
+        const res = await api.listMessages(
+          conv.type === "dm"
+            ? {
+                recipient_id: conv.conversation_id,
+                peer_type: conv.peer_type ?? "member",
+                limit: 20,
+              }
+            : { channel_id: conv.conversation_id, limit: 20 },
+        );
+        if (cancel) return;
+        const all = (res?.messages ?? []) as Array<{
+          id: string;
+          sender_id: string;
+          content: string;
+          created_at: string;
+        }>;
+        // Filter to the requested subset; fall back to the latest few
+        // messages when no subset was specified so the user still sees
+        // something.
+        const filtered = msgIds.length
+          ? all.filter((m) => msgIds.includes(m.id))
+          : all.slice(-2);
+        setPreviews(filtered.slice(0, 2));
+      } catch (e) {
+        if (!cancel) setErr(e instanceof Error ? e.message : "加载失败");
+      } finally {
+        if (!cancel) setLoading(false);
+      }
+    })();
+    return () => {
+      cancel = true;
+    };
+  }, [conv.conversation_id, conv.type, msgIds.join(","), conv.peer_type]);
+
+  const resolveName = (senderId: string): string => {
+    const m = members.find((x) => x.user_id === senderId);
+    if (m) return m.name;
+    const a = (Array.isArray(agents) ? agents : []).find(
+      (x: any) => x.id === senderId,
+    );
+    if (a?.name) return a.name;
+    return senderId.slice(0, 8);
+  };
+
+  return (
+    <li className="rounded border border-border/60 bg-background/40 p-2 space-y-1.5">
+      <div className="flex items-center gap-2 text-[11px] font-mono text-muted-foreground">
+        <Badge variant="outline" className="text-[10px]">
+          {conv.type}
+        </Badge>
+        <span className="truncate">{conv.conversation_id.slice(0, 12)}…</span>
+        {subset && (
+          <span className="text-[10px] text-muted-foreground/70">
+            {msgIds.length} 条消息
+          </span>
+        )}
+      </div>
+      {loading ? (
+        <div className="text-[11px] text-muted-foreground/60">加载中…</div>
+      ) : err ? (
+        <div className="text-[11px] text-destructive">{err}</div>
+      ) : previews.length === 0 ? (
+        <div className="text-[11px] text-muted-foreground/60">
+          {subset ? "未找到对应消息" : "无可预览内容"}
+        </div>
+      ) : (
+        <ul className="space-y-1">
+          {previews.map((m) => (
+            <li key={m.id} className="text-[11px] leading-snug">
+              <span className="text-muted-foreground font-mono">
+                {resolveName(m.sender_id)}:
+              </span>{" "}
+              <span className="text-foreground/90 line-clamp-2 break-words inline">
+                {m.content}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </li>
   );
 }
 
