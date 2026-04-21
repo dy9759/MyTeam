@@ -26,15 +26,18 @@ FROM agent
 WHERE id = $1 AND kind = 'subagent';
 
 -- name: CreateWorkspaceSubagent :one
+-- runtime_mode was dropped in migration 050 (Account Phase 2). Subagents
+-- are templates that wrap skills; they don't run themselves, so they
+-- don't need a runtime assignment at create time.
 INSERT INTO agent (
     workspace_id, name, description, instructions,
     category, kind, is_global, source,
-    owner_id, owner_type, agent_type, runtime_mode
+    owner_id, owner_type, agent_type
 )
 VALUES (
     $1, $2, $3, $4,
     $5, 'subagent', false, 'manual',
-    $6, 'user', 'personal_agent', 'cloud'
+    $6, 'user', 'personal_agent'
 )
 RETURNING
     id, workspace_id, name, description, avatar_url, category,
@@ -44,15 +47,19 @@ RETURNING
 -- Idempotent upsert for the bundle loader. Keyed by source_ref so a
 -- file at the same path always maps to the same global subagent.
 -- name: UpsertBundleSubagent :one
+-- Bundle subagents are organization-owned globals — no individual user
+-- owner and no runtime binding, matching migration 069's is_global
+-- semantics. owner_type='organization' satisfies the agent_type_owner_
+-- match constraint from migration 001.
 INSERT INTO agent (
     workspace_id, name, description, instructions,
     category, kind, is_global, source, source_ref,
-    agent_type, runtime_mode
+    agent_type, owner_type
 )
 VALUES (
     NULL, $1, $2, $3,
     $4, 'subagent', true, 'bundle', $5,
-    'system_agent', 'cloud'
+    'system_agent', 'organization'
 )
 ON CONFLICT (source_ref) WHERE source = 'bundle' AND source_ref IS NOT NULL
 DO UPDATE SET
