@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { cookies } from "next/headers";
-import { Inter, Geist_Mono } from "next/font/google";
+import { Inter, Source_Serif_4, JetBrains_Mono } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
@@ -10,14 +10,20 @@ import { ModalRegistry } from "@/features/modals";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans", weight: ["400", "500", "600", "700"] });
-const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-mono" });
+const sourceSerif = Source_Serif_4({
+  subsets: ["latin"],
+  variable: "--font-serif",
+  weight: ["400", "500", "600", "700"],
+  style: ["normal", "italic"],
+});
+const jetbrainsMono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono" });
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)", color: "#08090a" },
+    { media: "(prefers-color-scheme: light)", color: "#F7F3EC" },
+    { media: "(prefers-color-scheme: dark)", color: "#1A140D" },
   ],
 };
 
@@ -62,7 +68,12 @@ export default async function RootLayout({
     <html
       lang={lang}
       suppressHydrationWarning
-      className={cn("dark antialiased font-sans h-full", inter.variable, geistMono.variable)}
+      className={cn(
+        "antialiased font-sans h-full",
+        inter.variable,
+        sourceSerif.variable,
+        jetbrainsMono.variable,
+      )}
     >
       <body className="h-full overflow-hidden" suppressHydrationWarning>
         <ThemeProvider>
