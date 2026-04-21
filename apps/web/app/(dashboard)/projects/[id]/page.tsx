@@ -10,23 +10,11 @@ import {
   GitFork,
   Check,
   X as XIcon,
-  StopCircle,
   ListTodo,
+  Trash2,
 } from "lucide-react";
 import { useProjectStore } from "@/features/projects";
 import { useWorkspaceStore } from "@/features/workspace";
-import { useIssueStore } from "@/features/issues/store";
-import { useIssueViewStore, initFilterWorkspaceSync } from "@/features/issues/stores/view-store";
-import { useIssuesScopeStore } from "@/features/issues/stores/issues-scope-store";
-import { ViewStoreProvider } from "@/features/issues/stores/view-store-context";
-import { filterIssues } from "@/features/issues/utils/filter";
-import { BOARD_STATUSES } from "@/features/issues/config";
-import { useIssueSelectionStore } from "@/features/issues/stores/selection-store";
-import { ListView } from "@/features/issues/components/list-view";
-import { BoardView } from "@/features/issues/components/board-view";
-import { IssuesHeader } from "@/features/issues/components/issues-header";
-import { BatchActionToolbar } from "@/features/issues/components/batch-action-toolbar";
-import { PlanEditor } from "@/features/projects/components/plan-editor";
 import { VersionTree } from "@/features/projects/components/version-tree";
 import { ExecutionStepCard } from "@/features/projects/components/execution-step-card";
 import { MessageInput } from "@/features/messaging/components/message-input";
@@ -47,10 +35,9 @@ import { useRetryingPoll } from "./polling";
 import type {
   ProjectStatus,
   ProjectRun,
-  PlanStep,
   Agent,
-  IssueStatus,
   Task,
+  TaskStatus,
 } from "@/shared/types";
 import type { Message } from "@/shared/types/messaging";
 
@@ -81,11 +68,39 @@ const RUN_STATUS_BADGE: Record<string, string> = {
   cancelled: "bg-accent text-muted-foreground/60 border-border",
 };
 
-interface PlanEditorStep extends PlanStep {
-  agent_id?: string;
-}
-
-/* ---------- Props for inline usage from projects list ---------- */
+// Buckets for the board view. Kept intentionally small so a project with a
+// handful of tasks doesn't scatter them across too many columns.
+const BOARD_COLUMNS: Array<{
+  key: "todo" | "in_progress" | "waiting" | "done" | "failed";
+  label: string;
+  statuses: TaskStatus[];
+}> = [
+  {
+    key: "todo",
+    label: "待办",
+    statuses: ["draft", "ready", "queued"],
+  },
+  {
+    key: "in_progress",
+    label: "进行中",
+    statuses: ["assigned", "running"],
+  },
+  {
+    key: "waiting",
+    label: "等待/审核",
+    statuses: ["needs_human", "under_review", "needs_attention"],
+  },
+  {
+    key: "done",
+    label: "已完成",
+    statuses: ["completed"],
+  },
+  {
+    key: "failed",
+    label: "失败/取消",
+    statuses: ["failed", "cancelled"],
+  },
+];
 
 interface ProjectDetailProps {
   projectId?: string;
@@ -105,6 +120,7 @@ export default function ProjectDetailPage({ projectId }: ProjectDetailProps) {
     fetchVersions,
     fetchRuns,
     updateProject,
+    deleteProject,
     approvePlan,
     rejectPlan,
   } = useProjectStore();
@@ -122,89 +138,19 @@ export default function ProjectDetailPage({ projectId }: ProjectDetailProps) {
   const [forkReason, setForkReason] = useState("");
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
-  const [planSteps, setPlanSteps] = useState<PlanEditorStep[]>([]);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // Channel messages for channel tab
   const [channelMessages, setChannelMessages] = useState<Message[]>([]);
 
-  const [executionTasks, setExecutionTasks] = useState<Task[]>([]);
+  // Project tasks (from /api/plans/{id}/tasks). Drives Plan / Tasks /
+  // Board / Execution tabs — migration 059 removed the legacy Plan.steps
+  // column so everything flows from Task rows now.
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [startingExecution, setStartingExecution] = useState(false);
 
-  // Agents for execution task display
   const agents = useWorkspaceStore((s) => s.agents) as Agent[];
-
-  // Issues state for tasks/board tabs
-  const allIssues = useIssueStore((s) => s.issues);
-  const scope = useIssuesScopeStore((s) => s.scope);
-  const viewMode = useIssueViewStore((s) => s.viewMode);
-  const statusFilters = useIssueViewStore((s) => s.statusFilters);
-  const priorityFilters = useIssueViewStore((s) => s.priorityFilters);
-  const assigneeFilters = useIssueViewStore((s) => s.assigneeFilters);
-  const includeNoAssignee = useIssueViewStore((s) => s.includeNoAssignee);
-  const creatorFilters = useIssueViewStore((s) => s.creatorFilters);
-
-  useEffect(() => {
-    initFilterWorkspaceSync();
-  }, []);
-
-  const scopedIssues = useMemo(() => {
-    if (scope === "members")
-      return allIssues.filter((i) => i.assignee_type === "member");
-    if (scope === "agents")
-      return allIssues.filter((i) => i.assignee_type === "agent");
-    return allIssues;
-  }, [allIssues, scope]);
-
-  const filteredIssues = useMemo(
-    () =>
-      filterIssues(scopedIssues, {
-        statusFilters,
-        priorityFilters,
-        assigneeFilters,
-        includeNoAssignee,
-        creatorFilters,
-      }),
-    [scopedIssues, statusFilters, priorityFilters, assigneeFilters, includeNoAssignee, creatorFilters]
-  );
-
-  const visibleStatuses = useMemo(() => {
-    if (statusFilters.length > 0)
-      return BOARD_STATUSES.filter((s) => statusFilters.includes(s));
-    return BOARD_STATUSES;
-  }, [statusFilters]);
-
-  const hiddenStatuses = useMemo(
-    () => BOARD_STATUSES.filter((s) => !visibleStatuses.includes(s)),
-    [visibleStatuses]
-  );
-
-  const handleMoveIssue = useCallback(
-    (issueId: string, newStatus: IssueStatus, newPosition?: number) => {
-      const viewState = useIssueViewStore.getState();
-      if (viewState.sortBy !== "position") {
-        viewState.setSortBy("position");
-        viewState.setSortDirection("asc");
-      }
-
-      const updates: Partial<{ status: IssueStatus; position: number }> = {
-        status: newStatus,
-      };
-      if (newPosition !== undefined) updates.position = newPosition;
-
-      useIssueStore.getState().updateIssue(issueId, updates);
-
-      api.updateIssue(issueId, updates).catch(() => {
-        toast.error("移动任务失败");
-        api
-          .listIssues({ limit: 200 })
-          .then((res) => {
-            useIssueStore.getState().setIssues(res.issues);
-          })
-          .catch(console.error);
-      });
-    },
-    []
-  );
 
   useEffect(() => {
     if (!id) return;
@@ -221,10 +167,6 @@ export default function ProjectDetailPage({ projectId }: ProjectDetailProps) {
     const isAbort = (err: unknown) =>
       signal.aborted || (err as Error)?.name === "AbortError";
 
-    // Bypass the store's built-in try/catch so we can classify each fetch
-    // independently and expose per-call error state to the UI. On success
-    // we still push the results into the store so the rest of the page
-    // reacts as it did before.
     const loadProject = async () => {
       try {
         const project = await api.getProject(id, { signal });
@@ -275,13 +217,9 @@ export default function ProjectDetailPage({ projectId }: ProjectDetailProps) {
     return () => controller.abort();
   }, [id]);
 
-  // Sync title and plan steps when project loads
   useEffect(() => {
     if (currentProject) {
       setTitleValue(currentProject.title);
-      if (currentProject.plan?.steps) {
-        setPlanSteps(currentProject.plan.steps as PlanEditorStep[]);
-      }
     }
   }, [currentProject]);
 
@@ -308,7 +246,7 @@ export default function ProjectDetailPage({ projectId }: ProjectDetailProps) {
 
   useEffect(() => {
     if (!currentProject?.plan?.id) {
-      setExecutionTasks([]);
+      setTasks([]);
     }
   }, [currentProject?.plan?.id]);
 
@@ -319,19 +257,21 @@ export default function ProjectDetailPage({ projectId }: ProjectDetailProps) {
     let cancelled = false;
     void api
       .listTasksByPlan(planID)
-      .then((tasks) => {
-        if (!cancelled) {
-          setExecutionTasks(tasks);
-        }
+      .then((loaded) => {
+        if (!cancelled) setTasks(loaded);
       })
       .catch(() => {
-        // Keep the most recent execution task snapshot if a refresh fails.
+        // Keep the last snapshot on refresh failure.
       });
 
     return () => {
       cancelled = true;
     };
-  }, [currentProject?.plan?.id, currentProject?.active_run?.id, currentProject?.active_run?.status]);
+  }, [
+    currentProject?.plan?.id,
+    currentProject?.active_run?.id,
+    currentProject?.active_run?.status,
+  ]);
 
   const executionPollError = useRetryingPoll({
     enabled: isExecutionPollingActive,
@@ -346,14 +286,29 @@ export default function ProjectDetailPage({ projectId }: ProjectDetailProps) {
       useProjectStore.setState({ currentProject: project, runs });
 
       if (!project.plan?.id) {
-        setExecutionTasks([]);
+        setTasks([]);
         return;
       }
 
-      const tasks = await api.listTasksByPlan(project.plan.id);
-      setExecutionTasks(tasks);
+      const loaded = await api.listTasksByPlan(project.plan.id);
+      setTasks(loaded);
     }, [id]),
   });
+
+  const sortedTasks = useMemo(
+    () => [...tasks].sort((a, b) => a.step_order - b.step_order),
+    [tasks],
+  );
+
+  const tasksByColumn = useMemo(() => {
+    const buckets: Record<string, Task[]> = {};
+    for (const col of BOARD_COLUMNS) buckets[col.key] = [];
+    for (const t of sortedTasks) {
+      const col = BOARD_COLUMNS.find((c) => c.statuses.includes(t.status));
+      if (col) buckets[col.key]!.push(t);
+    }
+    return buckets;
+  }, [sortedTasks]);
 
   async function handleTitleSave() {
     if (!titleValue.trim() || !id) return;
@@ -373,7 +328,12 @@ export default function ProjectDetailPage({ projectId }: ProjectDetailProps) {
   }
 
   async function handleApprove() {
-    await approvePlan(id);
+    const planId = currentProject?.plan?.id;
+    if (!planId) {
+      toast.error("当前项目没有可审批的计划");
+      return;
+    }
+    await approvePlan(id, planId);
   }
 
   async function handleReject() {
@@ -393,6 +353,27 @@ export default function ProjectDetailPage({ projectId }: ProjectDetailProps) {
       toast.error("启动执行失败");
     } finally {
       setStartingExecution(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!id) return;
+    try {
+      setDeleting(true);
+      await deleteProject(id);
+      toast.success("项目已删除");
+      setDeleteOpen(false);
+      if (isInline) {
+        // Inline usage (projects list) has its own selection state — just
+        // let the parent re-render by refreshing the project list.
+        await useProjectStore.getState().fetch();
+      } else {
+        router.push("/projects");
+      }
+    } catch {
+      toast.error("删除项目失败");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -433,6 +414,13 @@ export default function ProjectDetailPage({ projectId }: ProjectDetailProps) {
 
   const plan = currentProject.plan;
   const approvalStatus = (plan as any)?.approval_status as string | undefined;
+  const isAwaitingApproval =
+    !approvalStatus ||
+    approvalStatus === "draft" ||
+    approvalStatus === "pending" ||
+    approvalStatus === "pending_approval";
+  const approvalLabel =
+    approvalStatus === "draft" ? "草稿" : "待审批";
   const pollingErrors = [
     channelPollError.error ? `频道：${channelPollError.error}` : null,
     executionPollError.error ? `执行：${executionPollError.error}` : null,
@@ -442,6 +430,9 @@ export default function ProjectDetailPage({ projectId }: ProjectDetailProps) {
     loadErrors.versions ? `版本：${loadErrors.versions}` : null,
     loadErrors.runs ? `运行记录：${loadErrors.runs}` : null,
   ].filter(Boolean) as string[];
+
+  const hasPlan = Boolean(plan);
+  const hasTasks = sortedTasks.length > 0;
 
   return (
     <div className="flex flex-1 min-h-0 flex-col overflow-auto p-6">
@@ -528,6 +519,14 @@ export default function ProjectDetailPage({ projectId }: ProjectDetailProps) {
             <GitFork className="size-4 mr-1" />
             分叉
           </Button>
+          <Button
+            variant="outline"
+            className="text-destructive border-destructive/40 hover:bg-destructive/10"
+            onClick={() => setDeleteOpen(true)}
+          >
+            <Trash2 className="size-4 mr-1" />
+            删除
+          </Button>
         </div>
       </div>
 
@@ -539,7 +538,7 @@ export default function ProjectDetailPage({ projectId }: ProjectDetailProps) {
         </div>
       )}
 
-      {/* Tabs - 5 tabs */}
+      {/* Tabs */}
       <Tabs defaultValue="plan" className="flex flex-col flex-1 min-h-0">
         <TabsList>
           <TabsTrigger value="plan">计划</TabsTrigger>
@@ -551,7 +550,6 @@ export default function ProjectDetailPage({ projectId }: ProjectDetailProps) {
 
         {/* Tab 1: Plan */}
         <TabsContent value="plan" className="space-y-4">
-          {/* Task brief */}
           {(plan as any)?.task_brief && (
             <div className="border border-border rounded-lg p-4 bg-card">
               <h3 className="text-sm font-medium text-foreground mb-2">任务简报</h3>
@@ -561,25 +559,33 @@ export default function ProjectDetailPage({ projectId }: ProjectDetailProps) {
             </div>
           )}
 
-          {/* Plan steps */}
           <div>
             <h3 className="text-sm font-medium mb-3">计划步骤</h3>
-            <PlanEditor
-              steps={planSteps}
-              onUpdate={setPlanSteps}
-              readOnly={approvalStatus === "approved"}
-            />
+            {!hasPlan ? (
+              <div className="text-center py-8 border-2 border-dashed rounded-lg text-muted-foreground text-sm">
+                暂无计划。将聊天消息选中并通过“Generate Project”生成计划。
+              </div>
+            ) : !hasTasks ? (
+              <div className="text-center py-8 border-2 border-dashed rounded-lg text-muted-foreground text-sm">
+                计划已创建，但尚未生成任务。稍后刷新或检查 Plan Generator 日志。
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {sortedTasks.map((t) => (
+                  <ExecutionStepCard key={t.id} step={t} agents={agents} />
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Approval section */}
           <div className="border border-border rounded-lg p-4 bg-card">
             <h3 className="text-sm font-medium text-foreground mb-3">审批</h3>
-            {approvalStatus === "draft" ||
-            approvalStatus === "pending_approval" ||
-            !approvalStatus ? (
+            {isAwaitingApproval ? (
               <div className="flex items-center gap-3">
                 <Button
                   onClick={handleApprove}
+                  disabled={!currentProject?.plan?.id}
                   className="bg-[#27a644] hover:bg-[#1f8a38] text-white"
                 >
                   <Check className="size-4 mr-1" />
@@ -594,7 +600,7 @@ export default function ProjectDetailPage({ projectId }: ProjectDetailProps) {
                   拒绝计划
                 </Button>
                 <span className="text-sm text-muted-foreground">
-                  {approvalStatus === "pending_approval" ? "待审批" : "草稿"}
+                  {approvalLabel}
                 </span>
               </div>
             ) : approvalStatus === "approved" ? (
@@ -621,7 +627,6 @@ export default function ProjectDetailPage({ projectId }: ProjectDetailProps) {
               </div>
             ) : null}
 
-            {/* Start execution button */}
             {approvalStatus === "approved" &&
               currentProject.status === "not_started" && (
                 <div className="mt-4">
@@ -641,65 +646,82 @@ export default function ProjectDetailPage({ projectId }: ProjectDetailProps) {
           </div>
         </TabsContent>
 
-        {/* Tab 2: Tasks (List View) */}
+        {/* Tab 2: Tasks */}
         <TabsContent value="tasks" className="flex flex-col flex-1 min-h-0">
-          <ViewStoreProvider store={useIssueViewStore}>
-            <IssuesHeader scopedIssues={scopedIssues} />
-            {scopedIssues.length === 0 ? (
-              <div className="flex flex-1 min-h-0 flex-col items-center justify-center gap-2 text-muted-foreground">
-                <ListTodo className="h-10 w-10 text-muted-foreground/40" />
-                <p className="text-sm">暂无任务</p>
-                <p className="text-xs">创建一个任务以开始。</p>
-              </div>
-            ) : (
-              <ListView
-                issues={filteredIssues}
-                visibleStatuses={visibleStatuses}
-              />
-            )}
-            <BatchActionToolbar />
-          </ViewStoreProvider>
+          {!hasTasks ? (
+            <div className="flex flex-1 min-h-0 flex-col items-center justify-center gap-2 text-muted-foreground">
+              <ListTodo className="h-10 w-10 text-muted-foreground/40" />
+              <p className="text-sm">暂无任务</p>
+              <p className="text-xs">在计划中生成任务以开始。</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {sortedTasks.map((t) => (
+                <ExecutionStepCard key={t.id} step={t} agents={agents} />
+              ))}
+            </div>
+          )}
         </TabsContent>
 
-        {/* Tab 3: Board (Kanban View) */}
+        {/* Tab 3: Board */}
         <TabsContent value="board" className="flex flex-col flex-1 min-h-0">
-          <ViewStoreProvider store={useIssueViewStore}>
-            <IssuesHeader scopedIssues={scopedIssues} />
-            {scopedIssues.length === 0 ? (
-              <div className="flex flex-1 min-h-0 flex-col items-center justify-center gap-2 text-muted-foreground">
-                <ListTodo className="h-10 w-10 text-muted-foreground/40" />
-                <p className="text-sm">暂无任务</p>
-                <p className="text-xs">创建一个任务以开始。</p>
-              </div>
-            ) : (
-              <BoardView
-                issues={filteredIssues}
-                allIssues={scopedIssues}
-                visibleStatuses={visibleStatuses}
-                hiddenStatuses={hiddenStatuses}
-                onMoveIssue={handleMoveIssue}
-              />
-            )}
-          </ViewStoreProvider>
+          {!hasTasks ? (
+            <div className="flex flex-1 min-h-0 flex-col items-center justify-center gap-2 text-muted-foreground">
+              <ListTodo className="h-10 w-10 text-muted-foreground/40" />
+              <p className="text-sm">暂无任务</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-5 gap-3 min-h-0">
+              {BOARD_COLUMNS.map((col) => {
+                const items = tasksByColumn[col.key] ?? [];
+                return (
+                  <div
+                    key={col.key}
+                    className="flex flex-col border border-border rounded-lg bg-card overflow-hidden"
+                  >
+                    <div className="px-3 py-2 border-b border-border flex items-center justify-between">
+                      <span className="text-sm font-medium">{col.label}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {items.length}
+                      </span>
+                    </div>
+                    <div className="flex-1 p-2 space-y-2 overflow-y-auto">
+                      {items.length === 0 ? (
+                        <div className="text-xs text-muted-foreground/60 text-center py-3">
+                          空
+                        </div>
+                      ) : (
+                        items.map((t) => (
+                          <ExecutionStepCard
+                            key={t.id}
+                            step={t}
+                            agents={agents}
+                          />
+                        ))
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </TabsContent>
 
         {/* Tab 4: Execution */}
         <TabsContent value="execution" className="space-y-4">
           {activeRun ? (
             <div className="space-y-4">
-              <RunSummaryBar run={activeRun} tasks={executionTasks} />
+              <RunSummaryBar run={activeRun} tasks={sortedTasks} />
               <div className="space-y-3">
-                    <h3 className="text-sm font-medium">步骤</h3>
-                {executionTasks.length > 0 ? (
-                  [...executionTasks]
-                    .sort((a, b) => a.step_order - b.step_order)
-                    .map((step) => (
-                      <ExecutionStepCard
-                        key={step.id}
-                        step={step}
-                        agents={agents}
-                      />
-                    ))
+                <h3 className="text-sm font-medium">步骤</h3>
+                {sortedTasks.length > 0 ? (
+                  sortedTasks.map((step) => (
+                    <ExecutionStepCard
+                      key={step.id}
+                      step={step}
+                      agents={agents}
+                    />
+                  ))
                 ) : (
                   <div className="text-sm text-muted-foreground border border-border rounded-lg p-4 text-center bg-card">
                     暂无步骤数据
@@ -737,7 +759,6 @@ export default function ProjectDetailPage({ projectId }: ProjectDetailProps) {
             </div>
           )}
 
-          {/* Run history */}
           {runs.length > 0 && (
             <div>
               <h3 className="text-sm font-medium mb-3">运行历史</h3>
@@ -886,6 +907,35 @@ export default function ProjectDetailPage({ projectId }: ProjectDetailProps) {
               disabled={!rejectReason.trim()}
             >
               拒绝
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Dialog */}
+      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>删除项目</DialogTitle>
+          </DialogHeader>
+          <div className="text-sm text-muted-foreground">
+            确认删除项目「{currentProject.title}」？此操作不可恢复，项目、计划、任务及相关消息/频道关联将一并清理。
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteOpen(false)}>
+              取消
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={deleting}
+            >
+              {deleting ? (
+                <Loader2 className="size-4 mr-1 animate-spin" />
+              ) : (
+                <Trash2 className="size-4 mr-1" />
+              )}
+              删除
             </Button>
           </DialogFooter>
         </DialogContent>

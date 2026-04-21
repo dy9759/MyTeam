@@ -1,45 +1,39 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Sparkles } from "lucide-react";
+import { toast } from "sonner";
 
 import { useMessageSelectionStore } from "@/features/messaging/stores/selection-store";
+import { useProjectStore } from "@/features/projects";
 import { api } from "@/shared/api";
 
 interface Props {
-  // Conversation source — either a channel or a DM peer.
   sourceType: "channel" | "dm";
-  // Channel id or DM peer id.
   sourceId: string;
-  // Display name used to seed the dialog title.
   sourceName: string;
-  // Required when sourceType === "dm" — the peer's actor type so the
-  // backend can query ListDMMessages with the correct recipient_type.
   peerType?: "member" | "agent";
 }
 
 // GenerateProjectButton lives in the session header. When at least one
 // message is selected (via the per-message checkbox in MessageList), the
 // button enables and lets the user spin up a Project from that subset
-// through POST /api/projects/from-chat. Works for both channels and DMs.
+// through POST /api/projects/from-chat. The dialog closes immediately on
+// submit so the chat flow isn't blocked while the LLM-driven generation
+// runs; progress is reported via toast and the user can jump to the
+// project page from the success toast.
 export function GenerateProjectButton({ sourceType, sourceId, sourceName, peerType }: Props) {
   const selectedIds = useMessageSelectionStore((s) => s.selectedIds);
   const clearSelection = useMessageSelectionStore((s) => s.clear);
+  const router = useRouter();
 
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
-  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [createdId, setCreatedId] = useState<string | null>(null);
-  // dialogCount snapshots selectedIds.size when the dialog opens. Without
-  // the snapshot the dialog body would read from the live store, and the
-  // clearSelection() call on success would make the count flip to 0 —
-  // masking the fact that the project was generated from N real messages.
+  // dialogCount snapshots selectedIds.size when the dialog opens so the
+  // body copy reflects the real message count even after clearSelection().
   const [dialogCount, setDialogCount] = useState(0);
-  // PlanGenerator surfaces warnings (e.g. LLM_UNAVAILABLE, PLAN_GEN_MALFORMED)
-  // when it had to fall back. Surface them so the user knows the resulting
-  // plan needs more attention than a clean LLM-generated one.
-  const [warnings, setWarnings] = useState<string[]>([]);
 
   const liveCount = selectedIds.size;
   const disabled = liveCount === 0;
@@ -50,48 +44,77 @@ export function GenerateProjectButton({ sourceType, sourceId, sourceName, peerTy
     setDialogCount(liveCount);
     setTitle(`Project from ${sourceLabel}`);
     setError(null);
-    setCreatedId(null);
-    setWarnings([]);
     setOpen(true);
   };
 
-  const submit = async () => {
-    if (!title.trim()) {
+  const submit = () => {
+    const trimmed = title.trim();
+    if (!trimmed) {
       setError("title is required");
       return;
     }
-    setSubmitting(true);
-    setError(null);
-    try {
-      const res = await api.createProjectFromChat({
-        title: title.trim(),
-        source_refs: [
-          {
-            type: sourceType,
-            id: sourceId,
-            message_ids: Array.from(selectedIds),
-            ...(sourceType === "dm" ? { peer_type: peerType ?? "member" } : {}),
-          },
-        ],
-        agent_ids: [],
-        schedule_type: "one_time",
-      });
-      // shared/api may return either a bare Project or a wrapper { project }.
-      // Normalize so the link works in both cases.
-      const projectId =
-        (res as { id?: string }).id ??
-        (res as { project?: { id?: string } }).project?.id ??
-        null;
-      const responseWarnings =
-        (res as { warnings?: string[] }).warnings ?? [];
-      setCreatedId(projectId);
-      setWarnings(responseWarnings);
-      clearSelection();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setSubmitting(false);
-    }
+
+    const messageIDs = Array.from(selectedIds);
+    const body = {
+      title: trimmed,
+      source_refs: [
+        {
+          type: sourceType,
+          id: sourceId,
+          message_ids: messageIDs,
+          ...(sourceType === "dm" ? { peer_type: peerType ?? "member" } : {}),
+        },
+      ],
+      agent_ids: [],
+      schedule_type: "one_time" as const,
+    };
+
+    // Close dialog + clear selection up front so the user's chat flow
+    // isn't gated on the LLM call.
+    setOpen(false);
+    clearSelection();
+
+    const toastId = toast.loading(`正在生成项目 "${trimmed}"…`);
+
+    (async () => {
+      try {
+        const res = await api.createProjectFromChat(body);
+        const projectId =
+          (res as { id?: string }).id ??
+          (res as { project?: { id?: string } }).project?.id ??
+          null;
+        const warnings = (res as { warnings?: string[] }).warnings ?? [];
+
+        // Refresh the projects list so the new project shows up wherever
+        // the list is mounted (sidebar, /projects, etc).
+        void useProjectStore.getState().fetch();
+
+        toast.success("项目已生成", {
+          id: toastId,
+          description:
+            warnings.length > 0
+              ? `警告：${warnings.join("; ")}`
+              : undefined,
+          action: projectId
+            ? {
+                label: "查看项目",
+                onClick: () => router.push(`/projects/${projectId}`),
+              }
+            : undefined,
+        });
+
+        // Auto-jump so the user lands on the project page per product ask,
+        // while keeping the chat unblocked during the generation itself.
+        if (projectId) {
+          router.push(`/projects/${projectId}`);
+        }
+      } catch (e) {
+        toast.error("生成项目失败", {
+          id: toastId,
+          description: e instanceof Error ? e.message : String(e),
+        });
+      }
+    })();
   };
 
   return (
@@ -129,7 +152,6 @@ export function GenerateProjectButton({ sourceType, sourceId, sourceName, peerTy
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              disabled={submitting || createdId !== null}
               autoFocus
               className="mt-1 w-full px-2 py-1.5 rounded-md border border-border bg-background text-[13px] text-foreground"
             />
@@ -138,48 +160,22 @@ export function GenerateProjectButton({ sourceType, sourceId, sourceName, peerTy
               <p className="mt-3 text-[12px] text-destructive">{error}</p>
             )}
 
-            {createdId && (
-              <div className="mt-3 text-[12px] text-foreground bg-primary/10 rounded-md p-2">
-                Created. <a href={`/plans/${createdId}`} className="underline">View plan →</a>
-              </div>
-            )}
-
-            {warnings.length > 0 && (
-              <div className="mt-2 text-[12px] text-foreground bg-yellow-500/10 border border-yellow-500/30 rounded-md p-2">
-                <div className="font-medium mb-1">Plan generated with warnings:</div>
-                <ul className="list-disc pl-4 space-y-0.5">
-                  {warnings.map((w) => (
-                    <li key={w}>
-                      <code className="text-[11px]">{w}</code>
-                    </li>
-                  ))}
-                </ul>
-                <div className="mt-1 text-muted-foreground">
-                  Review the plan before kicking off a run.
-                </div>
-              </div>
-            )}
-
             <div className="mt-5 flex justify-end gap-2">
               <button
                 type="button"
-                onClick={() => {
-                  setOpen(false);
-                }}
+                onClick={() => setOpen(false)}
                 className="px-3 h-8 rounded-md text-[12px] font-medium text-muted-foreground hover:text-foreground"
               >
-                {createdId ? "Close" : "Cancel"}
+                Cancel
               </button>
-              {!createdId && (
-                <button
-                  type="button"
-                  onClick={submit}
-                  disabled={submitting || !title.trim()}
-                  className="px-3 h-8 rounded-md text-[12px] font-medium bg-primary text-primary-foreground disabled:opacity-50 hover:opacity-90"
-                >
-                  {submitting ? "Generating…" : "Generate"}
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={submit}
+                disabled={!title.trim()}
+                className="px-3 h-8 rounded-md text-[12px] font-medium bg-primary text-primary-foreground disabled:opacity-50 hover:opacity-90"
+              >
+                Generate
+              </button>
             </div>
           </div>
         </div>
