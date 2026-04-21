@@ -81,6 +81,22 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 		Secrets:  secrets,
 		Fallback: storage.NewS3Adapter(s3),
 	}
+	// Channel-scoped meeting transcriber — wraps Doubao memo API.
+	// Nil-safe: endpoints degrade to "Doubao not configured" 503 when
+	// the env keys are unset so dev envs without creds still compile.
+	h.MeetingTranscriber = service.NewMeetingTranscriber(
+		queries,
+		service.LoadDoubaoMemoConfigFromEnv(),
+		func(workspaceID, eventType string, payload map[string]any) {
+			if hub == nil {
+				return
+			}
+			hub.PushSessionUpdate(workspaceID, map[string]any{
+				"type":    eventType,
+				"payload": payload,
+			})
+		},
+	)
 	// Single Claude Agent SDK runner shared across every cloud-mode invocation
 	// path so a system / personal / project agent's cloud_llm_config controls
 	// the same SDK installation regardless of who triggered it.
@@ -465,7 +481,23 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 					// Thread API (Plan 3)
 					r.Get("/threads", h.ListThreads)
 					r.Post("/threads", h.CreateThread)
+
+					// Channel-scoped meetings (migration 076). Distinct
+					// from the thread-scoped pipeline at
+					// /api/threads/:id/meeting/*; kicked off by the
+					// channel header "开始会议" button.
+					r.Post("/meetings", h.StartChannelMeeting)
+					r.Get("/meetings", h.ListChannelMeetings)
 				})
+			})
+
+			// Meeting detail + lifecycle operations keyed by meeting id.
+			r.Route("/api/meetings/{id}", func(r chi.Router) {
+				r.Get("/", h.GetChannelMeeting)
+				r.Post("/recording", h.SubmitChannelMeetingRecording)
+				r.Post("/audio", h.UploadChannelMeetingAudio)
+				r.Patch("/notes", h.UpdateChannelMeetingNotes)
+				r.Put("/highlights", h.UpdateChannelMeetingHighlights)
 			})
 
 			// Thread API (Plan 3 / Phase 2)

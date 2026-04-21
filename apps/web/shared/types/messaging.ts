@@ -1,3 +1,27 @@
+// Channel-scoped meeting record (server migration 076). Lifecycle:
+// recording → processing → completed/failed. Doubao memo payloads
+// live in `transcript` / `summary` as opaque JSON — the UI renders
+// best-effort using duck-typed field reads.
+export interface ChannelMeeting {
+  id: string;
+  channel_id: string;
+  workspace_id: string;
+  started_by: string;
+  topic: string;
+  status: "recording" | "processing" | "completed" | "failed";
+  audio_url?: string;
+  audio_duration?: number;
+  task_id?: string;
+  transcript?: Record<string, unknown>;
+  summary?: Record<string, unknown>;
+  notes: string;
+  highlights: Array<{ t?: number; text: string; [k: string]: unknown }>;
+  failure_reason?: string;
+  started_at: string;
+  ended_at?: string;
+  updated_at: string;
+}
+
 export interface Message {
   id: string;
   workspace_id: string;

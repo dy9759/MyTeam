@@ -459,6 +459,26 @@ type IssueToLabel struct {
 	LabelID pgtype.UUID `json:"label_id"`
 }
 
+type Meeting struct {
+	ID            pgtype.UUID        `json:"id"`
+	ChannelID     pgtype.UUID        `json:"channel_id"`
+	WorkspaceID   pgtype.UUID        `json:"workspace_id"`
+	StartedBy     pgtype.UUID        `json:"started_by"`
+	Topic         string             `json:"topic"`
+	Status        string             `json:"status"`
+	AudioUrl      pgtype.Text        `json:"audio_url"`
+	AudioDuration pgtype.Int4        `json:"audio_duration"`
+	TaskID        pgtype.Text        `json:"task_id"`
+	Transcript    []byte             `json:"transcript"`
+	Summary       []byte             `json:"summary"`
+	Notes         string             `json:"notes"`
+	Highlights    []byte             `json:"highlights"`
+	FailureReason pgtype.Text        `json:"failure_reason"`
+	StartedAt     pgtype.Timestamptz `json:"started_at"`
+	EndedAt       pgtype.Timestamptz `json:"ended_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+}
+
 type Member struct {
 	ID          pgtype.UUID        `json:"id"`
 	WorkspaceID pgtype.UUID        `json:"workspace_id"`

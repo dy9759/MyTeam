@@ -53,6 +53,7 @@ export type {
   CreateThreadContextItemRequest,
   RemoteSession,
   RemoteSessionEvent,
+  ChannelMeeting,
 } from "./messaging";
 export type {
   PlanStep,

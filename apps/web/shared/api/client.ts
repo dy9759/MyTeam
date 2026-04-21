@@ -27,6 +27,7 @@ import type {
   CreateSkillRequest,
   UpdateSkillRequest,
   AgentInteraction,
+  ChannelMeeting,
   Subagent,
   CreateSubagentRequest,
   UpdateSubagentRequest,
@@ -728,6 +729,73 @@ export class ApiClient implements ApiTransport {
   ): Promise<void> {
     await this.fetch(`/api/interactions/${id}/ack?state=${state}`, {
       method: "POST",
+    });
+  }
+
+  // --- Channel-scoped meetings (migration 076) ----------------------
+  async startChannelMeeting(
+    channelId: string,
+    data: { topic?: string } = {},
+  ): Promise<ChannelMeeting> {
+    return this.fetch(`/api/channels/${channelId}/meetings`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async listChannelMeetings(channelId: string, limit = 20) {
+    return this.fetch<{ meetings: ChannelMeeting[] }>(
+      `/api/channels/${channelId}/meetings?limit=${limit}`,
+    );
+  }
+
+  async getChannelMeeting(id: string): Promise<ChannelMeeting> {
+    return this.fetch(`/api/meetings/${id}`);
+  }
+
+  async uploadChannelMeetingAudio(
+    id: string,
+    blob: Blob,
+    opts: { filename?: string; durationSec?: number } = {},
+  ): Promise<ChannelMeeting> {
+    const form = new FormData();
+    form.append("file", blob, opts.filename ?? "meeting.webm");
+    if (opts.durationSec) form.append("duration", String(opts.durationSec));
+    // Raw fetch to avoid the JSON Content-Type the shared `fetch`
+    // helper injects — multipart must set its own boundary.
+    const res = await fetch(
+      `${this.baseUrl}/api/meetings/${id}/audio`,
+      {
+        method: "POST",
+        headers: this.getAuthHeaders(),
+        body: form,
+        credentials: "include",
+      },
+    );
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(body || `upload failed: ${res.status}`);
+    }
+    return res.json();
+  }
+
+  async updateChannelMeetingNotes(
+    id: string,
+    notes: string,
+  ): Promise<ChannelMeeting> {
+    return this.fetch(`/api/meetings/${id}/notes`, {
+      method: "PATCH",
+      body: JSON.stringify({ notes }),
+    });
+  }
+
+  async updateChannelMeetingHighlights(
+    id: string,
+    highlights: Array<{ t?: number; text: string; [k: string]: unknown }>,
+  ): Promise<ChannelMeeting> {
+    return this.fetch(`/api/meetings/${id}/highlights`, {
+      method: "PUT",
+      body: JSON.stringify({ highlights }),
     });
   }
 
