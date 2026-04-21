@@ -256,8 +256,12 @@ func (s *MediationService) RouteMessage(ctx context.Context, msg db.Message) (*R
 
 	workspaceID := util.UUIDToString(msg.WorkspaceID)
 
-	// 1. @mention — direct assignment.
-	mentions := parseMentionsFromContent(msg.Content)
+	// 1. @mention — direct assignment. Workspace agents are loaded so
+	// parseMentionsFromContent can match names that contain whitespace
+	// (e.g. "dy9759's Assistant") — the naive whitespace-split path only
+	// catches the first token and misses the rest.
+	wsAgents, _ := s.Queries.ListAgents(ctx, msg.WorkspaceID)
+	mentions := parseMentionsFromContent(msg.Content, wsAgents)
 	if len(mentions) > 0 {
 		agent, err := s.routeToMentioned(ctx, workspaceID, mentions[0])
 		if err == nil && agent != nil {
@@ -830,20 +834,59 @@ func truncateStr(s string, n int) string {
 }
 
 // parseMentionsFromContent extracts @agent mentions from text.
-func parseMentionsFromContent(text string) []string {
-	var mentions []string
-	words := strings.Fields(text)
-	for _, word := range words {
-		if strings.HasPrefix(word, "@") && len(word) > 1 {
-			name := strings.TrimPrefix(word, "@")
-			// Remove trailing punctuation.
-			name = strings.TrimRight(name, ".,!?;:")
-			if name != "" {
-				mentions = append(mentions, name)
+//
+// The naive "split on whitespace and look for @tokens" approach breaks
+// the moment an agent name contains a space (e.g. "dy9759's Assistant"),
+// which the web mention-picker gladly inserts as `@dy9759's Assistant`.
+// We instead iterate the known agents in this workspace and look for
+// "@<name>" as a substring, preserving the whole multi-word name.
+// Longer names win so "@Alpha Beta" doesn't accidentally match the
+// agent named "Alpha". Falls back to the token-split scan for mentions
+// whose target doesn't exist as an agent (keeps the prior behavior so
+// unknown mentions surface in audit logs).
+func parseMentionsFromContent(text string, agents []db.Agent) []string {
+	// Longer first so name prefixes don't short-circuit longer matches.
+	sorted := append([]db.Agent{}, agents...)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		return len(sorted[i].Name) > len(sorted[j].Name)
+	})
+
+	var out []string
+	seen := make(map[string]struct{})
+	remaining := text
+	for _, a := range sorted {
+		if a.Name == "" {
+			continue
+		}
+		needle := "@" + a.Name
+		if strings.Contains(remaining, needle) {
+			if _, ok := seen[a.Name]; !ok {
+				seen[a.Name] = struct{}{}
+				out = append(out, a.Name)
 			}
+			// Blank out matched slices so shorter names can't double-match.
+			remaining = strings.ReplaceAll(remaining, needle, "")
 		}
 	}
-	return mentions
+
+	// Preserve the legacy token scan for @names that aren't known agents
+	// (e.g. a typo, or a member mention we don't route through agents).
+	for _, word := range strings.Fields(remaining) {
+		if !strings.HasPrefix(word, "@") || len(word) <= 1 {
+			continue
+		}
+		name := strings.TrimPrefix(word, "@")
+		name = strings.TrimRight(name, ".,!?;:")
+		if name == "" {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		out = append(out, name)
+	}
+	return out
 }
 
 // messageFromMap reconstructs a db.Message from the event payload's
