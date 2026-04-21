@@ -1,10 +1,14 @@
 "use client"
 import { useEffect, useState, useRef, useCallback } from "react"
+import { useSearchParams, useRouter } from "next/navigation"
 import { ChevronDown, ChevronRight, History, Download } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { api } from "@/shared/api"
 import { toast } from "sonner"
 import type { FileVersion } from "@/shared/types"
+import { MemoriesTab } from "@/features/memories/components/memories-tab"
+
+type Tab = "files" | "memories"
 
 interface FileItem {
   id: string
@@ -127,6 +131,56 @@ function timeAgo(dateStr: string) {
 }
 
 export default function FilesPage() {
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const tab: Tab = searchParams.get("tab") === "memories" ? "memories" : "files"
+
+  const setTab = (next: Tab) => {
+    const params = new URLSearchParams(searchParams.toString())
+    if (next === "memories") params.set("tab", "memories")
+    else params.delete("tab")
+    const qs = params.toString()
+    router.replace(qs ? `/files?${qs}` : "/files")
+  }
+
+  return (
+    <div className="flex h-full flex-col bg-background">
+      <div className="flex items-center gap-1 border-b border-border px-4 pt-3">
+        <button
+          type="button"
+          onClick={() => setTab("files")}
+          className={`px-3 py-2 text-[13px] font-medium border-b-2 transition-colors ${
+            tab === "files"
+              ? "border-primary text-foreground"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          文件 (RAW)
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("memories")}
+          className={`px-3 py-2 text-[13px] font-medium border-b-2 transition-colors ${
+            tab === "memories"
+              ? "border-primary text-foreground"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          记忆 wiki
+        </button>
+      </div>
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        {tab === "files" ? <FilesTab /> : (
+          <div className="flex min-h-0 flex-1 p-4">
+            <MemoriesTab />
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function FilesTab() {
   const [files, setFiles] = useState<FileItem[]>([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
@@ -215,7 +269,7 @@ export default function FilesPage() {
   }
 
   return (
-    <div className="p-6 bg-background min-h-full">
+    <div className="flex-1 overflow-auto p-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-foreground">文件 ({files.length})</h1>
         <div>

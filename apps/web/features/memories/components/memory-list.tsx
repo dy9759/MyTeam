@@ -38,6 +38,39 @@ function statusVariant(status: MemoryStatus): "default" | "outline" | "secondary
   return "secondary";
 }
 
+// RawRefLink renders a compact pointer to the raw source row so users
+// can jump from a summarized memory back to the underlying file /
+// message / artifact / thread item. Hard rule (memory/types.go): every
+// memory MUST point to raw content — this badge makes that contract
+// visible in the UI.
+function RawRefLink({ kind, id }: { kind: string; id: string }) {
+  const shortId = id.slice(0, 8);
+  const label = {
+    file_index: "file",
+    message: "msg",
+    artifact: "artifact",
+    thread_context_item: "thread",
+  }[kind] ?? kind;
+
+  const href = kind === "file_index" ? `/files?highlight=${id}` : undefined;
+
+  const inner = (
+    <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+      <span className="rounded border border-border px-1 py-0.5 font-mono">{label}</span>
+      <span className="font-mono">{shortId}</span>
+    </span>
+  );
+
+  if (href) {
+    return (
+      <a href={href} className="hover:text-foreground" title={`Raw ${kind} ${id}`}>
+        {inner}
+      </a>
+    );
+  }
+  return <span title={`Raw ${kind} ${id}`}>{inner}</span>;
+}
+
 export function MemoryList() {
   const memories = useMemoryStore((state) => state.memories);
   const loading = useMemoryStore((state) => state.loading);
@@ -125,6 +158,7 @@ export function MemoryList() {
               <TableHead>Type</TableHead>
               <TableHead>Scope</TableHead>
               <TableHead>Summary</TableHead>
+              <TableHead>来源</TableHead>
               <TableHead>Tags</TableHead>
               <TableHead className="text-right">Action</TableHead>
             </TableRow>
@@ -132,19 +166,19 @@ export function MemoryList() {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
                   Loading memories...
                 </TableCell>
               </TableRow>
             ) : error ? (
               <TableRow>
-                <TableCell colSpan={6} className="h-24 text-center text-destructive">
+                <TableCell colSpan={7} className="h-24 text-center text-destructive">
                   {error}
                 </TableCell>
               </TableRow>
             ) : memories.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
                   No memories found.
                 </TableCell>
               </TableRow>
@@ -162,6 +196,9 @@ export function MemoryList() {
                     <div className="overflow-hidden text-ellipsis whitespace-nowrap">
                       {memory.summary || memory.body || "Untitled memory"}
                     </div>
+                  </TableCell>
+                  <TableCell className="max-w-32">
+                    <RawRefLink kind={memory.raw.kind} id={memory.raw.id} />
                   </TableCell>
                   <TableCell>
                     <div className="flex max-w-56 flex-wrap gap-1">
