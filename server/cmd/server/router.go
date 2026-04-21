@@ -363,7 +363,21 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 					r.Post("/impersonate", h.StartImpersonation)
 					r.Post("/release", h.EndImpersonation)
 					r.Get("/impersonation", h.GetImpersonation)
+
+					// Agent inbox — pull fallback for the WS push from
+					// realtime.Hub.SendToAgent. REST is the ground truth
+					// so an agent that missed a push still recovers on poll.
+					r.Get("/inbox", h.GetAgentInbox)
 				})
+			})
+
+			// Agent ↔ agent interaction protocol (migration 075).
+			// Unified send endpoint covers DM / channel / capability
+			// broadcast / session-scoped message; schema field gives the
+			// receiver a routing hint for typed handlers.
+			r.Route("/api/interactions", func(r chi.Router) {
+				r.Post("/", h.SendInteraction)
+				r.Post("/{id}/ack", h.AckInteraction)
 			})
 
 			// Skills

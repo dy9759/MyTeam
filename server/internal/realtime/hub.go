@@ -34,12 +34,16 @@ var upgrader = websocket.Upgrader{
 }
 
 // Client represents a single WebSocket connection with identity.
+// agentID is optional — set when the connection is attached to a
+// specific agent identity (via impersonation / daemon runtime) so the
+// agent-interaction layer can do addressed push via SendToAgent.
 type Client struct {
 	hub         *Hub
 	conn        *websocket.Conn
 	send        chan []byte
 	userID      string
 	workspaceID string
+	agentID     string
 }
 
 // Hub manages WebSocket connections organized by workspace rooms.
@@ -223,6 +227,70 @@ func (h *Hub) Broadcast(message []byte) {
 	h.broadcast <- message
 }
 
+// SendToAgent pushes a message to every connection whose client.agentID
+// matches. No-op when no such client is connected — callers rely on the
+// REST inbox endpoint as the pull fallback (mirrors AgentMesh's WS+poll
+// resiliency). Caller must marshal the event themselves; use PushToAgent
+// for a typed variant.
+func (h *Hub) SendToAgent(agentID string, message []byte) int {
+	if agentID == "" {
+		return 0
+	}
+
+	h.mu.RLock()
+	type target struct {
+		client      *Client
+		workspaceID string
+	}
+	var targets []target
+	for wsID, clients := range h.rooms {
+		for client := range clients {
+			if client.agentID == agentID {
+				targets = append(targets, target{client, wsID})
+			}
+		}
+	}
+	h.mu.RUnlock()
+
+	delivered := 0
+	var slow []target
+	for _, t := range targets {
+		select {
+		case t.client.send <- message:
+			delivered++
+		default:
+			slow = append(slow, t)
+		}
+	}
+
+	if len(slow) > 0 {
+		h.mu.Lock()
+		for _, t := range slow {
+			if room, ok := h.rooms[t.workspaceID]; ok {
+				if _, exists := room[t.client]; exists {
+					delete(room, t.client)
+					close(t.client.send)
+					if len(room) == 0 {
+						delete(h.rooms, t.workspaceID)
+					}
+				}
+			}
+		}
+		h.mu.Unlock()
+	}
+	return delivered
+}
+
+// PushToAgent is the typed convenience wrapper — marshals msg then
+// delegates to SendToAgent.
+func (h *Hub) PushToAgent(agentID string, msg any) int {
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return 0
+	}
+	return h.SendToAgent(agentID, data)
+}
+
 // PushToUser sends a message to all connections of a specific user.
 func (h *Hub) PushToUser(userID string, msg any) {
 	data, err := json.Marshal(msg)
@@ -267,6 +335,11 @@ func (h *Hub) PushSessionUpdate(workspaceID string, payload map[string]any) {
 func HandleWebSocket(hub *Hub, mc MembershipChecker, pr PATResolver, w http.ResponseWriter, r *http.Request) {
 	tokenStr := r.URL.Query().Get("token")
 	workspaceID := r.URL.Query().Get("workspace_id")
+	// Optional: agent_id binds this socket to an agent identity so the
+	// message bus can push addressed interactions via SendToAgent.
+	// Membership / impersonation checks happen below — the DB still
+	// decides whether this user is allowed to speak as the agent.
+	agentID := r.URL.Query().Get("agent_id")
 
 	if tokenStr == "" || workspaceID == "" {
 		slog.Warn("ws: missing auth params", "has_token", tokenStr != "", "has_workspace", workspaceID != "")
@@ -333,6 +406,7 @@ func HandleWebSocket(hub *Hub, mc MembershipChecker, pr PATResolver, w http.Resp
 		send:        make(chan []byte, 256),
 		userID:      userID,
 		workspaceID: workspaceID,
+		agentID:     agentID,
 	}
 	hub.register <- client
 

@@ -26,6 +26,7 @@ import type {
   Skill,
   CreateSkillRequest,
   UpdateSkillRequest,
+  AgentInteraction,
   Subagent,
   CreateSubagentRequest,
   UpdateSubagentRequest,
@@ -684,6 +685,49 @@ export class ApiClient implements ApiTransport {
     await this.fetch(`/api/agents/${agentId}/skills`, {
       method: "PUT",
       body: JSON.stringify(data),
+    });
+  }
+
+  // --- Agent interaction protocol (migration 075) -------------------
+  // Unified send endpoint. `target` is union-typed, exactly one field.
+  async sendInteraction(data: {
+    type: "message" | "task" | "query" | "event" | "broadcast";
+    content_type?: "text" | "json" | "file";
+    target: {
+      agent_id?: string;
+      channel?: string;
+      capability?: string;
+      session_id?: string;
+    };
+    schema?: string;
+    payload: unknown;
+    metadata?: Record<string, unknown>;
+  }): Promise<AgentInteraction> {
+    return this.fetch("/api/interactions", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  // Pull fallback for WS push. `after` is a RFC3339 timestamp cursor;
+  // omit to fetch the newest page.
+  async getAgentInbox(
+    agentId: string,
+    params?: { after?: string; limit?: number },
+  ): Promise<{ interactions: AgentInteraction[]; count: number }> {
+    const q = new URLSearchParams();
+    if (params?.after) q.set("after", params.after);
+    if (params?.limit) q.set("limit", String(params.limit));
+    const suffix = q.toString() ? `?${q.toString()}` : "";
+    return this.fetch(`/api/agents/${agentId}/inbox${suffix}`);
+  }
+
+  async ackInteraction(
+    id: string,
+    state: "delivered" | "read" = "delivered",
+  ): Promise<void> {
+    await this.fetch(`/api/interactions/${id}/ack?state=${state}`, {
+      method: "POST",
     });
   }
 

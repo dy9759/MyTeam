@@ -73,6 +73,26 @@ type Agent struct {
 	Category                string             `json:"category"`
 }
 
+type AgentInteraction struct {
+	ID          pgtype.UUID        `json:"id"`
+	WorkspaceID pgtype.UUID        `json:"workspace_id"`
+	FromID      pgtype.UUID        `json:"from_id"`
+	FromType    string             `json:"from_type"`
+	ToAgentID   pgtype.UUID        `json:"to_agent_id"`
+	Channel     pgtype.Text        `json:"channel"`
+	Capability  pgtype.Text        `json:"capability"`
+	SessionID   pgtype.UUID        `json:"session_id"`
+	Type        string             `json:"type"`
+	ContentType string             `json:"content_type"`
+	Schema      pgtype.Text        `json:"schema"`
+	Payload     []byte             `json:"payload"`
+	Metadata    []byte             `json:"metadata"`
+	Status      string             `json:"status"`
+	DeliveredAt pgtype.Timestamptz `json:"delivered_at"`
+	ReadAt      pgtype.Timestamptz `json:"read_at"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
 type AgentRuntime struct {
 	ID               pgtype.UUID        `json:"id"`
 	WorkspaceID      pgtype.UUID        `json:"workspace_id"`

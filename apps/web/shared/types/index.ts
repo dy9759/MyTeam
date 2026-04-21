@@ -28,6 +28,7 @@ export type {
   IdentityCard,
   AgentAutoReplyConfig,
   AgentProfile,
+  AgentInteraction,
 } from "./agent";
 export type { Workspace, WorkspaceRepo, Member, MemberRole, User, MemberWithUser, WorkspaceSecretMeta, SetWorkspaceSecretRequest } from "./workspace";
 export type { InboxItem, InboxSeverity, InboxItemType } from "./inbox";

@@ -169,6 +169,29 @@ export interface UpdateSubagentRequest {
   category?: string;
 }
 
+// Agent-to-agent interaction protocol (mirrors server migration 075 /
+// AgentMesh's unified schema). One row per sent message; push via WS,
+// pull via `/api/agents/:id/inbox`.
+export interface AgentInteraction {
+  id: string;
+  workspace_id?: string;
+  from_id: string;
+  from_type: "agent" | "user";
+  target: {
+    agent_id?: string;
+    channel?: string;
+    capability?: string;
+    session_id?: string;
+  };
+  type: "message" | "task" | "query" | "event" | "broadcast";
+  content_type: "text" | "json" | "file";
+  schema?: string;
+  payload: unknown;
+  metadata?: Record<string, unknown>;
+  status: "pending" | "delivered" | "read" | "failed";
+  created_at: string;
+}
+
 export interface SkillFile {
   id: string;
   skill_id: string;
