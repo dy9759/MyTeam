@@ -98,6 +98,15 @@ export interface Channel {
   created_by: string;
   created_by_type: "member" | "agent";
   created_at: string;
+  // When non-null the channel is archived workspace-wide. Sidebar hides
+  // archived channels from the main "进行中" list unless the user opens
+  // the archived segment.
+  archived_at?: string | null;
+}
+
+export interface ArchivedDMPeer {
+  peer_id: string;
+  peer_type: "member" | "agent";
 }
 
 export interface ChannelMember {

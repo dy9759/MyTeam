@@ -11,6 +11,9 @@ import { MessageList } from "@/features/messaging/components/message-list";
 import { MessageInput } from "@/features/messaging/components/message-input";
 import { ThreadPanel } from "@/features/messaging/components/thread-panel";
 import { GenerateProjectButton } from "@/features/messaging/components/generate-project-button";
+import { PromoteToChannelButton } from "@/features/messaging/components/promote-to-channel-button";
+import { InviteChannelMemberDialog } from "@/features/messaging/components/invite-channel-member-dialog";
+import { useConversationArchiveStore } from "@/features/messaging/stores/archive-store";
 import { useMessageSelectionStore } from "@/features/messaging/stores/selection-store";
 import { api } from "@/shared/api";
 import type { Conversation } from "@/shared/types/messaging";
@@ -29,6 +32,7 @@ import {
   Archive,
   Search,
   Plus,
+  UserPlus,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -62,6 +66,11 @@ function SessionSidebar({
   onCreateChannel,
   searchQuery,
   onSearchChange,
+  isDMArchived,
+  onArchiveDM,
+  onUnarchiveDM,
+  onArchiveChannel,
+  onUnarchiveChannel,
 }: {
   conversations: Conversation[];
   channels: Channel[];
@@ -72,10 +81,38 @@ function SessionSidebar({
   onCreateChannel: () => void;
   searchQuery: string;
   onSearchChange: (q: string) => void;
+  isDMArchived: (peerId: string, peerType: "member" | "agent") => boolean;
+  onArchiveDM: (peerId: string, peerType: "member" | "agent") => void;
+  onUnarchiveDM: (peerId: string, peerType: "member" | "agent") => void;
+  onArchiveChannel: (id: string) => void;
+  onUnarchiveChannel: (id: string) => void;
 }) {
-  const q = searchQuery.toLowerCase()
-  const filteredConvs = q ? conversations.filter(c => (c.peer_name || "").toLowerCase().includes(q)) : conversations
-  const filteredChannels = q ? channels.filter(c => c.name.toLowerCase().includes(q)) : channels
+  const [showArchived, setShowArchived] = useState(false);
+  const q = searchQuery.toLowerCase();
+
+  const activeConvs: Conversation[] = [];
+  const archivedConvs: Conversation[] = [];
+  for (const c of conversations) {
+    if (q && !(c.peer_name || "").toLowerCase().includes(q)) continue;
+    if (isDMArchived(c.peer_id, (c.peer_type as "member" | "agent") ?? "member")) {
+      archivedConvs.push(c);
+    } else {
+      activeConvs.push(c);
+    }
+  }
+
+  const activeChannels: Channel[] = [];
+  const archivedChannels: Channel[] = [];
+  for (const ch of channels) {
+    if (q && !ch.name.toLowerCase().includes(q)) continue;
+    if (ch.archived_at) {
+      archivedChannels.push(ch);
+    } else {
+      activeChannels.push(ch);
+    }
+  }
+
+  const archivedCount = archivedConvs.length + archivedChannels.length;
 
   return (
     <div className="w-60 shrink-0 border-r border-border flex flex-col bg-card h-full">
@@ -85,7 +122,7 @@ function SessionSidebar({
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <input
             value={searchQuery}
-            onChange={e => onSearchChange(e.target.value)}
+            onChange={(e) => onSearchChange(e.target.value)}
             placeholder="搜索会话..."
             className="w-full pl-8 pr-3 py-1.5 bg-secondary border border-border rounded-[6px] text-[13px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
           />
@@ -99,46 +136,62 @@ function SessionSidebar({
         </button>
       </div>
 
-      {/* DMs section */}
+      {/* Chats section */}
       <div className="px-3 pt-2 pb-1">
         <h3 className="text-xs font-semibold text-muted-foreground/60 uppercase tracking-wider flex items-center gap-1.5">
           <MessageCircle className="h-3.5 w-3.5" />
-          私聊
+          聊天
         </h3>
       </div>
       <div className="flex-none overflow-auto max-h-[40%] px-1">
-        {filteredConvs.length === 0 ? (
+        {activeConvs.length === 0 ? (
           <div className="px-3 py-2 text-xs text-muted-foreground">
             {q ? "无匹配" : "暂无对话"}
           </div>
         ) : (
-          filteredConvs.map((conv) => (
-            <button
-              key={conv.peer_id}
-              onClick={() => onSelectDm(conv)}
-              className={`w-full text-left px-3 py-1.5 rounded-md text-sm transition-colors ${
-                selectedType === "dm" && selectedId === conv.peer_id
-                  ? "bg-muted text-foreground"
-                  : "hover:bg-accent text-secondary-foreground"
-              }`}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="truncate">
-                  {conv.peer_name || conv.peer_id.slice(0, 12)}
-                </span>
-                {(conv.unread_count ?? 0) > 0 && (
-                  <span className="shrink-0 text-[10px] bg-primary text-white rounded-full px-1.5 py-0.5 leading-none">
-                    {conv.unread_count}
-                  </span>
-                )}
+          activeConvs.map((conv) => {
+            const peerType = (conv.peer_type as "member" | "agent") ?? "member";
+            const isSelected = selectedType === "dm" && selectedId === conv.peer_id;
+            return (
+              <div
+                key={conv.peer_id}
+                className={`group relative flex items-start gap-1 px-3 py-1.5 rounded-md transition-colors ${
+                  isSelected
+                    ? "bg-muted text-foreground"
+                    : "hover:bg-accent text-secondary-foreground"
+                }`}
+              >
+                <button onClick={() => onSelectDm(conv)} className="flex-1 min-w-0 text-left text-sm">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate">
+                      {conv.peer_name || conv.peer_id.slice(0, 12)}
+                    </span>
+                    {(conv.unread_count ?? 0) > 0 && (
+                      <span className="shrink-0 text-[10px] bg-primary text-primary-foreground rounded-full px-1.5 py-0.5 leading-none">
+                        {conv.unread_count}
+                      </span>
+                    )}
+                  </div>
+                  {conv.last_message && (
+                    <div className="text-xs text-muted-foreground truncate mt-0.5">
+                      {conv.last_message.content}
+                    </div>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onArchiveDM(conv.peer_id, peerType);
+                  }}
+                  className="opacity-0 group-hover:opacity-100 shrink-0 p-1 rounded hover:bg-background text-muted-foreground hover:text-foreground transition-opacity"
+                  title="归档"
+                >
+                  <Archive className="h-3 w-3" />
+                </button>
               </div>
-              {conv.last_message && (
-                <div className="text-xs text-muted-foreground truncate mt-0.5">
-                  {conv.last_message.content}
-                </div>
-              )}
-            </button>
-          ))
+            );
+          })
         )}
       </div>
 
@@ -150,28 +203,101 @@ function SessionSidebar({
         </h3>
       </div>
       <div className="flex-1 overflow-auto px-1 min-h-0">
-        {filteredChannels.length === 0 ? (
+        {activeChannels.length === 0 ? (
           <div className="px-3 py-2 text-xs text-muted-foreground">
             {q ? "无匹配" : "暂无频道"}
           </div>
         ) : (
-          filteredChannels.map((ch) => (
-            <button
-              key={ch.id}
-              onClick={() => onSelectChannel(ch)}
-              className={`w-full text-left px-3 py-1.5 rounded-md text-sm transition-colors ${
-                selectedType === "channel" && selectedId === ch.id
-                  ? "bg-muted text-foreground"
-                  : "hover:bg-accent text-secondary-foreground"
-              }`}
-            >
-              <span className="truncate">
-                # {ch.name}
-              </span>
-            </button>
-          ))
+          activeChannels.map((ch) => {
+            const isSelected = selectedType === "channel" && selectedId === ch.id;
+            return (
+              <div
+                key={ch.id}
+                className={`group relative flex items-center gap-1 px-3 py-1.5 rounded-md transition-colors ${
+                  isSelected
+                    ? "bg-muted text-foreground"
+                    : "hover:bg-accent text-secondary-foreground"
+                }`}
+              >
+                <button onClick={() => onSelectChannel(ch)} className="flex-1 min-w-0 text-left text-sm">
+                  <span className="truncate block"># {ch.name}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onArchiveChannel(ch.id);
+                  }}
+                  className="opacity-0 group-hover:opacity-100 shrink-0 p-1 rounded hover:bg-background text-muted-foreground hover:text-foreground transition-opacity"
+                  title="归档"
+                >
+                  <Archive className="h-3 w-3" />
+                </button>
+              </div>
+            );
+          })
         )}
       </div>
+
+      {/* Archived section — collapsed by default */}
+      {archivedCount > 0 && (
+        <div className="border-t border-border shrink-0">
+          <button
+            type="button"
+            onClick={() => setShowArchived((v) => !v)}
+            className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-muted-foreground/60 uppercase tracking-wider hover:text-foreground transition-colors"
+          >
+            <span className="flex items-center gap-1.5">
+              <Archive className="h-3.5 w-3.5" />
+              已归档 ({archivedCount})
+            </span>
+            <span>{showArchived ? "▾" : "▸"}</span>
+          </button>
+          {showArchived && (
+            <div className="max-h-64 overflow-auto px-1 pb-2">
+              {archivedConvs.map((conv) => {
+                const peerType = (conv.peer_type as "member" | "agent") ?? "member";
+                return (
+                  <div
+                    key={`a-dm-${conv.peer_id}`}
+                    className="group flex items-center gap-1 px-3 py-1.5 rounded-md hover:bg-accent"
+                  >
+                    <button onClick={() => onSelectDm(conv)} className="flex-1 min-w-0 text-left text-sm text-muted-foreground">
+                      <span className="truncate block">{conv.peer_name || conv.peer_id.slice(0, 12)}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onUnarchiveDM(conv.peer_id, peerType)}
+                      className="opacity-0 group-hover:opacity-100 shrink-0 p-1 rounded hover:bg-background text-muted-foreground hover:text-foreground transition-opacity"
+                      title="恢复"
+                    >
+                      ↺
+                    </button>
+                  </div>
+                );
+              })}
+              {archivedChannels.map((ch) => (
+                <div
+                  key={`a-ch-${ch.id}`}
+                  className="group flex items-center gap-1 px-3 py-1.5 rounded-md hover:bg-accent"
+                >
+                  <button onClick={() => onSelectChannel(ch)} className="flex-1 min-w-0 text-left text-sm text-muted-foreground">
+                    <span className="truncate block"># {ch.name}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onUnarchiveChannel(ch.id)}
+                    className="opacity-0 group-hover:opacity-100 shrink-0 p-1 rounded hover:bg-background text-muted-foreground hover:text-foreground transition-opacity"
+                    title="恢复"
+                  >
+                    ↺
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -309,6 +435,19 @@ export default function SessionPage() {
   const fetchChannels = useChannelStore((s) => s.fetch);
   const fetchChannel = useChannelStore((s) => s.fetchChannel);
   const fetchMembers = useChannelStore((s) => s.fetchMembers);
+  const archiveChannelAction = useChannelStore((s) => s.archiveChannel);
+  const unarchiveChannelAction = useChannelStore((s) => s.unarchiveChannel);
+
+  // Archive state for DM conversations (per-user, backed by dm_conversation_state).
+  const archivedKeys = useConversationArchiveStore((s) => s.archivedKeys);
+  const fetchArchivedDMs = useConversationArchiveStore((s) => s.fetch);
+  const archiveDMAction = useConversationArchiveStore((s) => s.archive);
+  const unarchiveDMAction = useConversationArchiveStore((s) => s.unarchive);
+  const isDMArchived = useCallback(
+    (peerId: string, peerType: "member" | "agent") =>
+      archivedKeys.has(`${peerType}:${peerId}`),
+    [archivedKeys],
+  );
 
   const inboxItems = useInboxStore((s) => s.dedupedItems());
   const inboxLoading = useInboxStore((s) => s.loading);
@@ -320,7 +459,8 @@ export default function SessionPage() {
   useEffect(() => {
     fetchConversations();
     fetchChannels();
-  }, [fetchConversations, fetchChannels]);
+    fetchArchivedDMs();
+  }, [fetchConversations, fetchChannels, fetchArchivedDMs]);
 
   // DM list shown in the sidebar = real conversations + the personal agent
   // (if it isn't already present from prior messages).
@@ -338,15 +478,21 @@ export default function SessionPage() {
     return [synthetic, ...conversations];
   }, [conversations, personalAgent]);
 
+  const selectedConversation = useMemo(
+    () =>
+      selectedType === "dm"
+        ? sidebarConversations.find((c) => c.peer_id === selectedId) ?? null
+        : null,
+    [selectedId, selectedType, sidebarConversations],
+  );
+
   // Selection scope follows the active channel/dm. Switching conversations
   // clears whatever was selected so we never leak picks across rooms.
+  // scopeKey is prefixed with the type to avoid collisions between a
+  // channel and a DM peer sharing the same UUID string.
   useEffect(() => {
-    setSelectionScope(selectedType === "channel" ? selectedId : null);
-    if (selectedType !== "channel") {
-      // Selection mode is channel-only for now. Hide the checkboxes so the
-      // DM view stays clean.
-      setSelectionEnabled(false);
-    }
+    const scopeKey = selectedId ? `${selectedType}:${selectedId}` : null;
+    setSelectionScope(scopeKey);
   }, [selectedId, selectedType, setSelectionScope]);
 
   // Sync URL param on mount
@@ -365,9 +511,15 @@ export default function SessionPage() {
     if (!selectedId) return;
 
     if (selectedType === "dm") {
-      fetchDmMessages({ recipient_id: selectedId });
+      fetchDmMessages({
+        recipient_id: selectedId,
+        peer_type: selectedConversation?.peer_type ?? "member",
+      });
       pollRef.current = setInterval(() => {
-        fetchDmMessages({ recipient_id: selectedId });
+        fetchDmMessages({
+          recipient_id: selectedId,
+          peer_type: selectedConversation?.peer_type ?? "member",
+        });
       }, 3000);
     } else {
       // Channel messages
@@ -389,7 +541,7 @@ export default function SessionPage() {
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
-  }, [selectedId, selectedType, fetchDmMessages, fetchChannel, fetchMembers]);
+  }, [selectedId, selectedType, selectedConversation, fetchDmMessages, fetchChannel, fetchMembers]);
 
   // Selection handlers
   const handleSelectDm = useCallback((conv: Conversation) => {
@@ -447,6 +599,7 @@ export default function SessionPage() {
   const [showCreateChannel, setShowCreateChannel] = useState(false);
   const [newChannelName, setNewChannelName] = useState("");
   const [creatingChannel, setCreatingChannel] = useState(false);
+  const [showInviteDialog, setShowInviteDialog] = useState(false);
 
   const handleCreateChannel = async () => {
     if (!newChannelName.trim()) { setShowCreateChannel(true); return; }
@@ -468,7 +621,7 @@ export default function SessionPage() {
   const messages = selectedType === "dm" ? dmMessages : channelMessages;
   const headerName =
     selectedType === "dm"
-      ? sidebarConversations.find((c) => c.peer_id === selectedId)?.peer_name ||
+      ? selectedConversation?.peer_name ||
         selectedId?.slice(0, 12) ||
         ""
       : currentChannel?.name
@@ -478,7 +631,7 @@ export default function SessionPage() {
     selectedType === "channel" && channelMembers.length > 0
       ? `${channelMembers.length} 位成员`
       : selectedType === "dm"
-        ? sidebarConversations.find((c) => c.peer_id === selectedId)?.peer_type ?? ""
+        ? selectedConversation?.peer_type ?? ""
         : "";
 
   return (
@@ -494,6 +647,11 @@ export default function SessionPage() {
         onCreateChannel={() => setShowCreateChannel(true)}
         searchQuery={sidebarSearch}
         onSearchChange={setSidebarSearch}
+        isDMArchived={isDMArchived}
+        onArchiveDM={archiveDMAction}
+        onUnarchiveDM={unarchiveDMAction}
+        onArchiveChannel={archiveChannelAction}
+        onUnarchiveChannel={unarchiveChannelAction}
       />
 
       {/* Create channel dialog */}
@@ -546,7 +704,7 @@ export default function SessionPage() {
                 )}
               </div>
               <div className="flex items-center gap-2">
-                {selectedType === "channel" && (
+                {selectedId && (
                   <>
                     <button
                       type="button"
@@ -558,7 +716,7 @@ export default function SessionPage() {
                         }
                         setSelectionEnabled(!selectionEnabled);
                       }}
-                      title={selectionEnabled ? "Exit selection mode" : "Select messages for project"}
+                      title={selectionEnabled ? "Exit selection mode" : "Select messages"}
                       className={`flex items-center gap-1 px-2 h-7 rounded-md text-[12px] transition-colors ${
                         selectionEnabled
                           ? "bg-accent text-foreground"
@@ -568,11 +726,37 @@ export default function SessionPage() {
                       <CheckSquare className="h-3.5 w-3.5" />
                       {selectionEnabled ? `Selecting (${selectionCount})` : "Select"}
                     </button>
-                    {selectedId && (
-                      <GenerateProjectButton
-                        channelId={selectedId}
-                        channelName={currentChannel?.name ?? "channel"}
+                    <GenerateProjectButton
+                      sourceType={selectedType}
+                      sourceId={selectedId}
+                      sourceName={
+                        selectedType === "channel"
+                          ? currentChannel?.name ?? "channel"
+                          : selectedConversation?.peer_name ?? "chat"
+                      }
+                      peerType={
+                        selectedType === "dm"
+                          ? (selectedConversation?.peer_type as "member" | "agent" | undefined)
+                          : undefined
+                      }
+                    />
+                    {selectedType === "dm" && (
+                      <PromoteToChannelButton
+                        peerId={selectedId}
+                        peerType={(selectedConversation?.peer_type as "member" | "agent" | undefined) ?? "member"}
+                        peerName={selectedConversation?.peer_name ?? "chat"}
                       />
+                    )}
+                    {selectedType === "channel" && (
+                      <button
+                        type="button"
+                        onClick={() => setShowInviteDialog(true)}
+                        title="邀请成员/Agent"
+                        className="flex items-center gap-1 px-2 h-7 rounded-md text-[12px] text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                      >
+                        <UserPlus className="h-3.5 w-3.5" />
+                        邀请
+                      </button>
                     )}
                   </>
                 )}
@@ -601,7 +785,7 @@ export default function SessionPage() {
                 <MessageList
                   messages={messages}
                   onOpenThread={selectedType === "channel" ? (msgId) => setActiveThreadId(msgId) : undefined}
-                  selectionEnabled={selectionEnabled && selectedType === "channel"}
+                  selectionEnabled={selectionEnabled}
                 />
               </div>
               {activeThreadId && selectedType === "channel" && selectedId && (
@@ -639,6 +823,16 @@ export default function SessionPage() {
           items={inboxItems}
           loading={inboxLoading}
           onClose={() => setShowInbox(false)}
+        />
+      )}
+
+      {/* Invite dialog */}
+      {selectedType === "channel" && selectedId && (
+        <InviteChannelMemberDialog
+          channelId={selectedId}
+          channelName={currentChannel?.name ?? "channel"}
+          open={showInviteDialog}
+          onClose={() => setShowInviteDialog(false)}
         />
       )}
     </div>

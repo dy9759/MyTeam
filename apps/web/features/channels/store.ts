@@ -18,6 +18,8 @@ interface ChannelState {
   leaveChannel: (id: string) => Promise<void>;
   setCurrentChannel: (channel: Channel | null) => void;
   upgradeToChannel: (channelId: string, name: string) => Promise<void>;
+  archiveChannel: (id: string) => Promise<void>;
+  unarchiveChannel: (id: string) => Promise<void>;
 }
 
 export const useChannelStore = create<ChannelState>((set) => ({
@@ -96,6 +98,35 @@ export const useChannelStore = create<ChannelState>((set) => ({
       toast.success("Upgraded to channel");
     } catch {
       toast.error("Failed to upgrade to channel");
+    }
+  },
+
+  archiveChannel: async (id) => {
+    try {
+      await api.archiveChannel(id);
+      const now = new Date().toISOString();
+      set((s) => ({
+        channels: s.channels.map((c) => (c.id === id ? { ...c, archived_at: now } : c)),
+        currentChannel:
+          s.currentChannel?.id === id ? { ...s.currentChannel, archived_at: now } : s.currentChannel,
+      }));
+      toast.success("已归档频道");
+    } catch {
+      toast.error("归档频道失败");
+    }
+  },
+
+  unarchiveChannel: async (id) => {
+    try {
+      await api.unarchiveChannel(id);
+      set((s) => ({
+        channels: s.channels.map((c) => (c.id === id ? { ...c, archived_at: null } : c)),
+        currentChannel:
+          s.currentChannel?.id === id ? { ...s.currentChannel, archived_at: null } : s.currentChannel,
+      }));
+      toast.success("已恢复频道");
+    } catch {
+      toast.error("恢复频道失败");
     }
   },
 }));

@@ -7,20 +7,22 @@ import { useMessageSelectionStore } from "@/features/messaging/stores/selection-
 import { api } from "@/shared/api";
 
 interface Props {
-  channelId: string;
-  channelName: string;
+  // Conversation source — either a channel or a DM peer.
+  sourceType: "channel" | "dm";
+  // Channel id or DM peer id.
+  sourceId: string;
+  // Display name used to seed the dialog title.
+  sourceName: string;
+  // Required when sourceType === "dm" — the peer's actor type so the
+  // backend can query ListDMMessages with the correct recipient_type.
+  peerType?: "member" | "agent";
 }
 
-// GenerateProjectButton lives in the channel header. When at least one
+// GenerateProjectButton lives in the session header. When at least one
 // message is selected (via the per-message checkbox in MessageList), the
 // button enables and lets the user spin up a Project from that subset
-// through POST /api/projects/from-chat.
-//
-// Owns its own dialog state — the parent only needs to know the channel id
-// and name. On success the selection clears and the user gets a toast-ish
-// inline confirmation; navigation to the new project page is deferred to a
-// follow-up so this component stays focused on the create flow.
-export function GenerateProjectButton({ channelId, channelName }: Props) {
+// through POST /api/projects/from-chat. Works for both channels and DMs.
+export function GenerateProjectButton({ sourceType, sourceId, sourceName, peerType }: Props) {
   const selectedIds = useMessageSelectionStore((s) => s.selectedIds);
   const clearSelection = useMessageSelectionStore((s) => s.clear);
 
@@ -29,17 +31,24 @@ export function GenerateProjectButton({ channelId, channelName }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [createdId, setCreatedId] = useState<string | null>(null);
+  // dialogCount snapshots selectedIds.size when the dialog opens. Without
+  // the snapshot the dialog body would read from the live store, and the
+  // clearSelection() call on success would make the count flip to 0 —
+  // masking the fact that the project was generated from N real messages.
+  const [dialogCount, setDialogCount] = useState(0);
   // PlanGenerator surfaces warnings (e.g. LLM_UNAVAILABLE, PLAN_GEN_MALFORMED)
   // when it had to fall back. Surface them so the user knows the resulting
   // plan needs more attention than a clean LLM-generated one.
   const [warnings, setWarnings] = useState<string[]>([]);
 
-  const count = selectedIds.size;
-  const disabled = count === 0;
+  const liveCount = selectedIds.size;
+  const disabled = liveCount === 0;
+  const sourceLabel = sourceType === "channel" ? `#${sourceName}` : sourceName;
 
   const openDialog = () => {
     if (disabled) return;
-    setTitle(`Project from #${channelName}`);
+    setDialogCount(liveCount);
+    setTitle(`Project from ${sourceLabel}`);
     setError(null);
     setCreatedId(null);
     setWarnings([]);
@@ -58,9 +67,10 @@ export function GenerateProjectButton({ channelId, channelName }: Props) {
         title: title.trim(),
         source_refs: [
           {
-            type: "channel",
-            id: channelId,
+            type: sourceType,
+            id: sourceId,
             message_ids: Array.from(selectedIds),
+            ...(sourceType === "dm" ? { peer_type: peerType ?? "member" } : {}),
           },
         ],
         agent_ids: [],
@@ -90,7 +100,7 @@ export function GenerateProjectButton({ channelId, channelName }: Props) {
         type="button"
         onClick={openDialog}
         disabled={disabled}
-        title={disabled ? "Select messages first" : `Generate project from ${count} message(s)`}
+        title={disabled ? "Select messages first" : `Generate project from ${liveCount} message(s)`}
         className={`flex items-center gap-1 px-2 h-7 rounded-md text-[12px] font-medium transition-colors ${
           disabled
             ? "text-muted-foreground/60 cursor-not-allowed"
@@ -99,9 +109,9 @@ export function GenerateProjectButton({ channelId, channelName }: Props) {
       >
         <Sparkles className="h-3.5 w-3.5" />
         Generate Project
-        {count > 0 && (
+        {liveCount > 0 && (
           <span className="ml-1 text-[10px] px-1 rounded bg-primary-foreground/20">
-            {count}
+            {liveCount}
           </span>
         )}
       </button>
@@ -111,7 +121,7 @@ export function GenerateProjectButton({ channelId, channelName }: Props) {
           <div className="bg-background rounded-lg shadow-lg w-full max-w-md p-5">
             <h2 className="text-base font-semibold text-foreground">Generate Project from selection</h2>
             <p className="text-[12px] text-muted-foreground mt-1">
-              {count} message(s) from #{channelName} will be summarized into a Plan with Tasks.
+              {dialogCount} message(s) from {sourceLabel} will be summarized into a Plan with Tasks.
             </p>
 
             <label className="block text-[12px] font-medium text-foreground mt-4">Project title</label>

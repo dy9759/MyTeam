@@ -48,6 +48,7 @@ import type {
   ProjectVersion,
   ProjectRun,
   CreateProjectFromChatRequest,
+  CreateProjectFromChatResponse,
   FileIndex,
   SearchResponse,
   WorkspaceMetrics,
@@ -65,6 +66,7 @@ import type {
   CreateParticipantSlotRequest,
   CreateReviewRequest,
   SubmitSlotInputResponse,
+  SlotSubmission,
 } from "@/shared/types";
 import { type Logger, noopLogger } from "@/shared/logger";
 
@@ -694,7 +696,7 @@ export class ApiClient implements ApiTransport {
     return this.fetch<any>('/api/messages', { method: 'POST', body: JSON.stringify(data) })
   }
 
-  async listMessages(params: { channel_id?: string; recipient_id?: string; thread_id?: string; limit?: number; offset?: number }) {
+  async listMessages(params: { channel_id?: string; recipient_id?: string; peer_type?: "member" | "agent"; thread_id?: string; limit?: number; offset?: number }) {
     const qs = new URLSearchParams(Object.entries(params).filter(([,v]) => v != null).map(([k,v]) => [k, String(v)])).toString()
     return this.fetch<{ messages: any[] }>(`/api/messages?${qs}`)
   }
@@ -710,6 +712,18 @@ export class ApiClient implements ApiTransport {
     return this.fetch<any>('/api/channels', { method: 'POST', body: JSON.stringify(data) })
   }
 
+  async createChannelFromDM(data: {
+    name: string;
+    peer_id: string;
+    peer_type: 'member' | 'agent';
+    message_ids?: string[];
+  }) {
+    return this.fetch<Channel & { copied_messages?: number }>(
+      '/api/channels/from-dm',
+      { method: 'POST', body: JSON.stringify(data) },
+    );
+  }
+
   async getChannel(id: string) { return this.fetch<any>(`/api/channels/${id}`) }
 
   async joinChannel(id: string) { return this.fetch<void>(`/api/channels/${id}/join`, { method: 'POST' }) }
@@ -717,6 +731,52 @@ export class ApiClient implements ApiTransport {
   async leaveChannel(id: string) { return this.fetch<void>(`/api/channels/${id}/leave`, { method: 'POST' }) }
 
   async getChannelMembers(id: string) { return this.fetch<{ members: any[] }>(`/api/channels/${id}/members`) }
+
+  async inviteChannelMember(
+    channelId: string,
+    data: { member_id: string; member_type: 'member' | 'agent' },
+  ) {
+    return this.fetch<void>(`/api/channels/${channelId}/members`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async removeChannelMember(
+    channelId: string,
+    memberId: string,
+    memberType: 'member' | 'agent',
+  ) {
+    return this.fetch<void>(
+      `/api/channels/${channelId}/members/${memberId}?member_type=${memberType}`,
+      { method: 'DELETE' },
+    );
+  }
+
+  async archiveChannel(channelId: string) {
+    return this.fetch<void>(`/api/channels/${channelId}/archive`, { method: 'POST' });
+  }
+
+  async unarchiveChannel(channelId: string) {
+    return this.fetch<void>(`/api/channels/${channelId}/unarchive`, { method: 'POST' });
+  }
+
+  async archiveDMConversation(data: {
+    peer_id: string;
+    peer_type: 'member' | 'agent';
+    archived: boolean;
+  }) {
+    return this.fetch<void>('/api/conversations/archive', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async listArchivedDMPeers() {
+    return this.fetch<{ archived: { peer_id: string; peer_type: 'member' | 'agent' }[] }>(
+      '/api/conversations/archived',
+    );
+  }
 
   async getChannelMessages(id: string, limit = 50, offset = 0) {
     return this.fetch<{ messages: any[] }>(`/api/channels/${id}/messages?limit=${limit}&offset=${offset}`)
@@ -851,7 +911,7 @@ export class ApiClient implements ApiTransport {
     return this.fetch('/api/projects', { method: 'POST', body: JSON.stringify(data) });
   }
 
-  async createProjectFromChat(data: CreateProjectFromChatRequest): Promise<Project> {
+  async createProjectFromChat(data: CreateProjectFromChatRequest): Promise<CreateProjectFromChatResponse> {
     return this.fetch('/api/projects/from-chat', { method: 'POST', body: JSON.stringify(data) });
   }
 
@@ -875,8 +935,8 @@ export class ApiClient implements ApiTransport {
     return this.fetch(`/api/projects/${id}/runs`, init);
   }
 
-  async approvePlan(projectId: string): Promise<void> {
-    await this.fetch(`/api/projects/${projectId}/approve`, { method: 'POST' });
+  async approvePlan(planId: string): Promise<void> {
+    await this.fetch(`/api/plans/${planId}/approve`, { method: 'POST' });
   }
 
   async rejectPlan(projectId: string, reason: string): Promise<void> {
@@ -967,6 +1027,11 @@ export class ApiClient implements ApiTransport {
       method: "POST",
       body: JSON.stringify({ content, comment }),
     });
+  }
+
+  async listSlotSubmissions(slotId: string): Promise<SlotSubmission[]> {
+    const resp = await this.fetch<{ submissions: SlotSubmission[] } | SlotSubmission[]>(`/api/slots/${slotId}/submissions`);
+    return Array.isArray(resp) ? resp : resp.submissions ?? [];
   }
 
   async listExecutionsByTask(taskId: string): Promise<Execution[]> {

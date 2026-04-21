@@ -59,10 +59,33 @@ export interface CreateProjectFromChatRequest {
   title: string;
   // message_ids narrows the source to a specific message subset inside the
   // channel/dm/thread. Omit to use the most recent 100 messages.
-  source_refs: { type: 'channel' | 'dm' | 'thread'; id: string; message_ids?: string[] }[];
+  source_refs: {
+    type: 'channel' | 'dm' | 'thread';
+    id: string;
+    message_ids?: string[];
+    // Required when type === 'dm' so the backend knows the peer's actor type.
+    peer_type?: 'member' | 'agent';
+  }[];
   agent_ids: string[];
   schedule_type: ProjectScheduleType;
   cron_expr?: string;
+}
+
+export interface CreateProjectFromChatTaskRef {
+  id: string;
+  local_id: string;
+  title: string;
+  step_order: number;
+  collaboration_mode: string;
+  slot_count: number;
+}
+
+export interface CreateProjectFromChatResponse {
+  project: Project;
+  plan?: unknown;
+  channel?: Record<string, unknown>;
+  tasks: CreateProjectFromChatTaskRef[];
+  warnings?: string[];
 }
 
 // Re-export Plan from workflow since project references it
@@ -159,6 +182,17 @@ export interface ParticipantSlot {
 export interface SubmitSlotInputResponse {
   slot: ParticipantSlot;
   task_new_status: TaskStatus;
+}
+
+export interface SlotSubmission {
+  id: string;
+  slot_id: string;
+  task_id: string;
+  run_id: string | null;
+  submitted_by: string | null;
+  content: unknown;
+  comment: string | null;
+  created_at: string;
 }
 
 // Execution

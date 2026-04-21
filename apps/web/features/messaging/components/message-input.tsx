@@ -1,8 +1,12 @@
 "use client";
-import { useState, useRef, useCallback, useEffect } from "react";
-import { Paperclip, X, FileIcon, Loader2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FileIcon, Loader2, Paperclip, X } from "lucide-react";
+import { detectTrigger, filterCandidates } from "@myteam/client-core";
 import { api } from "@/shared/api";
 import { toast } from "sonner";
+import { useWorkspaceStore } from "@/features/workspace";
+import { useAuthStore } from "@/features/auth";
+import { MentionPicker, type MentionCandidate } from "./mention-picker";
 
 interface AttachmentPreview {
   file: File;
@@ -36,7 +40,34 @@ export function MessageInput({
   const [attachments, setAttachments] = useState<AttachmentPreview[]>([]);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const stopTypingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Mention picker state — trigger detection is pure; pickerOpen gates rendering.
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerQuery, setPickerQuery] = useState("");
+  const [pickerRange, setPickerRange] = useState<{ start: number; end: number }>({
+    start: 0,
+    end: 0,
+  });
+
+  // Candidate source: workspace members + agents (minus self). Filtered
+  // inside MentionPicker via @myteam/client-core.filterCandidates.
+  const members = useWorkspaceStore((s) => s.members);
+  const agents = useWorkspaceStore((s) => s.agents);
+  const currentUserId = useAuthStore((s) => s.user?.id);
+  const candidates = useMemo<MentionCandidate[]>(() => {
+    const list: MentionCandidate[] = [];
+    for (const m of members) {
+      if (m.user_id === currentUserId) continue;
+      const name = m.name || m.email || m.user_id;
+      list.push({ id: m.user_id, name, kind: "owner" });
+    }
+    for (const a of agents) {
+      list.push({ id: a.id, name: a.display_name || a.name, kind: "agent" });
+    }
+    return list;
+  }, [members, agents, currentUserId]);
 
   // Clean up timer on unmount
   useEffect(() => {
@@ -46,6 +77,18 @@ export function MessageInput({
       }
     };
   }, []);
+
+  const recomputeTrigger = useCallback(
+    (text: string, pos: number) => {
+      const t = detectTrigger(text, pos);
+      const hasMatches =
+        t.triggering && filterCandidates(candidates, t.query).length > 0;
+      setPickerOpen(hasMatches);
+      setPickerQuery(t.query);
+      if (t.triggering) setPickerRange({ start: t.start, end: t.end });
+    },
+    [candidates],
+  );
 
   function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files;
@@ -57,7 +100,6 @@ export function MessageInput({
       newAttachments.push({ file: f, name: f.name, size: formatSize(f.size) });
     }
     setAttachments((prev) => [...prev, ...newAttachments]);
-    // Reset input so same file can be selected again
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
@@ -66,13 +108,14 @@ export function MessageInput({
   }
 
   const handleChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      setInput(e.target.value);
+    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      const next = e.target.value;
+      const pos = e.target.selectionStart ?? next.length;
+      setInput(next);
+      recomputeTrigger(next, pos);
 
       if (onTyping) {
         onTyping(true);
-
-        // Reset the stop-typing timer
         if (stopTypingTimerRef.current) {
           clearTimeout(stopTypingTimerRef.current);
         }
@@ -82,7 +125,16 @@ export function MessageInput({
         }, STOP_TYPING_DELAY_MS);
       }
     },
-    [onTyping],
+    [onTyping, recomputeTrigger],
+  );
+
+  const handleSelect = useCallback(
+    (e: React.SyntheticEvent<HTMLTextAreaElement>) => {
+      const target = e.currentTarget;
+      const pos = target.selectionStart ?? input.length;
+      recomputeTrigger(input, pos);
+    },
+    [input, recomputeTrigger],
   );
 
   const handleBlur = useCallback(() => {
@@ -95,11 +147,26 @@ export function MessageInput({
     }
   }, [onTyping]);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  const insertMention = useCallback(
+    (c: MentionCandidate) => {
+      const before = input.slice(0, pickerRange.start);
+      const after = input.slice(pickerRange.end);
+      const inserted = `@${c.name} `;
+      const next = before + inserted + after;
+      setInput(next);
+      setPickerOpen(false);
+      const newPos = (before + inserted).length;
+      requestAnimationFrame(() => {
+        textareaRef.current?.focus();
+        textareaRef.current?.setSelectionRange(newPos, newPos);
+      });
+    },
+    [input, pickerRange],
+  );
+
+  async function doSubmit() {
     if ((!input.trim() && attachments.length === 0) || sending) return;
 
-    // Stop typing indicator on send
     if (onTyping) {
       onTyping(false);
       if (stopTypingTimerRef.current) {
@@ -111,7 +178,6 @@ export function MessageInput({
     setSending(true);
 
     try {
-      // Upload attachments first, then send message for each
       if (attachments.length > 0) {
         setUploading(true);
         for (const att of attachments) {
@@ -126,11 +192,10 @@ export function MessageInput({
           } catch (err) {
             const msg = err instanceof Error ? err.message : "";
             if (msg.includes("503") || msg.includes("not configured") || msg.includes("unavailable")) {
-              toast.error("文件上传服务未配置（需要 S3 存储）");
+              toast.error("文件上传服务未配置(需要 S3 存储)");
             } else {
               toast.error(`上传 ${att.name} 失败`);
             }
-            // Send text-only if there's text
             if (input.trim()) {
               await onSend(input.trim());
             }
@@ -142,11 +207,28 @@ export function MessageInput({
       }
       setInput("");
       setAttachments([]);
+      setPickerOpen(false);
     } finally {
       setSending(false);
       setUploading(false);
     }
   }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    await doSubmit();
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // When the picker is open, let it handle navigation keys.
+    if (pickerOpen && ["ArrowUp", "ArrowDown", "Enter", "Escape"].includes(e.key)) {
+      return;
+    }
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      void doSubmit();
+    }
+  };
 
   return (
     <div className="border-t">
@@ -174,7 +256,7 @@ export function MessageInput({
       )}
 
       {/* Input row */}
-      <form onSubmit={handleSubmit} className="flex items-center gap-2 p-4">
+      <form onSubmit={handleSubmit} className="flex items-end gap-2 p-4">
         {/* File upload button */}
         <button
           type="button"
@@ -193,15 +275,29 @@ export function MessageInput({
           onChange={handleFileSelect}
         />
 
-        {/* Text input */}
-        <input
-          value={input}
-          onChange={handleChange}
-          onBlur={handleBlur}
-          className="flex-1 px-4 py-2 bg-muted border rounded-md text-sm"
-          placeholder={placeholder}
-          disabled={disabled}
-        />
+        {/* Textarea + mention picker */}
+        <div className="relative flex-1">
+          <textarea
+            ref={textareaRef}
+            value={input}
+            onChange={handleChange}
+            onKeyDown={handleKeyDown}
+            onSelect={handleSelect}
+            onBlur={handleBlur}
+            rows={1}
+            className="w-full resize-none px-4 py-2 bg-muted border rounded-md text-sm leading-6 max-h-32 overflow-auto"
+            placeholder={placeholder}
+            disabled={disabled}
+          />
+          {pickerOpen && (
+            <MentionPicker
+              candidates={candidates}
+              query={pickerQuery}
+              onSelect={insertMention}
+              onClose={() => setPickerOpen(false)}
+            />
+          )}
+        </div>
 
         {/* Send button */}
         <button
@@ -209,11 +305,7 @@ export function MessageInput({
           disabled={sending || (!input.trim() && attachments.length === 0) || disabled}
           className="shrink-0 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium disabled:opacity-50"
         >
-          {uploading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            "发送"
-          )}
+          {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : "发送"}
         </button>
       </form>
     </div>
