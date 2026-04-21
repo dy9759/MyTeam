@@ -17,6 +17,8 @@ import { useProjectStore } from "@/features/projects";
 import { useWorkspaceStore } from "@/features/workspace";
 import { VersionTree } from "@/features/projects/components/version-tree";
 import { ExecutionStepCard } from "@/features/projects/components/execution-step-card";
+import { OrchestrationGraph } from "@/features/projects/components/orchestration-graph";
+import { OrchestrationDAG } from "@/features/projects/components/orchestration-dag";
 import { MessageInput } from "@/features/messaging/components/message-input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -39,6 +41,8 @@ import type {
   Subagent,
   Task,
   TaskStatus,
+  ParticipantSlot,
+  Artifact,
 } from "@/shared/types";
 import type { Message } from "@/shared/types/messaging";
 
@@ -151,6 +155,16 @@ export default function ProjectDetailPage({ projectId }: ProjectDetailProps) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [subagents, setSubagents] = useState<Subagent[]>([]);
   const [startingExecution, setStartingExecution] = useState(false);
+  // 任务 tab sub-view. "list" is the existing ExecutionStepCard stack;
+  // "graph" is the force-directed bubble view from the Hi-Fi reference;
+  // "dag" is a rectilinear column-per-rank view for reading depends_on
+  // chains without bezier noise.
+  const [taskView, setTaskView] = useState<"list" | "graph" | "dag" | "board">("list");
+  // Slots tab state — selected task id drives the right-pane slot list.
+  const [slotSelectedTaskId, setSlotSelectedTaskId] = useState<string | null>(null);
+  const [slotsByTask, setSlotsByTask] = useState<Record<string, ParticipantSlot[]>>({});
+  // Results tab — artifacts loaded lazily per task on expand.
+  const [artifactsByTask, setArtifactsByTask] = useState<Record<string, Artifact[]>>({});
 
   const agents = useWorkspaceStore((s) => s.agents) as Agent[];
 
@@ -402,6 +416,31 @@ export default function ProjectDetailPage({ projectId }: ProjectDetailProps) {
     }
   }
 
+  // Slots tab — fetch slots on demand per selected task and cache so
+  // switching back doesn't re-query. participant_slot rows carry the
+  // "who + when + blocking" semantics the product UI needs.
+  async function ensureSlotsLoaded(taskId: string) {
+    if (slotsByTask[taskId]) return;
+    try {
+      const slots = await api.listSlotsByTask(taskId);
+      setSlotsByTask((prev) => ({ ...prev, [taskId]: slots }));
+    } catch {
+      toast.error("加载 slot 失败");
+    }
+  }
+
+  // Results tab — artifacts load lazily per task the first time a task
+  // card is expanded. Cached so toggling doesn't spam the server.
+  async function ensureArtifactsLoaded(taskId: string) {
+    if (artifactsByTask[taskId]) return;
+    try {
+      const artifacts = await api.listArtifactsByTask(taskId);
+      setArtifactsByTask((prev) => ({ ...prev, [taskId]: artifacts }));
+    } catch {
+      // Non-fatal — tab just shows "(暂无)" when fetch fails.
+    }
+  }
+
   async function handleSendChannelMessage(content: string) {
     if (!currentProject?.channel_id) return;
     try {
@@ -555,23 +594,31 @@ export default function ProjectDetailPage({ projectId }: ProjectDetailProps) {
         </div>
       </div>
 
-      {/* Version selector */}
-      {versions.length > 1 && (
-        <div className="mb-4 border border-border rounded-lg p-3 bg-card">
-          <h3 className="text-sm font-medium mb-2">版本</h3>
-          <VersionTree versions={versions} onSelect={() => {}} />
-        </div>
-      )}
-
-      {/* Tabs */}
+      {/* Tabs — 版本/计划/任务/Slots/结果/频道. 看板 folded into 任务
+          view toggle; 执行 folded into 结果. */}
       <Tabs defaultValue="plan" className="flex flex-col flex-1 min-h-0">
         <TabsList>
+          <TabsTrigger value="versions">版本</TabsTrigger>
           <TabsTrigger value="plan">计划</TabsTrigger>
           <TabsTrigger value="tasks">任务</TabsTrigger>
-          <TabsTrigger value="board">看板</TabsTrigger>
-          <TabsTrigger value="execution">执行</TabsTrigger>
+          <TabsTrigger value="slots">Slots</TabsTrigger>
+          <TabsTrigger value="results">结果</TabsTrigger>
           <TabsTrigger value="channel">频道</TabsTrigger>
         </TabsList>
+
+        {/* Tab: 版本 */}
+        <TabsContent value="versions" className="space-y-3">
+          {versions.length > 0 ? (
+            <div className="border border-border rounded-lg p-4 bg-card">
+              <h3 className="text-sm font-medium mb-3">版本树</h3>
+              <VersionTree versions={versions} onSelect={() => {}} />
+            </div>
+          ) : (
+            <div className="text-sm text-muted-foreground border border-dashed rounded-lg p-6 text-center">
+              暂无版本记录，使用右上角“分叉”创建第一个版本。
+            </div>
+          )}
+        </TabsContent>
 
         {/* Tab 1: Plan */}
         <TabsContent value="plan" className="space-y-4">
@@ -671,8 +718,8 @@ export default function ProjectDetailPage({ projectId }: ProjectDetailProps) {
           </div>
         </TabsContent>
 
-        {/* Tab 2: Tasks */}
-        <TabsContent value="tasks" className="flex flex-col flex-1 min-h-0">
+        {/* Tab: 任务 — 列表/气泡图/DAG/看板 four-way toggle */}
+        <TabsContent value="tasks" className="flex flex-col flex-1 min-h-0 space-y-3">
           {!hasTasks ? (
             <div className="flex flex-1 min-h-0 flex-col items-center justify-center gap-2 text-muted-foreground">
               <ListTodo className="h-10 w-10 text-muted-foreground/40" />
@@ -680,147 +727,133 @@ export default function ProjectDetailPage({ projectId }: ProjectDetailProps) {
               <p className="text-xs">在计划中生成任务以开始。</p>
             </div>
           ) : (
-            <div className="space-y-3">
-              {sortedTasks.map((t) => (
-                <ExecutionStepCard key={t.id} step={t} agents={agents} subagents={subagents} />
-              ))}
-            </div>
-          )}
-        </TabsContent>
-
-        {/* Tab 3: Board */}
-        <TabsContent value="board" className="flex flex-col flex-1 min-h-0">
-          {!hasTasks ? (
-            <div className="flex flex-1 min-h-0 flex-col items-center justify-center gap-2 text-muted-foreground">
-              <ListTodo className="h-10 w-10 text-muted-foreground/40" />
-              <p className="text-sm">暂无任务</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-5 gap-3 min-h-0">
-              {BOARD_COLUMNS.map((col) => {
-                const items = tasksByColumn[col.key] ?? [];
-                return (
-                  <div
-                    key={col.key}
-                    className="flex flex-col border border-border rounded-lg bg-card overflow-hidden"
+            <>
+              <TaskProgressBar tasks={sortedTasks} />
+              <div className="flex items-center gap-2">
+                {(
+                  [
+                    { key: "list", label: "列表" },
+                    { key: "graph", label: "编排图" },
+                    { key: "dag", label: "DAG" },
+                    { key: "board", label: "看板" },
+                  ] as const
+                ).map(({ key, label }) => (
+                  <Button
+                    key={key}
+                    variant={taskView === key ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setTaskView(key)}
                   >
-                    <div className="px-3 py-2 border-b border-border flex items-center justify-between">
-                      <span className="text-sm font-medium">{col.label}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {items.length}
-                      </span>
-                    </div>
-                    <div className="flex-1 p-2 space-y-2 overflow-y-auto">
-                      {items.length === 0 ? (
-                        <div className="text-xs text-muted-foreground/60 text-center py-3">
-                          空
-                        </div>
-                      ) : (
-                        items.map((t) => (
-                          <ExecutionStepCard
-                            key={t.id}
-                            step={t}
-                            agents={agents}
-                            subagents={subagents}
-                          />
-                        ))
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </TabsContent>
+                    {label}
+                  </Button>
+                ))}
+              </div>
 
-        {/* Tab 4: Execution */}
-        <TabsContent value="execution" className="space-y-4">
-          {activeRun ? (
-            <div className="space-y-4">
-              <RunSummaryBar run={activeRun} tasks={sortedTasks} />
-              <div className="space-y-3">
-                <h3 className="text-sm font-medium">步骤</h3>
-                {sortedTasks.length > 0 ? (
-                  sortedTasks.map((step) => (
+              {taskView === "list" && (
+                <div className="space-y-3">
+                  {sortedTasks.map((t) => (
                     <ExecutionStepCard
-                      key={step.id}
-                      step={step}
+                      key={t.id}
+                      step={t}
                       agents={agents}
                       subagents={subagents}
                     />
-                  ))
-                ) : (
-                  <div className="text-sm text-muted-foreground border border-border rounded-lg p-4 text-center bg-card">
-                    暂无步骤数据
-                  </div>
-                )}
-              </div>
-              {activeRun.failure_reason && (
-                <div className="border border-[rgba(239,68,68,0.3)] rounded-lg p-3 bg-[rgba(239,68,68,0.05)]">
-                  <div className="text-sm font-medium text-destructive">
-                    失败原因
-                  </div>
-                  <div className="text-sm text-muted-foreground mt-1">
-                    {activeRun.failure_reason}
-                  </div>
+                  ))}
                 </div>
               )}
-            </div>
-          ) : (
-            <div className="text-center py-12 text-muted-foreground">
-              <p className="mb-2">暂无运行中的执行</p>
-              {approvalStatus === "approved" && (
-                <Button
-                  variant="outline"
-                  onClick={handleStartExecution}
-                  disabled={startingExecution}
-                >
-                  {startingExecution ? (
-                    <Loader2 className="size-4 mr-1 animate-spin" />
-                  ) : (
-                    <Play className="size-4 mr-1" />
-                  )}
-                  开始执行
-                </Button>
-              )}
-            </div>
-          )}
 
-          {runs.length > 0 && (
-            <div>
-              <h3 className="text-sm font-medium mb-3">运行历史</h3>
-              <div className="space-y-2">
-                {runs.map((run: ProjectRun) => (
-                  <div
-                    key={run.id}
-                    className="flex items-center gap-3 p-3 border border-border rounded-lg bg-card"
-                  >
-                    <Badge
-                      className={RUN_STATUS_BADGE[run.status] ?? ""}
-                      variant="outline"
-                    >
-                      {run.status}
-                    </Badge>
-                    <div className="flex-1 min-w-0 text-sm">
-                      {run.start_at && (
-                        <span className="text-muted-foreground">
-                          {new Date(run.start_at).toLocaleString()}
-                        </span>
-                      )}
-                      {run.end_at && run.start_at && (
-                        <span className="text-muted-foreground">
-                          {" \u2192 "}
-                          {new Date(run.end_at).toLocaleString()}
-                        </span>
-                      )}
-                    </div>
-                    {run.retry_count > 0 && (
-                      <span className="text-xs text-muted-foreground">
-                        重试 {run.retry_count} 次
-                      </span>
-                    )}
-                  </div>
-                ))}
+              {taskView === "graph" && (
+                <OrchestrationGraph
+                  tasks={sortedTasks}
+                  agents={agents}
+                  subagents={subagents}
+                />
+              )}
+
+              {taskView === "dag" && (
+                <OrchestrationDAG
+                  tasks={sortedTasks}
+                  agents={agents}
+                  subagents={subagents}
+                />
+              )}
+
+              {taskView === "board" && (
+                <div className="grid grid-cols-5 gap-3 min-h-0">
+                  {BOARD_COLUMNS.map((col) => {
+                    const items = tasksByColumn[col.key] ?? [];
+                    return (
+                      <div
+                        key={col.key}
+                        className="flex flex-col border border-border rounded-lg bg-card overflow-hidden"
+                      >
+                        <div className="px-3 py-2 border-b border-border flex items-center justify-between">
+                          <span className="text-sm font-medium">{col.label}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {items.length}
+                          </span>
+                        </div>
+                        <div className="flex-1 p-2 space-y-2 overflow-y-auto">
+                          {items.length === 0 ? (
+                            <div className="text-xs text-muted-foreground/60 text-center py-3">
+                              空
+                            </div>
+                          ) : (
+                            items.map((t) => (
+                              <ExecutionStepCard
+                                key={t.id}
+                                step={t}
+                                agents={agents}
+                                subagents={subagents}
+                              />
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
+        </TabsContent>
+
+        {/* Tab: Slots — drills into each task's participant_slot rows
+            so the reviewer can see who does what, when, and whether
+            it blocks downstream work. */}
+        <TabsContent value="slots" className="flex flex-col flex-1 min-h-0">
+          <SlotsPanel
+            tasks={sortedTasks}
+            selectedTaskId={slotSelectedTaskId}
+            onSelect={(id) => {
+              setSlotSelectedTaskId(id);
+              void ensureSlotsLoaded(id);
+            }}
+            slotsByTask={slotsByTask}
+            agents={agents}
+            subagents={subagents}
+          />
+        </TabsContent>
+
+        {/* Tab: 结果 — aggregates artifacts + per-task output_refs +
+            active run's output_refs + run history. Former 执行 tab
+            data is folded in here so the user has one place for
+            "what did we produce". */}
+        <TabsContent value="results" className="space-y-4">
+          <ResultsPanel
+            tasks={sortedTasks}
+            activeRun={activeRun}
+            runs={runs}
+            artifactsByTask={artifactsByTask}
+            ensureArtifactsLoaded={ensureArtifactsLoaded}
+          />
+          {activeRun?.failure_reason && (
+            <div className="border border-[rgba(239,68,68,0.3)] rounded-lg p-3 bg-[rgba(239,68,68,0.05)]">
+              <div className="text-sm font-medium text-destructive">
+                失败原因
+              </div>
+              <div className="text-sm text-muted-foreground mt-1">
+                {activeRun.failure_reason}
               </div>
             </div>
           )}
@@ -1031,6 +1064,302 @@ function RunSummaryBar({
         </span>
       </div>
       <Progress value={progressPct} className="h-2" />
+    </div>
+  );
+}
+
+/* ---------- 任务 tab — progress bar ---------- */
+
+function TaskProgressBar({ tasks }: { tasks: Task[] }) {
+  const completed = tasks.filter((t) => t.status === "completed").length;
+  const total = tasks.length;
+  const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+  return (
+    <div className="flex items-center gap-3 border border-border rounded-lg p-3 bg-card">
+      <span className="text-xs text-muted-foreground shrink-0">
+        开发进度 {completed}/{total}
+      </span>
+      <Progress value={pct} className="h-2 flex-1" />
+      <span className="text-xs text-muted-foreground font-mono shrink-0">
+        {pct}%
+      </span>
+    </div>
+  );
+}
+
+/* ---------- Slots panel ---------- */
+
+function SlotsPanel({
+  tasks,
+  selectedTaskId,
+  onSelect,
+  slotsByTask,
+  agents,
+  subagents,
+}: {
+  tasks: Task[];
+  selectedTaskId: string | null;
+  onSelect: (id: string) => void;
+  slotsByTask: Record<string, ParticipantSlot[]>;
+  agents: Agent[];
+  subagents: Subagent[];
+}) {
+  if (tasks.length === 0) {
+    return (
+      <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
+        暂无任务
+      </div>
+    );
+  }
+  const selected = tasks.find((t) => t.id === selectedTaskId) ?? null;
+  const slots = selected ? slotsByTask[selected.id] ?? null : null;
+  return (
+    <div className="flex flex-1 min-h-0 border border-border rounded-lg overflow-hidden bg-card">
+      <div className="w-[260px] shrink-0 border-r border-border overflow-y-auto">
+        {tasks.map((t) => {
+          const active = t.id === selectedTaskId;
+          return (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => onSelect(t.id)}
+              className={`w-full text-left px-3 py-2.5 border-b border-border hover:bg-accent text-sm transition-colors ${
+                active ? "bg-muted" : ""
+              }`}
+            >
+              <div className="flex items-center gap-2 text-[10px] text-muted-foreground font-mono">
+                <span>#{t.step_order}</span>
+                <span>{t.status}</span>
+              </div>
+              <div className="text-xs font-medium mt-0.5 line-clamp-2">
+                {t.title}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+      <div className="flex-1 min-w-0 overflow-y-auto p-4">
+        {!selected && (
+          <div className="text-sm text-muted-foreground text-center mt-10">
+            选择左侧任务查看 slot 时间线
+          </div>
+        )}
+        {selected && slots === null && (
+          <div className="text-sm text-muted-foreground">加载中…</div>
+        )}
+        {selected && slots && slots.length === 0 && (
+          <div className="text-sm text-muted-foreground">
+            该任务未定义 slot
+          </div>
+        )}
+        {selected && slots && slots.length > 0 && (
+          <div className="space-y-2">
+            {[...slots]
+              .sort((a, b) => a.slot_order - b.slot_order)
+              .map((s) => (
+                <SlotRow
+                  key={s.id}
+                  slot={s}
+                  agents={agents}
+                  subagents={subagents}
+                />
+              ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SlotRow({
+  slot,
+  agents,
+  subagents,
+}: {
+  slot: ParticipantSlot;
+  agents: Agent[];
+  subagents: Subagent[];
+}) {
+  const participantName = slot.participant_id
+    ? agents.find((a) => a.id === slot.participant_id)?.name ??
+      subagents.find((s) => s.id === slot.participant_id)?.name ??
+      slot.participant_id.slice(0, 8)
+    : slot.participant_type === "agent"
+      ? "待分配 agent"
+      : slot.participant_type === "member"
+        ? "待分配成员"
+        : "—";
+  return (
+    <div className="border border-border rounded-md p-3 bg-background/50">
+      <div className="flex items-center gap-2 text-[11px] font-mono text-muted-foreground">
+        <span>#{slot.slot_order}</span>
+        <span>{SLOT_TYPE_LABEL[slot.slot_type] ?? slot.slot_type}</span>
+        <span>·</span>
+        <span>{SLOT_TRIGGER_LABEL[slot.trigger] ?? slot.trigger}</span>
+        {slot.blocking && (
+          <Badge variant="outline" className="text-[9px] h-4 px-1.5">
+            阻塞
+          </Badge>
+        )}
+        {!slot.required && (
+          <Badge variant="outline" className="text-[9px] h-4 px-1.5">
+            可选
+          </Badge>
+        )}
+        <span className="ml-auto">{slot.status}</span>
+      </div>
+      <div className="mt-2 text-sm font-medium">{participantName}</div>
+      {slot.responsibility && (
+        <div className="text-xs text-muted-foreground mt-1 whitespace-pre-wrap">
+          {slot.responsibility}
+        </div>
+      )}
+      {slot.expected_output && (
+        <div className="text-[11px] text-muted-foreground mt-1 font-mono">
+          期望产出:{slot.expected_output}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const SLOT_TYPE_LABEL: Record<string, string> = {
+  human_input: "人工输入",
+  agent_execution: "Agent 执行",
+  human_review: "人工评审",
+};
+
+const SLOT_TRIGGER_LABEL: Record<string, string> = {
+  before_execution: "执行前",
+  during_execution: "执行中",
+  before_done: "完成前",
+};
+
+/* ---------- 结果 panel ---------- */
+
+function ResultsPanel({
+  tasks,
+  activeRun,
+  runs,
+  artifactsByTask,
+  ensureArtifactsLoaded,
+}: {
+  tasks: Task[];
+  activeRun: ProjectRun | undefined;
+  runs: ProjectRun[];
+  artifactsByTask: Record<string, Artifact[]>;
+  ensureArtifactsLoaded: (taskId: string) => Promise<void>;
+}) {
+  useEffect(() => {
+    for (const t of tasks) {
+      void ensureArtifactsLoaded(t.id);
+    }
+  }, [tasks, ensureArtifactsLoaded]);
+
+  const totalArtifacts = Object.values(artifactsByTask).reduce(
+    (sum, arr) => sum + arr.length,
+    0,
+  );
+
+  return (
+    <div className="space-y-4">
+      {activeRun && <RunSummaryBar run={activeRun} tasks={tasks} />}
+
+      {/* Task outputs section */}
+      <div className="border border-border rounded-lg bg-card">
+        <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+          <h3 className="text-sm font-medium">任务产出</h3>
+          <span className="text-xs text-muted-foreground">
+            {totalArtifacts} artifact{totalArtifacts !== 1 ? "s" : ""}
+          </span>
+        </div>
+        <div className="divide-y divide-border">
+          {tasks.map((t) => {
+            const artifacts = artifactsByTask[t.id] ?? [];
+            const outRefs = (t.output_refs ?? []) as unknown[];
+            const empty = artifacts.length === 0 && outRefs.length === 0;
+            return (
+              <div key={t.id} className="p-3">
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="text-muted-foreground font-mono">
+                    #{t.step_order}
+                  </span>
+                  <span className="font-medium truncate">{t.title}</span>
+                  <span className="ml-auto text-muted-foreground">
+                    {t.status}
+                  </span>
+                </div>
+                {empty ? (
+                  <div className="text-[11px] text-muted-foreground/70 mt-1">
+                    暂无产出
+                  </div>
+                ) : (
+                  <div className="mt-2 space-y-1">
+                    {artifacts.map((a) => (
+                      <div
+                        key={a.id}
+                        className="text-xs text-muted-foreground font-mono flex gap-2"
+                      >
+                        <span className="shrink-0">{a.artifact_type}</span>
+                        <span className="truncate">
+                          {a.title ?? a.summary ?? a.id.slice(0, 8)}
+                        </span>
+                        <span className="text-muted-foreground/60 shrink-0">
+                          v{a.version}
+                        </span>
+                      </div>
+                    ))}
+                    {outRefs.length > 0 && (
+                      <div className="text-[11px] text-muted-foreground">
+                        output_refs: {outRefs.length}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Run history */}
+      {runs.length > 0 && (
+        <div className="border border-border rounded-lg bg-card">
+          <div className="px-4 py-3 border-b border-border">
+            <h3 className="text-sm font-medium">运行历史</h3>
+          </div>
+          <div className="divide-y divide-border">
+            {runs.map((run) => (
+              <div
+                key={run.id}
+                className="flex items-center gap-3 p-3 text-sm"
+              >
+                <Badge
+                  className={RUN_STATUS_BADGE[run.status] ?? ""}
+                  variant="outline"
+                >
+                  {run.status}
+                </Badge>
+                <div className="flex-1 min-w-0 text-xs text-muted-foreground">
+                  {run.start_at &&
+                    new Date(run.start_at).toLocaleString()}
+                  {run.end_at && run.start_at && (
+                    <>
+                      {" → "}
+                      {new Date(run.end_at).toLocaleString()}
+                    </>
+                  )}
+                </div>
+                {run.retry_count > 0 && (
+                  <span className="text-[10px] text-muted-foreground">
+                    重试 {run.retry_count}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
