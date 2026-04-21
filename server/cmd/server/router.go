@@ -159,8 +159,9 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 	// WebSocket
 	mc := &membershipChecker{queries: queries}
 	pr := &patResolver{queries: queries}
+	ac := &agentActChecker{handler: h}
 	r.Get("/ws", func(w http.ResponseWriter, r *http.Request) {
-		realtime.HandleWebSocket(hub, mc, pr, w, r)
+		realtime.HandleWebSocket(hub, mc, pr, ac, w, r)
 	})
 
 	// Auth (public)
@@ -634,6 +635,18 @@ func (pr *patResolver) ResolveUserIDFromPATHash(ctx context.Context, hash string
 		return "", err
 	}
 	return uuidToString(pat.UserID), nil
+}
+
+// agentActChecker gates ws ?agent_id= against the same ownership /
+// impersonation / workspace-role rules that handler.canActAsAgent
+// enforces on the REST interaction endpoints. Reusing the handler
+// method keeps one source of truth for "can user X speak as agent Y".
+type agentActChecker struct {
+	handler *handler.Handler
+}
+
+func (ac *agentActChecker) CanActAsAgent(ctx context.Context, userID, agentID, workspaceID string) bool {
+	return ac.handler.CanActAsAgent(ctx, userID, agentID, workspaceID)
 }
 
 func uuidToString(u pgtype.UUID) string {

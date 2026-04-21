@@ -13,16 +13,66 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
+
+// CanActAsAgent returns true when userID is allowed to send or read
+// messages on behalf of agentID inside the resolved workspace. Three
+// paths grant permission, tried in order of specificity:
+//
+//  1. Personal ownership — `agent.owner_id = userID`.
+//  2. Active impersonation session — owner_id=userID, agent_id=agentID,
+//     not expired, not ended.
+//  3. Workspace ops override — userID has role owner or admin in the
+//     same workspace the agent belongs to.
+//
+// All three branches silently return false on DB error; the caller
+// treats any negative as a 403, so we never leak the reason.
+func (h *Handler) CanActAsAgent(ctx context.Context, userID, agentID, workspaceID string) bool {
+	if userID == "" || agentID == "" || workspaceID == "" {
+		return false
+	}
+
+	agent, err := h.Queries.GetAgent(ctx, parseUUID(agentID))
+	if err != nil {
+		return false
+	}
+	if uuidToString(agent.WorkspaceID) != workspaceID {
+		return false
+	}
+
+	// 1. Personal ownership.
+	if uuidToString(agent.OwnerID) == userID {
+		return true
+	}
+
+	// 2. Active impersonation session.
+	imp, err := h.Queries.GetActiveImpersonation(ctx, parseUUID(agentID))
+	if err == nil && uuidToString(imp.OwnerID) == userID {
+		return true
+	}
+
+	// 3. Workspace owner / admin override.
+	member, err := h.Queries.GetMemberByUserAndWorkspace(ctx, db.GetMemberByUserAndWorkspaceParams{
+		UserID:      parseUUID(userID),
+		WorkspaceID: parseUUID(workspaceID),
+	})
+	if err == nil && (member.Role == "owner" || member.Role == "admin") {
+		return true
+	}
+
+	return false
+}
 
 // sendInteractionRequest mirrors the AgentMesh wire format
 // 1:1 so the client-side protocol can stay a single struct across
@@ -105,9 +155,29 @@ func (h *Handler) SendInteraction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Resolve sender identity: if the caller asserts an agent identity
-	// via X-Agent-ID, we validated that already in resolveActor.
+	// Resolve sender identity. X-Agent-ID means "I'm speaking as this
+	// agent" — resolveActor already checked the agent lives in this
+	// workspace, but that isn't enough: anyone in the workspace could
+	// otherwise claim to be any agent. Re-check via canActAsAgent.
 	actorType, actorID := h.resolveActor(r, userID, workspaceID)
+	if actorType == "agent" {
+		if !h.CanActAsAgent(r.Context(), userID, actorID, workspaceID) {
+			writeError(w, http.StatusForbidden, "not allowed to send as this agent")
+			return
+		}
+	}
+
+	// Target validation — every reachable target must live in the
+	// sender's workspace. Without this, a cross-workspace agent id or
+	// session id leaks through the FK since agent_interaction.to_agent_id
+	// is not scoped to workspace_id at the schema level.
+	if req.Target.AgentID != "" {
+		targetAgent, err := h.Queries.GetAgent(r.Context(), parseUUID(req.Target.AgentID))
+		if err != nil || uuidToString(targetAgent.WorkspaceID) != workspaceID {
+			writeError(w, http.StatusNotFound, "target agent not found in this workspace")
+			return
+		}
+	}
 
 	payload := req.Payload
 	if len(payload) == 0 {
@@ -141,24 +211,72 @@ func (h *Handler) SendInteraction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := interactionRow(row)
+	delivered := 0
 
-	// Push to the addressed agent via WS. DM and capability-broadcast
-	// both need a fan-out; for now the handler only pushes DM — the
-	// capability fan-out ticket requires an agent-by-capability index
-	// (follow-up once subagent.category is mapped onto it).
+	// DM push via WS. Hub.PushToAgent dedups via Client.recentPushes, so
+	// a reconnecting agent won't see duplicates. When delivery succeeds
+	// we flip the row to `delivered` synchronously — otherwise a WS
+	// receiver that processed the message would still see it again on
+	// next REST poll (status stuck at pending).
 	if h.Hub != nil && req.Target.AgentID != "" {
-		h.Hub.PushToAgent(req.Target.AgentID, map[string]any{
+		delivered = h.Hub.PushToAgent(req.Target.AgentID, map[string]any{
 			"type":    "interaction",
 			"payload": resp,
 		})
 	}
 
+	// Capability fan-out. Match every non-archived agent in the
+	// workspace whose `category` equals the requested capability, then
+	// push. Each delivery gets its own row so receivers ack independently.
+	if h.Hub != nil && req.Target.Capability != "" {
+		delivered += h.fanOutCapability(r.Context(), workspaceID, req.Target.Capability, resp)
+	}
+
+	if delivered > 0 {
+		if err := h.Queries.MarkAgentInteractionDelivered(r.Context(), row.ID); err == nil {
+			resp.Status = "delivered"
+		}
+	}
+
 	writeJSON(w, http.StatusCreated, resp)
+}
+
+// fanOutCapability pushes `base` to every workspace agent whose
+// `category` matches the capability string. Each WS push is counted;
+// returns the total delivered clients (multiple per agent when a user
+// has several tabs open). Capability broadcast does not create one
+// row per receiver — the single row carries the capability label, and
+// `ListAgentInteractionsByCapability` is the pull fallback.
+func (h *Handler) fanOutCapability(ctx context.Context, workspaceID, capability string, base interactionResponse) int {
+	agents, err := h.Queries.ListAllAgents(ctx, parseUUID(workspaceID))
+	if err != nil {
+		return 0
+	}
+	delivered := 0
+	for _, a := range agents {
+		if a.ArchivedAt.Valid {
+			continue
+		}
+		// Subagent rows are templates, not runnable receivers — skip
+		// them even when their category matches the capability.
+		if a.Kind != "agent" {
+			continue
+		}
+		if !strings.EqualFold(a.Category, capability) {
+			continue
+		}
+		delivered += h.Hub.PushToAgent(uuidToString(a.ID), map[string]any{
+			"type":    "interaction",
+			"payload": base,
+		})
+	}
+	return delivered
 }
 
 // GetAgentInbox — GET /api/agents/:id/inbox?after=<rfc3339>&limit=N
 func (h *Handler) GetAgentInbox(w http.ResponseWriter, r *http.Request) {
-	if _, ok := requireUserID(w, r); !ok {
+	userID, ok := requireUserID(w, r)
+	if !ok {
 		return
 	}
 	workspaceID := resolveWorkspaceID(r)
@@ -173,10 +291,11 @@ func (h *Handler) GetAgentInbox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Agent must belong to the resolved workspace.
-	agent, err := h.Queries.GetAgent(r.Context(), parseUUID(agentID))
-	if err != nil || uuidToString(agent.WorkspaceID) != workspaceID {
-		writeError(w, http.StatusNotFound, "agent not found in this workspace")
+	// Reading an agent's inbox is an act-as-agent permission, not a
+	// plain workspace-member one. Otherwise a member could harvest
+	// messages addressed to any agent in their workspace.
+	if !h.CanActAsAgent(r.Context(), userID, agentID, workspaceID) {
+		writeError(w, http.StatusForbidden, "not allowed to read this agent's inbox")
 		return
 	}
 
@@ -220,9 +339,11 @@ func (h *Handler) GetAgentInbox(w http.ResponseWriter, r *http.Request) {
 
 // AckInteraction — POST /api/interactions/:id/ack?state=read|delivered
 func (h *Handler) AckInteraction(w http.ResponseWriter, r *http.Request) {
-	if _, ok := requireUserID(w, r); !ok {
+	userID, ok := requireUserID(w, r)
+	if !ok {
 		return
 	}
+	workspaceID := resolveWorkspaceID(r)
 
 	id := chi.URLParam(r, "id")
 	if id == "" {
@@ -230,6 +351,24 @@ func (h *Handler) AckInteraction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	uid := parseUUID(id)
+
+	// Ack is an act-as-agent operation on the addressee. Load the row
+	// first so we can confirm the caller actually owns / impersonates
+	// the recipient — otherwise anyone could flip someone else's inbox
+	// to `read` and hide messages.
+	existing, err := h.Queries.GetAgentInteraction(r.Context(), uid)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "interaction not found")
+		return
+	}
+	if !existing.ToAgentID.Valid {
+		writeError(w, http.StatusBadRequest, "cannot ack a non-DM interaction")
+		return
+	}
+	if !h.CanActAsAgent(r.Context(), userID, uuidToString(existing.ToAgentID), workspaceID) {
+		writeError(w, http.StatusForbidden, "not allowed to ack this interaction")
+		return
+	}
 
 	state := r.URL.Query().Get("state")
 	if state == "" {
