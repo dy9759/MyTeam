@@ -1,5 +1,6 @@
 "use client"
-import { useState } from "react"
+import { Suspense, useState } from "react"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { useWorkspaceStore } from "@/features/workspace"
 import { useAuthStore } from "@/features/auth"
 import { api } from "@/shared/api"
@@ -8,11 +9,13 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import {
   Bot, Terminal, Code, Key, ChevronDown, ChevronRight,
   Copy, Check, Plus, Zap, Circle, Shield, Wrench,
-  Globe, User, GitBranch, Settings
+  Globe, User, GitBranch, Settings, Sparkles, Layers
 } from "lucide-react"
 import { MetricsOverview } from "@/features/workspace/components/metrics-overview"
 import { AgentAutoReplyConfig } from "@/features/workspace/components/agent-auto-reply-config"
 import { AgentProfileEditor } from "@/features/workspace/components/agent-profile-editor"
+import { SkillsPage } from "@/features/skills"
+import { SubagentsPage } from "@/features/subagents"
 
 /* ================================================================== */
 /* Helpers                                                             */
@@ -343,9 +346,23 @@ const ownerTabs = [
   { value: "add-agent", label: "添加 Agent", icon: Plus },
 ]
 
+// Knowledge group bundles skills + subagents so the two live next to
+// each other under the identity page — agents reach skills only via
+// subagents (migration 069 rule), and keeping them co-located makes
+// that relationship obvious in the nav.
+const knowledgeTabs = [
+  { value: "skills", label: "技能", icon: Sparkles },
+  { value: "subagents", label: "Subagents", icon: Layers },
+]
+
 const orgTabs = [
   { value: "hierarchy", label: "组织层级", icon: GitBranch },
 ]
+
+// Tabs that host their own full-bleed layout (resizable panels, left
+// rails, etc.). They skip the max-w-3xl reader-width wrapper so the
+// internal layout isn't squeezed.
+const FULL_WIDTH_TABS = new Set(["skills", "subagents"])
 
 /* ================================================================== */
 /* Page — Settings-style vertical tab layout                           */
@@ -353,13 +370,47 @@ const orgTabs = [
 
 export default function AccountPage() {
   return (
-    <Tabs defaultValue="overview" orientation="vertical" className="flex-1 min-h-0 gap-0 bg-background">
+    <Suspense fallback={null}>
+      <AccountPageBody />
+    </Suspense>
+  )
+}
+
+function AccountPageBody() {
+  const search = useSearchParams()
+  const router = useRouter()
+  const pathname = usePathname()
+  const currentTab = search.get("tab") || "overview"
+
+  const setTab = (v: string) => {
+    const params = new URLSearchParams(search.toString())
+    params.set("tab", v)
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false })
+  }
+
+  const isFullWidth = FULL_WIDTH_TABS.has(currentTab)
+
+  return (
+    <Tabs
+      value={currentTab}
+      onValueChange={setTab}
+      orientation="vertical"
+      className="flex-1 min-h-0 gap-0 bg-background"
+    >
       {/* Left nav — same style as Settings */}
       <div className="w-52 shrink-0 border-r border-border overflow-y-auto p-4">
         <h1 className="text-sm font-semibold mb-4 px-2 text-foreground">身份</h1>
         <TabsList variant="line" className="flex-col items-stretch">
           <span className="px-2 pb-1 pt-2 text-xs font-medium text-muted-foreground">Owner</span>
           {ownerTabs.map((tab) => (
+            <TabsTrigger key={tab.value} value={tab.value}>
+              <tab.icon className="h-4 w-4" />
+              {tab.label}
+            </TabsTrigger>
+          ))}
+
+          <span className="px-2 pb-1 pt-4 text-xs font-medium text-muted-foreground">知识库</span>
+          {knowledgeTabs.map((tab) => (
             <TabsTrigger key={tab.value} value={tab.value}>
               <tab.icon className="h-4 w-4" />
               {tab.label}
@@ -376,14 +427,23 @@ export default function AccountPage() {
         </TabsList>
       </div>
 
-      {/* Right content */}
-      <div className="flex-1 min-w-0 overflow-y-auto">
-        <div className="w-full max-w-3xl mx-auto p-6">
-          <TabsContent value="overview"><OverviewTab /></TabsContent>
-          <TabsContent value="agents"><AgentListTab /></TabsContent>
-          <TabsContent value="add-agent"><AddAgentTab /></TabsContent>
-          <TabsContent value="hierarchy"><OverviewTab /></TabsContent>
-        </div>
+      {/* Right content — full-width for skills/subagents which carry
+          their own resizable or split layout; reader-width for the
+          narrower owner/org tabs. */}
+      <div className="flex-1 min-w-0 overflow-y-auto flex flex-col">
+        {isFullWidth ? (
+          <div className="flex-1 min-h-0 flex">
+            <TabsContent value="skills" className="flex-1 min-h-0 flex"><SkillsPage /></TabsContent>
+            <TabsContent value="subagents" className="flex-1 min-h-0 flex"><SubagentsPage /></TabsContent>
+          </div>
+        ) : (
+          <div className="w-full max-w-3xl mx-auto p-6">
+            <TabsContent value="overview"><OverviewTab /></TabsContent>
+            <TabsContent value="agents"><AgentListTab /></TabsContent>
+            <TabsContent value="add-agent"><AddAgentTab /></TabsContent>
+            <TabsContent value="hierarchy"><OverviewTab /></TabsContent>
+          </div>
+        )}
       </div>
     </Tabs>
   )
