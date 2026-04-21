@@ -1273,6 +1273,15 @@ function ConversationRefItem({
           limit: 20,
         });
         if (all.length === 0) {
+          // Thread fallback — source_refs of type="thread" persist the
+          // thread's root message id as conversation_id. The backend
+          // accepts thread_id in listMessages directly.
+          all = await tryFetch({
+            thread_id: conv.conversation_id,
+            limit: 20,
+          });
+        }
+        if (all.length === 0) {
           // DM fallback — try both peer types so we don't require the
           // persisted source_conversations entry to carry one.
           all = await tryFetch({

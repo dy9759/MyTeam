@@ -163,6 +163,27 @@ function StepCard({
                 placeholder="验收标准"
                 className="text-xs"
               />
+              {/* Assignee swap surfaced inside the edit form so the
+                  user has an explicit control while they're already
+                  editing the task. changeAssignee PATCHes immediately —
+                  independent of the save button, which only pushes
+                  title / description / acceptance. */}
+              <div className="flex items-center gap-2 pt-1">
+                <span className="text-[11px] text-muted-foreground shrink-0">
+                  执行 Agent
+                </span>
+                <AssigneeChip
+                  agent={assigneeAgent}
+                  subagent={assigneeSubagent}
+                  taskId={task.id}
+                  disabled={saving}
+                  open={assigneePickerOpen}
+                  onOpenChange={setAssigneePickerOpen}
+                  agents={agents}
+                  subagents={subagents}
+                  onPick={changeAssignee}
+                />
+              </div>
             </div>
           ) : (
             <>
