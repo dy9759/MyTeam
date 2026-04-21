@@ -13,6 +13,7 @@ import {
   MessageSquare,
   FolderGit2,
   FileText,
+  Bot,
 } from "lucide-react";
 import { WorkspaceAvatar } from "@/features/workspace";
 import { useIssueDraftStore } from "@/features/issues/stores/draft-store";
@@ -45,6 +46,7 @@ import { useModalStore } from "@/features/modals";
 const navItems = [
   { href: "/session", label: "会话", icon: MessageSquare },
   { href: "/projects", label: "项目", icon: FolderGit2 },
+  { href: "/subagents", label: "Subagents", icon: Bot },
   { href: "/files", label: "文件 + 记忆", icon: FileText },
   { href: "/account", label: "身份", icon: User },
   { href: "/settings", label: "设置", icon: Settings },

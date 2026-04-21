@@ -248,7 +248,7 @@ function SkillListItem({
       </div>
       {(skill.files?.length ?? 0) > 0 && (
         <Badge variant="secondary">
-          {skill.files.length} file{skill.files.length !== 1 ? "s" : ""}
+          {skill.files!.length} file{skill.files!.length !== 1 ? "s" : ""}
         </Badge>
       )}
     </button>

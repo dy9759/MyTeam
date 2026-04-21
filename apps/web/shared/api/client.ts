@@ -26,6 +26,9 @@ import type {
   Skill,
   CreateSkillRequest,
   UpdateSkillRequest,
+  Subagent,
+  CreateSubagentRequest,
+  UpdateSubagentRequest,
   SetAgentSkillsRequest,
   PersonalAccessToken,
   CreatePersonalAccessTokenRequest,
@@ -585,8 +588,15 @@ export class ApiClient implements ApiTransport {
   }
 
   // Skills
-  async listSkills(): Promise<Skill[]> {
-    return this.fetch("/api/skills");
+  async listSkills(filters?: {
+    category?: string;
+    source?: "manual" | "bundle" | "upload";
+  }): Promise<Skill[]> {
+    const qs = new URLSearchParams();
+    if (filters?.category) qs.set("category", filters.category);
+    if (filters?.source) qs.set("source", filters.source);
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return this.fetch(`/api/skills${suffix}`);
   }
 
   async getSkill(id: string): Promise<Skill> {
@@ -615,6 +625,54 @@ export class ApiClient implements ApiTransport {
     return this.fetch("/api/skills/import", {
       method: "POST",
       body: JSON.stringify(data),
+    });
+  }
+
+  // Subagents — templates that wrap skills; agents reach skills only
+  // through one of these (migration 069 rule).
+  async listSubagents(filters?: {
+    category?: string;
+    scope?: "global" | "workspace" | "all";
+  }): Promise<Subagent[]> {
+    const qs = new URLSearchParams();
+    if (filters?.category) qs.set("category", filters.category);
+    if (filters?.scope) qs.set("scope", filters.scope);
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return this.fetch(`/api/subagents${suffix}`);
+  }
+
+  async getSubagent(id: string): Promise<Subagent> {
+    return this.fetch(`/api/subagents/${id}`);
+  }
+
+  async createSubagent(data: CreateSubagentRequest): Promise<Subagent> {
+    return this.fetch("/api/subagents", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateSubagent(id: string, data: UpdateSubagentRequest): Promise<Subagent> {
+    return this.fetch(`/api/subagents/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteSubagent(id: string): Promise<void> {
+    await this.fetch(`/api/subagents/${id}`, { method: "DELETE" });
+  }
+
+  async linkSubagentSkill(subagentId: string, skillId: string, position = 0): Promise<void> {
+    await this.fetch(`/api/subagents/${subagentId}/skills`, {
+      method: "POST",
+      body: JSON.stringify({ skill_id: skillId, position }),
+    });
+  }
+
+  async unlinkSubagentSkill(subagentId: string, skillId: string): Promise<void> {
+    await this.fetch(`/api/subagents/${subagentId}/skills/${skillId}`, {
+      method: "DELETE",
     });
   }
 

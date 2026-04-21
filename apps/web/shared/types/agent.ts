@@ -130,10 +130,43 @@ export interface Skill {
   description: string;
   content: string;
   config: Record<string, unknown>;
-  files: SkillFile[];
+  category: string;
+  source: "manual" | "bundle" | "upload";
+  source_ref?: string | null;
+  is_global: boolean;
+  files?: SkillFile[];
   created_by: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface Subagent {
+  id: string;
+  workspace_id: string | null;
+  name: string;
+  description: string;
+  category: string;
+  is_global: boolean;
+  source: "manual" | "bundle" | "upload";
+  source_ref?: string | null;
+  instructions: string;
+  created_at: string;
+  updated_at: string;
+  skills?: Skill[];
+}
+
+export interface CreateSubagentRequest {
+  name: string;
+  description?: string;
+  instructions?: string;
+  category?: string;
+}
+
+export interface UpdateSubagentRequest {
+  name?: string;
+  description?: string;
+  instructions?: string;
+  category?: string;
 }
 
 export interface SkillFile {
