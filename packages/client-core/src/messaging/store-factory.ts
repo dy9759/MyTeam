@@ -7,6 +7,7 @@ export interface MessagingApiClient {
   listMessages(params: {
     channel_id?: string;
     recipient_id?: string;
+    peer_type?: "member" | "agent";
     thread_id?: string;
     limit?: number;
     offset?: number;
@@ -46,6 +47,7 @@ export interface MessagingState {
   loadMessages: (params: {
     channel_id?: string;
     recipient_id?: string;
+    peer_type?: "member" | "agent";
   }) => Promise<void>;
   sendMessage: (params: {
     channel_id?: string;
@@ -138,6 +140,24 @@ export function createMessagingStore(
     },
 
     handleEvent: (evt) => {
+      if (evt.type === "message:read") {
+        // Sender-side receipt: the recipient marked this message as
+        // read. Flip its status so the UI can swap the sent tick for
+        // a colored read tick.
+        const payload = evt.payload as { message_id?: string } | undefined;
+        const messageId = payload?.message_id;
+        if (!messageId) return;
+        set((s) => {
+          let changed = false;
+          const next = s.currentMessages.map((m) => {
+            if (m.id !== messageId || m.status === "read") return m;
+            changed = true;
+            return { ...m, status: "read" as const };
+          });
+          return changed ? { currentMessages: next } : s;
+        });
+        return;
+      }
       if (evt.type !== "message:created") return;
       const msg = evt.payload as Message;
       const { currentChannelId, currentPeerId } = get();

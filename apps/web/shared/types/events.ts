@@ -63,7 +63,8 @@ export type WSEventType =
   | "message:created"
   | "channel:updated"
   | "thread:created"
-  | "typing";
+  | "typing"
+  | "message:read";
 
 export interface WSMessage<T = unknown> {
   type: WSEventType;

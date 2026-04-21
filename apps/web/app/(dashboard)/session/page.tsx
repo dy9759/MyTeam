@@ -15,6 +15,7 @@ import { PromoteToChannelButton } from "@/features/messaging/components/promote-
 import { InviteChannelMemberDialog } from "@/features/messaging/components/invite-channel-member-dialog";
 import { useConversationArchiveStore } from "@/features/messaging/stores/archive-store";
 import { useTypingIndicator } from "@/features/messaging/hooks/use-typing-indicator";
+import { useWSEvent } from "@/features/realtime";
 import { useMessageSelectionStore } from "@/features/messaging/stores/selection-store";
 import { api } from "@/shared/api";
 import type { Conversation } from "@/shared/types/messaging";
@@ -548,6 +549,10 @@ export default function SessionPage() {
       ? dmTyping.typingUsers.includes(selectedId)
       : false;
 
+  // Read-receipt debounce set — persists across renders so a rapid
+  // poll cycle doesn't retrigger /messages/read for the same ids.
+  const readSentRef = useRef<Set<string>>(new Set());
+
   // Selection scope follows the active channel/dm. Switching conversations
   // clears whatever was selected so we never leak picks across rooms.
   // scopeKey is prefixed with the type to avoid collisions between a
@@ -698,6 +703,44 @@ export default function SessionPage() {
 
   // Derive current messages and header info
   const messages = selectedType === "dm" ? dmMessages : channelMessages;
+
+  // Sender-side read receipt: when the recipient marks a channel
+  // message as read, the server publishes message:read; flip the
+  // cached channel-message status so MessageList can swap the tick
+  // icon. DM messages live in the messaging store which handles the
+  // same event internally.
+  useWSEvent(
+    "message:read",
+    useCallback((payload: unknown) => {
+      const data = payload as { message_id?: string } | undefined;
+      const mid = data?.message_id;
+      if (!mid) return;
+      setChannelMessages((prev) =>
+        prev.map((m) => (m.id === mid && m.status !== "read" ? { ...m, status: "read" } : m)),
+      );
+    }, []),
+  );
+
+  // Auto mark-as-read: when messages load, flip every incoming message
+  // whose status is still 'sent' to 'read' on the server. The server
+  // broadcasts message:read events so the original sender's ticks
+  // update in real time.
+  useEffect(() => {
+    if (!selectedId || !currentUserId || messages.length === 0) return;
+    const toMark: string[] = [];
+    for (const m of messages) {
+      if (m.sender_id === currentUserId) continue;
+      const status = (m as { status?: string }).status;
+      if (status === "read") continue;
+      if (readSentRef.current.has(m.id)) continue;
+      toMark.push(m.id);
+    }
+    if (toMark.length === 0) return;
+    for (const id of toMark) readSentRef.current.add(id);
+    void api.markMessagesRead(toMark).catch(() => {
+      for (const id of toMark) readSentRef.current.delete(id);
+    });
+  }, [messages, selectedId, currentUserId]);
   const headerName =
     selectedType === "dm"
       ? selectedConversation?.peer_name ||

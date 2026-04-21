@@ -701,6 +701,65 @@ func (q *Queries) ListThreadMessages(ctx context.Context, arg ListThreadMessages
 	return items, nil
 }
 
+const markMessagesRead = `-- name: MarkMessagesRead :many
+UPDATE message
+SET status = 'read', updated_at = NOW()
+WHERE id = ANY($1::uuid[])
+  AND status <> 'read'
+  AND (
+    -- DM to this user
+    (recipient_id = $2 AND recipient_type = $3)
+    -- OR channel message in a channel this user is a member of
+    OR (channel_id IS NOT NULL AND channel_id IN (
+      SELECT channel_id FROM channel_member WHERE member_id = $2 AND member_type = $3
+    ))
+  )
+RETURNING id, channel_id, sender_id, sender_type
+`
+
+type MarkMessagesReadParams struct {
+	Ids       []pgtype.UUID `json:"ids"`
+	ActorID   pgtype.UUID   `json:"actor_id"`
+	ActorType pgtype.Text   `json:"actor_type"`
+}
+
+type MarkMessagesReadRow struct {
+	ID         pgtype.UUID `json:"id"`
+	ChannelID  pgtype.UUID `json:"channel_id"`
+	SenderID   pgtype.UUID `json:"sender_id"`
+	SenderType string      `json:"sender_type"`
+}
+
+// Marks every message in the id list as read, but only when the caller
+// is the legitimate recipient. Returns the rows that were actually
+// updated so the handler can broadcast message:read events for them
+// (rows where status was already 'read' still come back — de-dup is
+// left to the client).
+func (q *Queries) MarkMessagesRead(ctx context.Context, arg MarkMessagesReadParams) ([]MarkMessagesReadRow, error) {
+	rows, err := q.db.Query(ctx, markMessagesRead, arg.Ids, arg.ActorID, arg.ActorType)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []MarkMessagesReadRow{}
+	for rows.Next() {
+		var i MarkMessagesReadRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ChannelID,
+			&i.SenderID,
+			&i.SenderType,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateMessageStatus = `-- name: UpdateMessageStatus :exec
 UPDATE message SET status = $2, updated_at = NOW() WHERE id = $1
 `

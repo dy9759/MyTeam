@@ -452,6 +452,69 @@ func ptrToInt8(n *int64) pgtype.Int8 {
 	return pgtype.Int8{Int64: *n, Valid: true}
 }
 
+// POST /api/messages/read
+//
+// Marks the given message ids as read. The SQL enforces authorization
+// (recipient or channel member); unauthorized ids are silently ignored
+// so a noisy client doesn't accidentally 403 the whole batch.
+//
+// Broadcasts "message:read" for each successfully-updated row so the
+// original sender's UI can flip its single-tick to a double-tick.
+func (h *Handler) MarkMessagesRead(w http.ResponseWriter, r *http.Request) {
+	type Req struct {
+		IDs []string `json:"ids"`
+	}
+	var req Req
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if len(req.IDs) == 0 {
+		writeJSON(w, http.StatusOK, map[string]any{"read_ids": []string{}})
+		return
+	}
+
+	userID, ok := requireUserID(w, r)
+	if !ok {
+		return
+	}
+	workspaceID := resolveWorkspaceID(r)
+
+	ids := make([]pgtype.UUID, 0, len(req.IDs))
+	for _, id := range req.IDs {
+		ids = append(ids, parseUUID(id))
+	}
+
+	rows, err := h.Queries.MarkMessagesRead(r.Context(), db.MarkMessagesReadParams{
+		Ids:       ids,
+		ActorID:   parseUUID(userID),
+		ActorType: strToText("member"),
+	})
+	if err != nil {
+		slog.Warn("mark messages read failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to mark read")
+		return
+	}
+
+	readIDs := make([]string, 0, len(rows))
+	for _, row := range rows {
+		msgID := uuidToString(row.ID)
+		readIDs = append(readIDs, msgID)
+		payload := map[string]any{
+			"message_id":  msgID,
+			"reader_id":   userID,
+			"sender_id":   uuidToString(row.SenderID),
+			"sender_type": row.SenderType,
+		}
+		if row.ChannelID.Valid {
+			payload["channel_id"] = uuidToString(row.ChannelID)
+		}
+		h.publish("message:read", workspaceID, "member", userID, payload)
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"read_ids": readIDs})
+}
+
 // POST /api/typing
 func (h *Handler) SendTypingIndicator(w http.ResponseWriter, r *http.Request) {
 	type Req struct {

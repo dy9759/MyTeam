@@ -687,6 +687,16 @@ export class ApiClient implements ApiTransport {
     await this.fetch("/api/typing", { method: "POST", body: JSON.stringify(params) });
   }
 
+  // Read receipts — marks incoming messages as read; server returns the
+  // subset actually updated and broadcasts message:read so the sender's
+  // UI can flip to a colored double-tick.
+  async markMessagesRead(ids: string[]): Promise<{ read_ids: string[] }> {
+    return this.fetch<{ read_ids: string[] }>("/api/messages/read", {
+      method: "POST",
+      body: JSON.stringify({ ids }),
+    });
+  }
+
   async listFileVersions(fileId: string): Promise<FileVersion[]> {
     return this.fetch(`/api/files/${fileId}/versions`);
   }

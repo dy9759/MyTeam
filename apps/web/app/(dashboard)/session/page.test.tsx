@@ -122,6 +122,10 @@ vi.mock("@/features/messaging/hooks/use-typing-indicator", () => ({
   useTypingIndicator: () => ({ typingUsers: [], sendTyping: vi.fn() }),
 }));
 
+vi.mock("@/features/realtime", () => ({
+  useWSEvent: vi.fn(),
+}));
+
 vi.mock("@/shared/api", () => ({
   api: {
     getChannelMessages: vi.fn(),

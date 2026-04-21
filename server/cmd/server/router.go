@@ -403,6 +403,7 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 			r.Route("/api/messages", func(r chi.Router) {
 				r.Post("/", h.CreateMessage)
 				r.Get("/", h.ListMessages)
+				r.Post("/read", h.MarkMessagesRead)
 				r.Get("/conversations", h.ListConversations)
 				r.Route("/{messageID}", func(r chi.Router) {
 					r.Get("/thread", h.ListThread)
