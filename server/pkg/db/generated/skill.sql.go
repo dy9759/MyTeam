@@ -30,7 +30,7 @@ func (q *Queries) AddAgentSkill(ctx context.Context, arg AddAgentSkillParams) er
 const createSkill = `-- name: CreateSkill :one
 INSERT INTO skill (workspace_id, name, description, content, config, created_by)
 VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, workspace_id, name, description, content, config, created_by, created_at, updated_at
+RETURNING id, workspace_id, name, description, content, config, created_by, created_at, updated_at, category, source, source_ref, is_global
 `
 
 type CreateSkillParams struct {
@@ -62,8 +62,80 @@ func (q *Queries) CreateSkill(ctx context.Context, arg CreateSkillParams) (Skill
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Category,
+		&i.Source,
+		&i.SourceRef,
+		&i.IsGlobal,
 	)
 	return i, err
+}
+
+const createUploadSkill = `-- name: CreateUploadSkill :one
+INSERT INTO skill (
+    workspace_id, name, description, content, config, created_by,
+    category, source, source_ref, is_global
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, 'upload', $8, $9)
+RETURNING id, workspace_id, name, description, content, config, created_by, created_at, updated_at, category, source, source_ref, is_global
+`
+
+type CreateUploadSkillParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	Name        string      `json:"name"`
+	Description string      `json:"description"`
+	Content     string      `json:"content"`
+	Config      []byte      `json:"config"`
+	CreatedBy   pgtype.UUID `json:"created_by"`
+	Category    string      `json:"category"`
+	SourceRef   pgtype.Text `json:"source_ref"`
+	IsGlobal    bool        `json:"is_global"`
+}
+
+// Used by the /api/skills/upload endpoint. Scope may be null (global
+// upload by an admin) or a workspace UUID.
+func (q *Queries) CreateUploadSkill(ctx context.Context, arg CreateUploadSkillParams) (Skill, error) {
+	row := q.db.QueryRow(ctx, createUploadSkill,
+		arg.WorkspaceID,
+		arg.Name,
+		arg.Description,
+		arg.Content,
+		arg.Config,
+		arg.CreatedBy,
+		arg.Category,
+		arg.SourceRef,
+		arg.IsGlobal,
+	)
+	var i Skill
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Name,
+		&i.Description,
+		&i.Content,
+		&i.Config,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Category,
+		&i.Source,
+		&i.SourceRef,
+		&i.IsGlobal,
+	)
+	return i, err
+}
+
+const deleteBundleSkillsNotInRefs = `-- name: DeleteBundleSkillsNotInRefs :exec
+DELETE FROM skill
+WHERE source = 'bundle'
+  AND source_ref IS NOT NULL
+  AND source_ref <> ALL($1::text[])
+`
+
+// Removes bundle rows whose source_ref is no longer on disk. The join
+// table cascades, so linked subagents drop the skill automatically.
+func (q *Queries) DeleteBundleSkillsNotInRefs(ctx context.Context, refs []string) error {
+	_, err := q.db.Exec(ctx, deleteBundleSkillsNotInRefs, refs)
+	return err
 }
 
 const deleteSkill = `-- name: DeleteSkill :exec
@@ -94,7 +166,7 @@ func (q *Queries) DeleteSkillFilesBySkill(ctx context.Context, skillID pgtype.UU
 }
 
 const getSkill = `-- name: GetSkill :one
-SELECT id, workspace_id, name, description, content, config, created_by, created_at, updated_at FROM skill
+SELECT id, workspace_id, name, description, content, config, created_by, created_at, updated_at, category, source, source_ref, is_global FROM skill
 WHERE id = $1
 `
 
@@ -111,6 +183,10 @@ func (q *Queries) GetSkill(ctx context.Context, id pgtype.UUID) (Skill, error) {
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Category,
+		&i.Source,
+		&i.SourceRef,
+		&i.IsGlobal,
 	)
 	return i, err
 }
@@ -135,8 +211,8 @@ func (q *Queries) GetSkillFile(ctx context.Context, id pgtype.UUID) (SkillFile, 
 }
 
 const getSkillInWorkspace = `-- name: GetSkillInWorkspace :one
-SELECT id, workspace_id, name, description, content, config, created_by, created_at, updated_at FROM skill
-WHERE id = $1 AND workspace_id = $2
+SELECT id, workspace_id, name, description, content, config, created_by, created_at, updated_at, category, source, source_ref, is_global FROM skill
+WHERE id = $1 AND (workspace_id = $2 OR is_global = true)
 `
 
 type GetSkillInWorkspaceParams struct {
@@ -157,19 +233,25 @@ func (q *Queries) GetSkillInWorkspace(ctx context.Context, arg GetSkillInWorkspa
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Category,
+		&i.Source,
+		&i.SourceRef,
+		&i.IsGlobal,
 	)
 	return i, err
 }
 
 const listAgentSkills = `-- name: ListAgentSkills :many
 
-SELECT s.id, s.workspace_id, s.name, s.description, s.content, s.config, s.created_by, s.created_at, s.updated_at FROM skill s
+SELECT s.id, s.workspace_id, s.name, s.description, s.content, s.config, s.created_by, s.created_at, s.updated_at, s.category, s.source, s.source_ref, s.is_global FROM skill s
 JOIN agent_skill ask ON ask.skill_id = s.id
 WHERE ask.agent_id = $1
 ORDER BY s.name ASC
 `
 
-// Agent-Skill junction
+// Agent-Skill junction — kept for legacy lookups, but migration 069
+// moved the authoritative link to subagent_skill. New code should call
+// the subagent_skill queries instead of agent_skill directly.
 func (q *Queries) ListAgentSkills(ctx context.Context, agentID pgtype.UUID) ([]Skill, error) {
 	rows, err := q.db.Query(ctx, listAgentSkills, agentID)
 	if err != nil {
@@ -189,6 +271,10 @@ func (q *Queries) ListAgentSkills(ctx context.Context, agentID pgtype.UUID) ([]S
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Category,
+			&i.Source,
+			&i.SourceRef,
+			&i.IsGlobal,
 		); err != nil {
 			return nil, err
 		}
@@ -240,6 +326,71 @@ func (q *Queries) ListAgentSkillsByWorkspace(ctx context.Context, workspaceID pg
 	return items, nil
 }
 
+const listBundleSkillRefs = `-- name: ListBundleSkillRefs :many
+SELECT id, source_ref FROM skill
+WHERE source = 'bundle' AND source_ref IS NOT NULL
+`
+
+type ListBundleSkillRefsRow struct {
+	ID        pgtype.UUID `json:"id"`
+	SourceRef pgtype.Text `json:"source_ref"`
+}
+
+func (q *Queries) ListBundleSkillRefs(ctx context.Context) ([]ListBundleSkillRefsRow, error) {
+	rows, err := q.db.Query(ctx, listBundleSkillRefs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListBundleSkillRefsRow{}
+	for rows.Next() {
+		var i ListBundleSkillRefsRow
+		if err := rows.Scan(&i.ID, &i.SourceRef); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listBundleSkillsForLinking = `-- name: ListBundleSkillsForLinking :many
+SELECT id, name, source_ref FROM skill
+WHERE source = 'bundle' AND source_ref IS NOT NULL
+ORDER BY name ASC
+`
+
+type ListBundleSkillsForLinkingRow struct {
+	ID        pgtype.UUID `json:"id"`
+	Name      string      `json:"name"`
+	SourceRef pgtype.Text `json:"source_ref"`
+}
+
+// Minimal fields the bundle loader needs to wire subagent_skill rows:
+// id to insert, name to substring-match, source_ref to group by source
+// so we never link a subagent to a skill from a different upstream.
+func (q *Queries) ListBundleSkillsForLinking(ctx context.Context) ([]ListBundleSkillsForLinkingRow, error) {
+	rows, err := q.db.Query(ctx, listBundleSkillsForLinking)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListBundleSkillsForLinkingRow{}
+	for rows.Next() {
+		var i ListBundleSkillsForLinkingRow
+		if err := rows.Scan(&i.ID, &i.Name, &i.SourceRef); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSkillFiles = `-- name: ListSkillFiles :many
 
 SELECT id, skill_id, path, content, created_at, updated_at FROM skill_file
@@ -277,7 +428,7 @@ func (q *Queries) ListSkillFiles(ctx context.Context, skillID pgtype.UUID) ([]Sk
 
 const listSkillsByWorkspace = `-- name: ListSkillsByWorkspace :many
 
-SELECT id, workspace_id, name, description, content, config, created_by, created_at, updated_at FROM skill
+SELECT id, workspace_id, name, description, content, config, created_by, created_at, updated_at, category, source, source_ref, is_global FROM skill
 WHERE workspace_id = $1
 ORDER BY name ASC
 `
@@ -302,6 +453,61 @@ func (q *Queries) ListSkillsByWorkspace(ctx context.Context, workspaceID pgtype.
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Category,
+			&i.Source,
+			&i.SourceRef,
+			&i.IsGlobal,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSkillsCombined = `-- name: ListSkillsCombined :many
+SELECT id, workspace_id, name, description, content, config, created_by, created_at, updated_at, category, source, source_ref, is_global FROM skill
+WHERE (workspace_id = $1 OR is_global = true)
+  AND ($2::text IS NULL OR category = $2)
+  AND ($3::text   IS NULL OR source   = $3)
+ORDER BY is_global DESC, name ASC
+`
+
+type ListSkillsCombinedParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	Category    pgtype.Text `json:"category"`
+	Source      pgtype.Text `json:"source"`
+}
+
+// Returns workspace-scoped skills plus all globals, optionally filtered
+// by category. Migration 069 made workspace_id nullable to hold globals
+// (is_global = true), so both sides union here.
+func (q *Queries) ListSkillsCombined(ctx context.Context, arg ListSkillsCombinedParams) ([]Skill, error) {
+	rows, err := q.db.Query(ctx, listSkillsCombined, arg.WorkspaceID, arg.Category, arg.Source)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Skill{}
+	for rows.Next() {
+		var i Skill
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.Name,
+			&i.Description,
+			&i.Content,
+			&i.Config,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Category,
+			&i.Source,
+			&i.SourceRef,
+			&i.IsGlobal,
 		); err != nil {
 			return nil, err
 		}
@@ -343,9 +549,10 @@ UPDATE skill SET
     description = COALESCE($3, description),
     content = COALESCE($4, content),
     config = COALESCE($5, config),
+    category = COALESCE($6, category),
     updated_at = now()
 WHERE id = $1
-RETURNING id, workspace_id, name, description, content, config, created_by, created_at, updated_at
+RETURNING id, workspace_id, name, description, content, config, created_by, created_at, updated_at, category, source, source_ref, is_global
 `
 
 type UpdateSkillParams struct {
@@ -354,6 +561,7 @@ type UpdateSkillParams struct {
 	Description pgtype.Text `json:"description"`
 	Content     pgtype.Text `json:"content"`
 	Config      []byte      `json:"config"`
+	Category    pgtype.Text `json:"category"`
 }
 
 func (q *Queries) UpdateSkill(ctx context.Context, arg UpdateSkillParams) (Skill, error) {
@@ -363,6 +571,7 @@ func (q *Queries) UpdateSkill(ctx context.Context, arg UpdateSkillParams) (Skill
 		arg.Description,
 		arg.Content,
 		arg.Config,
+		arg.Category,
 	)
 	var i Skill
 	err := row.Scan(
@@ -375,6 +584,63 @@ func (q *Queries) UpdateSkill(ctx context.Context, arg UpdateSkillParams) (Skill
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Category,
+		&i.Source,
+		&i.SourceRef,
+		&i.IsGlobal,
+	)
+	return i, err
+}
+
+const upsertBundleSkill = `-- name: UpsertBundleSkill :one
+INSERT INTO skill (
+    workspace_id, name, description, content, config,
+    category, source, source_ref, is_global
+)
+VALUES (NULL, $1, $2, $3, '{}'::jsonb, $4, 'bundle', $5, true)
+ON CONFLICT (source_ref) WHERE source = 'bundle' AND source_ref IS NOT NULL
+DO UPDATE SET
+    name        = EXCLUDED.name,
+    description = EXCLUDED.description,
+    content     = EXCLUDED.content,
+    category    = EXCLUDED.category,
+    updated_at  = now()
+RETURNING id, workspace_id, name, description, content, config, created_by, created_at, updated_at, category, source, source_ref, is_global
+`
+
+type UpsertBundleSkillParams struct {
+	Name        string      `json:"name"`
+	Description string      `json:"description"`
+	Content     string      `json:"content"`
+	Category    string      `json:"category"`
+	SourceRef   pgtype.Text `json:"source_ref"`
+}
+
+// Idempotent upsert used by the startup bundle loader. Keyed by
+// source_ref so the same bundle file always maps to the same row.
+func (q *Queries) UpsertBundleSkill(ctx context.Context, arg UpsertBundleSkillParams) (Skill, error) {
+	row := q.db.QueryRow(ctx, upsertBundleSkill,
+		arg.Name,
+		arg.Description,
+		arg.Content,
+		arg.Category,
+		arg.SourceRef,
+	)
+	var i Skill
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Name,
+		&i.Description,
+		&i.Content,
+		&i.Config,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Category,
+		&i.Source,
+		&i.SourceRef,
+		&i.IsGlobal,
 	)
 	return i, err
 }

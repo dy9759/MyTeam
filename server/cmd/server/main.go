@@ -14,6 +14,7 @@ import (
 	"github.com/multica-ai/multica/server/internal/events"
 	"github.com/multica-ai/multica/server/internal/logger"
 	"github.com/multica-ai/multica/server/internal/realtime"
+	"github.com/multica-ai/multica/server/internal/skillsbundle"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
@@ -51,6 +52,15 @@ func main() {
 	registerListeners(bus, hub)
 
 	queries := db.New(pool)
+
+	// Seed the embedded skills + subagents bundle before the HTTP
+	// surface comes up. Failures here are hard — an inconsistent
+	// bundle is worse than a delayed startup.
+	if err := (&skillsbundle.Loader{Queries: queries}).Run(ctx); err != nil {
+		slog.Error("skills bundle seed failed", "error", err)
+		os.Exit(1)
+	}
+
 	// Order matters: subscriber listeners must register BEFORE notification listeners.
 	// The notification listener queries the subscriber table to determine recipients,
 	// so subscribers must be written first within the same synchronous event dispatch.

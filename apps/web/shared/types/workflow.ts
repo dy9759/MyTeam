@@ -7,6 +7,12 @@ export interface PlanStep {
   parallelizable: boolean;
 }
 
+export interface PlanInputFile {
+  id: string;
+  name?: string;
+  mime?: string;
+}
+
 export interface Plan {
   id: string;
   workspace_id: string;
@@ -18,6 +24,16 @@ export interface Plan {
   expected_output?: string;
   created_by: string;
   created_at: string;
+  // Phase 3 context fields. Backend defaults to [] / {} so treating
+  // them as non-optional here keeps the UI simple.
+  input_files: PlanInputFile[];
+  user_inputs: Record<string, unknown>;
+  // Approval metadata surfaced by the API.
+  approval_status?: string;
+  approved_by?: string | null;
+  approved_at?: string | null;
+  project_id?: string | null;
+  task_brief?: string;
 }
 
 export type WorkflowStepStatus =

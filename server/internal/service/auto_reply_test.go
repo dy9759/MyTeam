@@ -163,6 +163,58 @@ func TestReplyAsMentionedAgent_NoAPIKey_PostsSystemNotification(t *testing.T) {
 	}
 }
 
+func TestReplyToDM_NoAPIKey_PostsSystemNotification(t *testing.T) {
+	q := testDB(t)
+	wsID := createTestWorkspace(t, q)
+	ownerID := createTestUser(t, q, "dm-no-key+"+t.Name()+"@x.com", "DM No Key")
+	runtime, _ := q.EnsureCloudRuntime(context.Background(), wsID)
+	agent := insertTestAgent(t, q, wsID, runtime.ID, ownerID, "Bot", CloudLLMConfig{Kernel: "openai_compat", APIKey: ""})
+	trigger, err := q.CreateMessage(context.Background(), db.CreateMessageParams{
+		WorkspaceID:   wsID,
+		SenderID:      ownerID,
+		SenderType:    "member",
+		RecipientID:   agent.ID,
+		RecipientType: util.StrToText("agent"),
+		Content:       "hello",
+		ContentType:   "text",
+		Type:          "user",
+	})
+	if err != nil {
+		t.Fatalf("create trigger dm: %v", err)
+	}
+
+	runner := &fakeRunner{}
+	svc := &AutoReplyService{Queries: q, Runner: runner}
+
+	svc.ReplyToDM(context.Background(), uuidToStr(agent.ID), uuidToStr(wsID), uuidToStr(ownerID), trigger)
+	if runner.lastPrompt != "" {
+		t.Fatal("runner should not be called when api key missing")
+	}
+
+	msgs, err := q.ListDMMessages(context.Background(), db.ListDMMessagesParams{
+		WorkspaceID: wsID,
+		SelfID:      ownerID,
+		SelfType:    "member",
+		PeerID:      agent.ID,
+		PeerType:    util.StrToText("agent"),
+		LimitCount:  10,
+		OffsetCount: 0,
+	})
+	if err != nil {
+		t.Fatalf("list dm messages: %v", err)
+	}
+
+	found := false
+	for _, m := range msgs {
+		if strings.Contains(m.Content, "not configured") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("dm system_notification not posted")
+	}
+}
+
 func TestReplyAsMentionedAgent_RunnerError_PostsSystemNotification(t *testing.T) {
 	q := testDB(t)
 	wsID := createTestWorkspace(t, q)

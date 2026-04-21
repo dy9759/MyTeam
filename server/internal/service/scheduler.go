@@ -33,6 +33,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -346,8 +347,144 @@ func (s *SchedulerService) HandleTaskCompletion(ctx context.Context, taskID, exe
 			slog.Warn("scheduler: run completion check failed",
 				"run", task.RunID, "err", err)
 		}
+		// 5. Post a per-task completion message into the plan's
+		// companion thread. Requirement: "each task completion posts
+		// execution info into the plan thread, @ the executing agent
+		// and the agent's owner". Failure is non-fatal — the state
+		// machine already committed.
+		if err := s.postTaskCompletionToPlanThread(ctx, task, result); err != nil {
+			slog.Warn("scheduler: post task completion to plan thread failed",
+				"task", taskID, "err", err)
+		}
 	}
 	return nil
+}
+
+// postTaskCompletionToPlanThread writes a message into the companion
+// thread of the plan that owns `task`. The message @-mentions the
+// executing agent and that agent's owner so both get notified in the
+// channel sidebar. Pure convenience — no state on failure.
+func (s *SchedulerService) postTaskCompletionToPlanThread(
+	ctx context.Context,
+	task db.Task,
+	result map[string]any,
+) error {
+	if !task.PlanID.Valid {
+		return nil
+	}
+	plan, err := s.Q.GetPlan(ctx, task.PlanID)
+	if err != nil {
+		return fmt.Errorf("get plan: %w", err)
+	}
+	if !plan.ThreadID.Valid {
+		return nil // plan predates the thread feature; nothing to post into
+	}
+
+	// Resolve executing agent (actual_agent_id wins over primary_assignee_id;
+	// falls back to primary when the scheduler didn't rewrite it).
+	var agentUUID pgtype.UUID
+	if task.ActualAgentID.Valid {
+		agentUUID = task.ActualAgentID
+	} else if task.PrimaryAssigneeID.Valid {
+		agentUUID = task.PrimaryAssigneeID
+	}
+
+	var (
+		agentMention string
+		ownerMention string
+		senderID     pgtype.UUID
+		senderType   = "agent"
+	)
+	if agentUUID.Valid {
+		if agent, err := s.Q.GetAgent(ctx, agentUUID); err == nil {
+			agentMention = fmt.Sprintf("@%s", agent.Name)
+			senderID = agent.ID
+			if agent.OwnerID.Valid {
+				if owner, err := s.Q.GetUser(ctx, agent.OwnerID); err == nil {
+					ownerMention = fmt.Sprintf("@%s", owner.Name)
+				}
+			}
+		}
+	}
+	// If no agent was resolved (edge case), fall back to the plan
+	// creator so the message still persists with a valid sender.
+	if !senderID.Valid {
+		senderID = plan.CreatedBy
+		senderType = "member"
+	}
+
+	summary := summarizeResultForThread(result)
+	mentionLine := strings.TrimSpace(strings.Join(
+		filterNonEmpty([]string{agentMention, ownerMention}),
+		" ",
+	))
+	var content string
+	if mentionLine != "" {
+		content = fmt.Sprintf("✅ 任务完成: **%s**\n%s\n%s", task.Title, mentionLine, summary)
+	} else {
+		content = fmt.Sprintf("✅ 任务完成: **%s**\n%s", task.Title, summary)
+	}
+
+	meta, _ := json.Marshal(map[string]any{
+		"kind":      "task_completed",
+		"task_id":   pgUUIDStr(task.ID),
+		"plan_id":   pgUUIDStr(plan.ID),
+		"agent_id":  pgUUIDStr(agentUUID),
+		"mentions":  []string{pgUUIDStr(agentUUID)},
+	})
+
+	_, err = s.Q.CreateMessage(ctx, db.CreateMessageParams{
+		WorkspaceID: plan.WorkspaceID,
+		SenderID:    senderID,
+		SenderType:  senderType,
+		ChannelID:   pgtype.UUID{}, // thread-scoped message; channel pulled from thread row on the client
+		ThreadID:    plan.ThreadID,
+		Content:     content,
+		ContentType: "text",
+		Type:        "channel",
+		Metadata:    meta,
+	})
+	return err
+}
+
+func summarizeResultForThread(result map[string]any) string {
+	if result == nil {
+		return "(无额外输出)"
+	}
+	if s, ok := result["summary"].(string); ok && strings.TrimSpace(s) != "" {
+		return s
+	}
+	if s, ok := result["output"].(string); ok && strings.TrimSpace(s) != "" {
+		if len(s) > 300 {
+			return s[:300] + "…"
+		}
+		return s
+	}
+	b, err := json.Marshal(result)
+	if err != nil {
+		return "(结果无法序列化)"
+	}
+	if len(b) > 300 {
+		return string(b[:300]) + "…"
+	}
+	return string(b)
+}
+
+func filterNonEmpty(ss []string) []string {
+	out := make([]string, 0, len(ss))
+	for _, s := range ss {
+		if strings.TrimSpace(s) != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+func pgUUIDStr(u pgtype.UUID) string {
+	if !u.Valid {
+		return ""
+	}
+	return uuid.UUID(u.Bytes).String()
 }
 
 // HandleTaskFailure applies the retry policy when an Execution fails.

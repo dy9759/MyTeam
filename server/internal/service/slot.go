@@ -185,6 +185,66 @@ func (s *SlotService) MarkSubmitted(ctx context.Context, slotID uuid.UUID, conte
 	return &updated, nil
 }
 
+// SubmitHumanInput persists an append-only submission history row for the
+// slot, then transitions the slot to submitted and resumes the parent task
+// when it was blocked on human input.
+//
+// Callers that need atomicity should construct the service with Queries
+// bound to a transaction via db.Queries.WithTx.
+func (s *SlotService) SubmitHumanInput(
+	ctx context.Context,
+	slotID uuid.UUID,
+	submittedBy uuid.UUID,
+	content []byte,
+	comment string,
+) (*db.ParticipantSlot, error) {
+	slot, err := s.Q.GetSlot(ctx, toPgUUID(slotID))
+	if err != nil {
+		return nil, fmt.Errorf("get slot %s: %w", slotID, err)
+	}
+	if slot.SlotType != SlotTypeHumanInput {
+		return nil, fmt.Errorf("%w: %s slot cannot accept human input", ErrSlotInvalidTransition, slot.SlotType)
+	}
+	if slot.Status != SlotStatusReady && slot.Status != SlotStatusInProgress {
+		return nil, fmt.Errorf("%w: %s → submitted", ErrSlotInvalidTransition, slot.Status)
+	}
+
+	task, err := s.Q.GetTask(ctx, slot.TaskID)
+	if err != nil {
+		return nil, fmt.Errorf("get task for slot %s: %w", slotID, err)
+	}
+
+	if _, err := s.Q.CreateParticipantSlotSubmission(ctx, db.CreateParticipantSlotSubmissionParams{
+		SlotID:      toPgUUID(slotID),
+		TaskID:      slot.TaskID,
+		RunID:       task.RunID,
+		SubmittedBy: toPgUUID(submittedBy),
+		Content:     content,
+		Comment:     toPgNullText(comment),
+	}); err != nil {
+		return nil, fmt.Errorf("create submission history for slot %s: %w", slotID, err)
+	}
+
+	updated, err := s.Q.UpdateSlotSubmission(ctx, db.UpdateSlotSubmissionParams{
+		ID:      toPgUUID(slotID),
+		Content: content,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("update slot %s → submitted: %w", slotID, err)
+	}
+
+	if task.Status == TaskStatusNeedsHuman {
+		if _, err := s.Q.UpdateTaskStatus(ctx, db.UpdateTaskStatusParams{
+			ID:     slot.TaskID,
+			Status: TaskStatusRunning,
+		}); err != nil {
+			return nil, fmt.Errorf("resume task for slot %s: %w", slotID, err)
+		}
+	}
+
+	return &updated, nil
+}
+
 // ApplyReviewDecision maps a Review.decision onto slot.status:
 //
 //	approve         → approved

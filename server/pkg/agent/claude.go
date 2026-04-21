@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -316,14 +315,6 @@ func trySend(ch chan<- Message, msg Message) {
 		// Channel full — drop message. Final output is accumulated separately
 		// in Result.Output, so only streaming consumers are affected.
 	}
-}
-
-func buildEnv(extra map[string]string) []string {
-	env := os.Environ()
-	for k, v := range extra {
-		env = append(env, k+"="+v)
-	}
-	return env
 }
 
 func detectCLIVersion(ctx context.Context, execPath string) (string, error) {

@@ -31,3 +31,21 @@ UPDATE plan SET approval_status = @approval_status, approved_by = @approved_by, 
 
 -- name: UpdatePlanProject :exec
 UPDATE plan SET project_id = @project_id, version_id = @version_id, updated_at = NOW() WHERE id = @id;
+
+-- Binds a plan to the thread that tracks its task-completion events.
+-- Created by project_create once the channel + thread land so the
+-- scheduler can post per-task updates into the same thread.
+-- name: UpdatePlanThreadID :exec
+UPDATE plan SET thread_id = @thread_id, updated_at = NOW() WHERE id = @id;
+
+-- Plan context (migration 073). Accepts JSONB blobs for input_files
+-- (array of {id,name,mime}) and user_inputs (object of free-form
+-- k/v). Null narg keeps the existing value intact so partial updates
+-- from the UI don't clobber whatever's already there.
+-- name: UpdatePlanContext :one
+UPDATE plan SET
+    input_files  = COALESCE(sqlc.narg('input_files')::jsonb,  input_files),
+    user_inputs  = COALESCE(sqlc.narg('user_inputs')::jsonb,  user_inputs),
+    updated_at   = NOW()
+WHERE id = $1
+RETURNING *;

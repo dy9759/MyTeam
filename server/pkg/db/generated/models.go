@@ -66,6 +66,31 @@ type Agent struct {
 	LastActiveAt            pgtype.Timestamptz `json:"last_active_at"`
 	Scope                   pgtype.Text        `json:"scope"`
 	OwnerType               string             `json:"owner_type"`
+	Kind                    string             `json:"kind"`
+	IsGlobal                bool               `json:"is_global"`
+	Source                  string             `json:"source"`
+	SourceRef               pgtype.Text        `json:"source_ref"`
+	Category                string             `json:"category"`
+}
+
+type AgentInteraction struct {
+	ID          pgtype.UUID        `json:"id"`
+	WorkspaceID pgtype.UUID        `json:"workspace_id"`
+	FromID      pgtype.UUID        `json:"from_id"`
+	FromType    string             `json:"from_type"`
+	ToAgentID   pgtype.UUID        `json:"to_agent_id"`
+	Channel     pgtype.Text        `json:"channel"`
+	Capability  pgtype.Text        `json:"capability"`
+	SessionID   pgtype.UUID        `json:"session_id"`
+	Type        string             `json:"type"`
+	ContentType string             `json:"content_type"`
+	Schema      pgtype.Text        `json:"schema"`
+	Payload     []byte             `json:"payload"`
+	Metadata    []byte             `json:"metadata"`
+	Status      string             `json:"status"`
+	DeliveredAt pgtype.Timestamptz `json:"delivered_at"`
+	ReadAt      pgtype.Timestamptz `json:"read_at"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 }
 
 type AgentRuntime struct {
@@ -434,6 +459,26 @@ type IssueToLabel struct {
 	LabelID pgtype.UUID `json:"label_id"`
 }
 
+type Meeting struct {
+	ID            pgtype.UUID        `json:"id"`
+	ChannelID     pgtype.UUID        `json:"channel_id"`
+	WorkspaceID   pgtype.UUID        `json:"workspace_id"`
+	StartedBy     pgtype.UUID        `json:"started_by"`
+	Topic         string             `json:"topic"`
+	Status        string             `json:"status"`
+	AudioUrl      pgtype.Text        `json:"audio_url"`
+	AudioDuration pgtype.Int4        `json:"audio_duration"`
+	TaskID        pgtype.Text        `json:"task_id"`
+	Transcript    []byte             `json:"transcript"`
+	Summary       []byte             `json:"summary"`
+	Notes         string             `json:"notes"`
+	Highlights    []byte             `json:"highlights"`
+	FailureReason pgtype.Text        `json:"failure_reason"`
+	StartedAt     pgtype.Timestamptz `json:"started_at"`
+	EndedAt       pgtype.Timestamptz `json:"ended_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+}
+
 type Member struct {
 	ID          pgtype.UUID        `json:"id"`
 	WorkspaceID pgtype.UUID        `json:"workspace_id"`
@@ -583,6 +628,8 @@ type Plan struct {
 	AssignedAgents []byte             `json:"assigned_agents"`
 	RiskPoints     pgtype.Text        `json:"risk_points"`
 	ThreadID       pgtype.UUID        `json:"thread_id"`
+	InputFiles     []byte             `json:"input_files"`
+	UserInputs     []byte             `json:"user_inputs"`
 }
 
 type Project struct {
@@ -703,6 +750,10 @@ type Skill struct {
 	CreatedBy   pgtype.UUID        `json:"created_by"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	Category    string             `json:"category"`
+	Source      string             `json:"source"`
+	SourceRef   pgtype.Text        `json:"source_ref"`
+	IsGlobal    bool               `json:"is_global"`
 }
 
 type SkillFile struct {
@@ -712,6 +763,13 @@ type SkillFile struct {
 	Content   string             `json:"content"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
+type SubagentSkill struct {
+	SubagentID pgtype.UUID        `json:"subagent_id"`
+	SkillID    pgtype.UUID        `json:"skill_id"`
+	Position   int32              `json:"position"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 }
 
 type Task struct {

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/protocol"
@@ -18,18 +19,20 @@ import (
 
 // ProjectResponse is the JSON response for a project.
 type ProjectResponse struct {
-	ID                  string          `json:"id"`
-	WorkspaceID         string          `json:"workspace_id"`
-	Title               string          `json:"title"`
-	Description         *string         `json:"description"`
-	Status              string          `json:"status"`
-	ScheduleType        string          `json:"schedule_type"`
-	CronExpr            *string         `json:"cron_expr,omitempty"`
-	SourceConversations json.RawMessage `json:"source_conversations"`
-	ChannelID           *string         `json:"channel_id"`
-	CreatorOwnerID      string          `json:"creator_owner_id"`
-	CreatedAt           string          `json:"created_at"`
-	UpdatedAt           string          `json:"updated_at"`
+	ID                  string              `json:"id"`
+	WorkspaceID         string              `json:"workspace_id"`
+	Title               string              `json:"title"`
+	Description         *string             `json:"description"`
+	Status              string              `json:"status"`
+	ScheduleType        string              `json:"schedule_type"`
+	CronExpr            *string             `json:"cron_expr,omitempty"`
+	SourceConversations json.RawMessage     `json:"source_conversations"`
+	ChannelID           *string             `json:"channel_id"`
+	CreatorOwnerID      string              `json:"creator_owner_id"`
+	CreatedAt           string              `json:"created_at"`
+	UpdatedAt           string              `json:"updated_at"`
+	Plan                *PlanResponse       `json:"plan,omitempty"`
+	ActiveRun           *ProjectRunResponse `json:"active_run,omitempty"`
 }
 
 // ProjectVersionResponse is the JSON response for a project version.
@@ -304,7 +307,27 @@ func (h *Handler) GetProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, projectToResponse(project))
+	resp := projectToResponse(project)
+	plan, err := h.Queries.GetPlanByProject(r.Context(), project.ID)
+	if err == nil {
+		planResp := planToResponse(plan)
+		resp.Plan = &planResp
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		slog.Error("get project: load linked plan failed", "error", err, "project_id", projectID)
+		writeError(w, http.StatusInternalServerError, "failed to load linked plan")
+		return
+	}
+	activeRun, err := h.Queries.GetActiveProjectRun(r.Context(), project.ID)
+	if err == nil {
+		runResp := projectRunToResponse(activeRun)
+		resp.ActiveRun = &runResp
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		slog.Error("get project: load active run failed", "error", err, "project_id", projectID)
+		writeError(w, http.StatusInternalServerError, "failed to load active run")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // CreateProject handles POST /api/projects
@@ -599,6 +622,89 @@ func (h *Handler) ForkProject(w http.ResponseWriter, r *http.Request) {
 	slog.Info("project forked", "project_id", projectID, "user_id", userID, "branch_name", req.BranchName)
 
 	writeJSON(w, http.StatusCreated, resp)
+}
+
+// StartProjectExecution handles POST /api/projects/{projectID}/start.
+// It creates a pending ProjectRun when none exists, then hands the run
+// to SchedulerService.ScheduleRun.
+func (h *Handler) StartProjectExecution(w http.ResponseWriter, r *http.Request) {
+	projectID := chi.URLParam(r, "projectID")
+	if projectID == "" {
+		writeError(w, http.StatusBadRequest, "projectID is required")
+		return
+	}
+
+	if _, ok := requireUserID(w, r); !ok {
+		return
+	}
+
+	workspaceID := resolveWorkspaceID(r)
+	project, err := h.Queries.GetProject(r.Context(), parseUUID(projectID))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "project not found")
+			return
+		}
+		slog.Error("start project execution: get project failed", "error", err, "project_id", projectID)
+		writeError(w, http.StatusInternalServerError, "failed to load project")
+		return
+	}
+	if workspaceID != "" && uuidToString(project.WorkspaceID) != workspaceID {
+		writeError(w, http.StatusNotFound, "project not found")
+		return
+	}
+	if h.Scheduler == nil {
+		writeError(w, http.StatusInternalServerError, "scheduler unavailable")
+		return
+	}
+
+	plan, err := h.Queries.GetPlanByProject(r.Context(), project.ID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeError(w, http.StatusConflict, "project has no plan")
+			return
+		}
+		slog.Error("start project execution: get plan failed", "error", err, "project_id", projectID)
+		writeError(w, http.StatusInternalServerError, "failed to load plan")
+		return
+	}
+	if plan.ApprovalStatus != "approved" {
+		writeError(w, http.StatusConflict, "plan not approved")
+		return
+	}
+
+	run, err := h.Queries.GetActiveProjectRun(r.Context(), project.ID)
+	if err != nil {
+		if !errors.Is(err, pgx.ErrNoRows) {
+			slog.Error("start project execution: get active run failed", "error", err, "project_id", projectID)
+			writeError(w, http.StatusInternalServerError, "failed to load active run")
+			return
+		}
+		run, err = h.Queries.CreateProjectRun(r.Context(), db.CreateProjectRunParams{
+			PlanID:    plan.ID,
+			ProjectID: project.ID,
+			Status:    "pending",
+		})
+		if err != nil {
+			slog.Error("start project execution: create run failed", "error", err, "project_id", projectID)
+			writeError(w, http.StatusInternalServerError, "failed to create run")
+			return
+		}
+	}
+
+	if run.Status != "running" {
+		if err := h.Scheduler.ScheduleRun(
+			r.Context(),
+			uuid.UUID(plan.ID.Bytes),
+			uuid.UUID(run.ID.Bytes),
+		); err != nil {
+			slog.Error("start project execution: schedule run failed", "error", err, "project_id", projectID, "run_id", uuidToString(run.ID))
+			writeError(w, http.StatusInternalServerError, "failed to schedule run")
+			return
+		}
+	}
+
+	writeJSON(w, http.StatusAccepted, projectRunToResponse(run))
 }
 
 // ListProjectVersions handles GET /api/projects/{projectID}/versions

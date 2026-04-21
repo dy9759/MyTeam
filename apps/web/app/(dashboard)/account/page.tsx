@@ -1,5 +1,6 @@
 "use client"
-import { useState } from "react"
+import { Suspense, useState } from "react"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { useWorkspaceStore } from "@/features/workspace"
 import { useAuthStore } from "@/features/auth"
 import { api } from "@/shared/api"
@@ -8,11 +9,12 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import {
   Bot, Terminal, Code, Key, ChevronDown, ChevronRight,
   Copy, Check, Plus, Zap, Circle, Shield, Wrench,
-  Globe, User, GitBranch, Settings
+  Globe, User, GitBranch, Settings, Sparkles, Layers
 } from "lucide-react"
 import { MetricsOverview } from "@/features/workspace/components/metrics-overview"
 import { AgentAutoReplyConfig } from "@/features/workspace/components/agent-auto-reply-config"
 import { AgentProfileEditor } from "@/features/workspace/components/agent-profile-editor"
+import { SubagentsPage } from "@/features/subagents"
 
 /* ================================================================== */
 /* Helpers                                                             */
@@ -173,54 +175,65 @@ function AgentListTab() {
   }
 
   return (
-    <div className="space-y-6">
-      <h2 className="text-sm font-semibold">Agent 列表</h2>
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold">Agent 列表</h2>
+        <span className="text-[11px] text-muted-foreground font-mono">
+          {list.length}
+        </span>
+      </div>
       {list.length > 0 ? (
-        <div className="space-y-3">
+        // Compact row layout — skills/tools chips and the wide dual
+        // buttons were reshuffled behind the expand arrow so the list
+        // stays scannable when a workspace has dozens of agents.
+        <div className="border border-border rounded-[8px] bg-card divide-y divide-border">
           {list.map(a => {
             const s = getStatus(a.status as string)
+            const expanded = expandedAgentId === a.id
             return (
-              <div key={a.id} className="border border-border rounded-[8px] bg-card overflow-hidden hover:bg-secondary/30 transition-colors">
-                <div className="p-4 space-y-3">
-                  <div className="flex items-center gap-3">
-                    <div className="h-9 w-9 rounded-[8px] bg-primary/10 flex items-center justify-center shrink-0">
-                      <Bot className="h-4 w-4 text-primary" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[14px] font-medium text-foreground truncate">{a.name}</div>
-                      <div className="text-[12px] text-muted-foreground truncate">{a.description || "暂无描述"}</div>
-                    </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <span className={`h-[7px] w-[7px] rounded-full ${s.dot}`} />
-                      <span className="text-[11px] text-muted-foreground">{s.label}</span>
-                    </div>
+              <div key={a.id}>
+                <div className="flex items-center gap-3 px-3 py-2 hover:bg-secondary/30 transition-colors">
+                  <div className="h-7 w-7 rounded bg-primary/10 flex items-center justify-center shrink-0">
+                    <Bot className="h-3.5 w-3.5 text-primary" />
                   </div>
-                  {(a.skills?.length > 0 || (a.identity_card?.skills?.length ?? 0) > 0) && (
-                    <div className="flex flex-wrap gap-1">
-                      {(a.identity_card?.skills ?? a.skills?.map(s => s.name) ?? []).slice(0, 5).map((t: string) => (
-                        <span key={t} className="text-[11px] px-2 py-[2px] rounded-full border border-border text-secondary-foreground bg-secondary/50">{t}</span>
-                      ))}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[13px] font-medium text-foreground truncate">
+                        {a.name}
+                      </span>
+                      <span className={`h-[6px] w-[6px] rounded-full shrink-0 ${s.dot}`} />
+                      <span className="text-[10px] text-muted-foreground shrink-0">
+                        {s.label}
+                      </span>
                     </div>
-                  )}
-                  {(a.identity_card?.tools?.length ?? 0) > 0 && (
-                    <div className="text-[12px] text-muted-foreground flex items-center gap-1.5">
-                      <Wrench className="h-3 w-3" /><span>{a.identity_card?.tools?.join(" · ")}</span>
-                    </div>
-                  )}
-                  <div className="flex gap-2">
-                    <button onClick={() => setExpandedAgentId(expandedAgentId === a.id ? null : a.id)}
-                      className="flex-1 text-[12px] font-medium text-muted-foreground border border-border rounded-[6px] px-3 py-1.5 hover:bg-secondary/50 transition-colors flex items-center justify-center gap-1.5">
-                      <Settings className="h-3 w-3" />
-                      {expandedAgentId === a.id ? "隐藏配置" : "配置"}
-                    </button>
-                    <button onClick={() => impersonate(a.id)}
-                      className="flex-1 text-[12px] font-medium text-primary border border-border rounded-[6px] px-3 py-1.5 hover:bg-secondary/50 transition-colors">
-                      附身代理
-                    </button>
+                    {a.description && (
+                      <div className="text-[11px] text-muted-foreground truncate">
+                        {a.description}
+                      </div>
+                    )}
                   </div>
+                  <button
+                    onClick={() => impersonate(a.id)}
+                    className="text-[11px] text-primary hover:underline shrink-0"
+                  >
+                    附身
+                  </button>
+                  <button
+                    onClick={() =>
+                      setExpandedAgentId(expanded ? null : a.id)
+                    }
+                    className="text-muted-foreground hover:text-foreground shrink-0 p-1"
+                    aria-label={expanded ? "收起" : "展开"}
+                  >
+                    {expanded ? (
+                      <ChevronDown className="h-3.5 w-3.5" />
+                    ) : (
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    )}
+                  </button>
                 </div>
-                {expandedAgentId === a.id && (
-                  <div className="border-t px-4 py-4 space-y-4 bg-muted/20">
+                {expanded && (
+                  <div className="px-4 py-4 space-y-4 bg-muted/20">
                     <AgentProfileEditor agentId={a.id} />
                     <AgentAutoReplyConfig agentId={a.id} />
                   </div>
@@ -274,6 +287,9 @@ function AddAgentTab() {
   const workspace = useWorkspaceStore(s => s.workspace)
   const agents = useWorkspaceStore(s => s.agents)
   const list = Array.isArray(agents) ? agents : []
+  const serverUrl = typeof window !== "undefined"
+    ? `${window.location.protocol}//${window.location.host}`
+    : ""
 
   const refresh = async () => {
     if (!workspace) return
@@ -285,49 +301,136 @@ function AddAgentTab() {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-sm font-semibold">添加 Agent</h2>
-      <p className="text-xs text-muted-foreground">四种方式接入 Agent，选择适合你的方式</p>
+      <div>
+        <h2 className="text-sm font-semibold">添加 Agent</h2>
+        <p className="text-xs text-muted-foreground mt-1">
+          Agent 是工作区里会被分配任务的执行者。每个 Agent 绑定一个 Runtime（本地 CLI 或云端 Provider），
+          并通过 Subagent 包装的 Skill 扩展能力。下面几种方式按接入难度从易到难排列。
+        </p>
+      </div>
+
+      {/* Framework cheat-sheet — what an Agent actually is in MyTeam */}
+      <div className="rounded-[6px] border border-border bg-secondary/40 px-3 py-2.5 space-y-1.5">
+        <div className="flex items-center gap-2 text-[12px] font-medium">
+          <Sparkles className="h-3.5 w-3.5 text-primary" />
+          Agent · Subagent · Skill 框架
+        </div>
+        <div className="text-[11px] text-muted-foreground leading-relaxed">
+          <span className="text-foreground">Agent</span> 是被调度的执行者；
+          <span className="text-foreground"> Subagent</span> 是封装一组 Skill 的模板（Agent 调用 Skill 必须经过它）；
+          <span className="text-foreground"> Skill</span> 是可复用的能力包（bundle / upload / manual）。
+          完整规则见{" "}
+          <a href="/account?tab=subagents" className="text-primary hover:underline">Subagents</a>
+          （Skill 在对应 Subagent 内展示）。
+        </div>
+      </div>
 
       <div className="space-y-2.5">
-        <Collapse title="网页创建 — 快速创建 Personal Agent" icon={Plus} open={list.length === 0}>
-          <p className="text-[13px] text-muted-foreground mt-2 mb-1">填写名称即可创建：</p>
-          <CreateForm onDone={refresh} />
+        <Collapse title="网页创建 — 最快方式，立即得到一个云端 Personal Agent" icon={Plus} open={list.length === 0}>
+          <div className="space-y-2 pt-2">
+            <p className="text-[12px] text-muted-foreground">
+              系统自动绑定当前工作区里已注册的云端 Runtime。创建后可在「Agent 列表」里补身份卡、附身，
+              也可以作为项目编排的候选执行者。
+            </p>
+            <CreateForm onDone={refresh} />
+          </div>
         </Collapse>
 
-        <Collapse title="CLI 注册 — 通过 Daemon 注册本地运行时" icon={Terminal}>
+        <Collapse title="一键接入 — 复制粘贴即可完成 CLI 安装 + 登录 + Daemon 启动" icon={Terminal} open>
           <div className="space-y-3 pt-3">
-            <p className="text-[13px] text-muted-foreground">在终端运行以下命令：</p>
-            <div className="space-y-2.5">
-              <div><p className="text-[12px] text-muted-foreground mb-1">1. 安装</p><CodeBlock code="brew install multica-ai/tap/multica" /></div>
-              <div><p className="text-[12px] text-muted-foreground mb-1">2. 登录</p><CodeBlock code="multica login" /></div>
-              <div><p className="text-[12px] text-muted-foreground mb-1">3. 启动 Daemon</p><CodeBlock code="multica daemon start" /></div>
+            <p className="text-[13px] text-muted-foreground">
+              整个链路：安装 <code className="font-mono text-[11px] bg-muted px-1 rounded">multica</code> CLI → 注入 Token 登录 →
+              启动 Daemon，Daemon 会自动探测本机 <code className="font-mono text-[11px] bg-muted px-1 rounded">claude</code>
+              、<code className="font-mono text-[11px] bg-muted px-1 rounded">codex</code> 并注册成可被 Agent 绑定的 Runtime。
+              粘贴下面这一段到终端，替换 <code className="font-mono text-[11px] bg-muted px-1 rounded">&lt;PASTE_TOKEN&gt;</code> 即可。
+            </p>
+            <div>
+              <p className="text-[12px] text-muted-foreground mb-1">macOS / Linux（Homebrew，推荐）</p>
+              <CodeBlock code={`# 1) 生成 Token：${serverUrl || "<server-url>"}/settings → API 令牌 → 复制
+export MULTICA_TOKEN="<PASTE_TOKEN>"
+export MULTICA_SERVER_URL="${serverUrl || "<server-url>"}"
+
+# 2) 一行完成：安装 + 登录 + 启动 Daemon + 查看 Runtime
+brew install multica-ai/tap/multica \\
+  && echo "$MULTICA_TOKEN" | multica login --token \\
+  && multica daemon start \\
+  && multica runtime list`} />
+            </div>
+            <div>
+              <p className="text-[12px] text-muted-foreground mb-1">从源码（本地开发或未发布 Homebrew 时）</p>
+              <CodeBlock code={`# 仓库根目录执行
+export MULTICA_TOKEN="<PASTE_TOKEN>"
+export MULTICA_SERVER_URL="${serverUrl || "<server-url>"}"
+
+make build \\
+  && ln -sf "$(pwd)/server/bin/multica" ~/.local/bin/multica \\
+  && echo "$MULTICA_TOKEN" | multica login --token \\
+  && multica daemon start \\
+  && multica runtime list`} />
             </div>
             <p className="text-[12px] text-muted-foreground/80 bg-secondary rounded-[6px] px-3 py-2">
-              💡 Daemon 自动检测本地 <code className="font-mono text-[11px] bg-muted px-1 rounded">claude</code>、<code className="font-mono text-[11px] bg-muted px-1 rounded">codex</code> 等 CLI 并注册为运行时。
+              ✅ 命令结束后你会看到本机出现在线 Runtime；回到
+              <a href="/account?tab=agents" className="text-primary hover:underline"> Agent 列表 </a>
+              即可创建或绑定 Agent。Daemon 需要保持运行（可用 <code className="font-mono text-[11px] bg-muted px-1 rounded">multica daemon status</code> 检查、
+              <code className="font-mono text-[11px] bg-muted px-1 rounded">multica daemon logs -f</code> 查看日志）。
             </p>
           </div>
         </Collapse>
 
-        <Collapse title="Claude Code 连接 — 通过 MCP 接入 My Team" icon={Code}>
+        <Collapse title="第三方客户端接入 — Claude Code / Cursor 通过 Daemon Runtime 共享任务调度" icon={Code}>
           <div className="space-y-3 pt-3">
-            <p className="text-[13px] text-muted-foreground">在 Claude Code 中添加 MCP Server：</p>
-            <CodeBlock code={`// .claude/settings.json\n{\n  "mcpServers": {\n    "myteam": {\n      "command": "multica",\n      "args": ["mcp", "serve"],\n      "env": { "MULTICA_TOKEN": "<your-token>" }\n    }\n  }\n}`} />
+            <p className="text-[13px] text-muted-foreground">
+              目前 MyTeam 的客户端接入走的是 <span className="text-foreground font-medium">Daemon → Runtime</span> 路径，
+              而不是 MCP stdio 直连：Daemon 启动时会把本机的 Claude Code 或 Codex 识别成 Runtime，Agent 绑定该 Runtime 后，
+              平台派发的任务就会由对应的客户端执行。所以最小接入只要完成上一步的「一键接入」即可。
+            </p>
+            <div>
+              <p className="text-[12px] text-muted-foreground mb-1">验证：客户端是否已被识别</p>
+              <CodeBlock code={`multica runtime list
+# 期望看到 claude / codex 作为 provider 在列`} />
+            </div>
             <p className="text-[12px] text-muted-foreground/80 bg-secondary rounded-[6px] px-3 py-2">
-              🔑 Token 在「<a href="/settings" className="text-primary hover:underline">设置 → API 令牌</a>」中创建。
+              ℹ️ MCP stdio 直连（在客户端 settings 里通过 <code className="font-mono text-[11px] bg-muted px-1 rounded">multica mcp serve</code>
+              反向把 MyTeam 工具暴露给客户端）目前在 <span className="text-foreground">规划中</span>，不要再参考老文档里的
+              <code className="font-mono text-[11px] bg-muted px-1 rounded"> mcpServers.myteam </code>配置 — 命令未发布。
             </p>
           </div>
         </Collapse>
 
-        <Collapse title="REST API — 编程式注册 Agent" icon={Key}>
+        <Collapse title="REST API — 编程式接入、CI / 第三方系统首选" icon={Key}>
           <div className="space-y-3 pt-3">
-            <CodeBlock code={`curl -X POST /api/agents \\\n  -H "Authorization: Bearer <token>" \\\n  -H "X-Workspace-ID: ${workspace?.id ?? '<workspace-id>'}" \\\n  -H "Content-Type: application/json" \\\n  -d '{"name":"my-agent","runtime_id":"","visibility":"private"}'`} />
+            <p className="text-[13px] text-muted-foreground">
+              直接调用 <code className="font-mono text-[11px] bg-muted px-1 rounded">POST /api/agents</code> 创建 Agent；
+              同域页面直接拷贝 curl 即可。
+            </p>
+            <CodeBlock code={`curl -X POST ${serverUrl || "<server-url>"}/api/agents \\
+  -H "Authorization: Bearer <token>" \\
+  -H "X-Workspace-ID: ${workspace?.id ?? "<workspace-id>"}" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "name": "ci-agent",
+    "description": "CI 流水线专用",
+    "runtime_id": "<runtime-id>",
+    "visibility": "workspace",
+    "max_concurrent_tasks": 4
+  }'`} />
+            <p className="text-[12px] text-muted-foreground/80 bg-secondary rounded-[6px] px-3 py-2">
+              ⚠️ 只有 <span className="text-foreground font-medium">owner</span> / <span className="text-foreground font-medium">admin</span> 可以调用；
+              <code className="font-mono text-[11px] bg-muted px-1 rounded">runtime_id</code> 留空会落到默认云端 Runtime（若存在）。
+            </p>
           </div>
         </Collapse>
       </div>
 
-      <div className="flex items-center gap-2 pt-1 text-[13px] text-muted-foreground">
-        <Zap className="h-3.5 w-3.5 text-primary" />
-        <span>管理 Token：<a href="/settings" className="text-primary hover:underline">设置 → API 令牌</a></span>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 pt-1 text-[12px] text-muted-foreground">
+        <span className="flex items-center gap-1.5">
+          <Zap className="h-3.5 w-3.5 text-primary" />
+          管理 Token：<a href="/settings" className="text-primary hover:underline">设置 → API 令牌</a>
+        </span>
+        <span className="flex items-center gap-1.5">
+          <Shield className="h-3.5 w-3.5 text-primary" />
+          Runtime 在线状态：<a href="/runtimes" className="text-primary hover:underline">/runtimes</a>
+        </span>
       </div>
     </div>
   )
@@ -343,9 +446,26 @@ const ownerTabs = [
   { value: "add-agent", label: "添加 Agent", icon: Plus },
 ]
 
+// Knowledge group bundles skills + subagents so the two live next to
+// each other under the identity page — agents reach skills only via
+// subagents (migration 069 rule), and keeping them co-located makes
+// that relationship obvious in the nav.
+// Skills live under each Subagent now — agents can only call a skill
+// via a subagent, so the standalone 技能 tab was redundant with the
+// Subagents view. Keep Subagents as the single entry to the knowledge
+// layer; Subagents page shows linked skills inline.
+const knowledgeTabs = [
+  { value: "subagents", label: "Subagents", icon: Layers },
+]
+
 const orgTabs = [
   { value: "hierarchy", label: "组织层级", icon: GitBranch },
 ]
+
+// Tabs that host their own full-bleed layout (resizable panels, left
+// rails, etc.). They skip the max-w-3xl reader-width wrapper so the
+// internal layout isn't squeezed.
+const FULL_WIDTH_TABS = new Set(["subagents"])
 
 /* ================================================================== */
 /* Page — Settings-style vertical tab layout                           */
@@ -353,13 +473,47 @@ const orgTabs = [
 
 export default function AccountPage() {
   return (
-    <Tabs defaultValue="overview" orientation="vertical" className="flex-1 min-h-0 gap-0 bg-background">
+    <Suspense fallback={null}>
+      <AccountPageBody />
+    </Suspense>
+  )
+}
+
+function AccountPageBody() {
+  const search = useSearchParams()
+  const router = useRouter()
+  const pathname = usePathname()
+  const currentTab = search.get("tab") || "overview"
+
+  const setTab = (v: string) => {
+    const params = new URLSearchParams(search.toString())
+    params.set("tab", v)
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false })
+  }
+
+  const isFullWidth = FULL_WIDTH_TABS.has(currentTab)
+
+  return (
+    <Tabs
+      value={currentTab}
+      onValueChange={setTab}
+      orientation="vertical"
+      className="flex-1 min-h-0 gap-0 bg-background"
+    >
       {/* Left nav — same style as Settings */}
       <div className="w-52 shrink-0 border-r border-border overflow-y-auto p-4">
         <h1 className="text-sm font-semibold mb-4 px-2 text-foreground">身份</h1>
         <TabsList variant="line" className="flex-col items-stretch">
           <span className="px-2 pb-1 pt-2 text-xs font-medium text-muted-foreground">Owner</span>
           {ownerTabs.map((tab) => (
+            <TabsTrigger key={tab.value} value={tab.value}>
+              <tab.icon className="h-4 w-4" />
+              {tab.label}
+            </TabsTrigger>
+          ))}
+
+          <span className="px-2 pb-1 pt-4 text-xs font-medium text-muted-foreground">知识库</span>
+          {knowledgeTabs.map((tab) => (
             <TabsTrigger key={tab.value} value={tab.value}>
               <tab.icon className="h-4 w-4" />
               {tab.label}
@@ -376,14 +530,22 @@ export default function AccountPage() {
         </TabsList>
       </div>
 
-      {/* Right content */}
-      <div className="flex-1 min-w-0 overflow-y-auto">
-        <div className="w-full max-w-3xl mx-auto p-6">
-          <TabsContent value="overview"><OverviewTab /></TabsContent>
-          <TabsContent value="agents"><AgentListTab /></TabsContent>
-          <TabsContent value="add-agent"><AddAgentTab /></TabsContent>
-          <TabsContent value="hierarchy"><OverviewTab /></TabsContent>
-        </div>
+      {/* Right content — full-width for skills/subagents which carry
+          their own resizable or split layout; reader-width for the
+          narrower owner/org tabs. */}
+      <div className="flex-1 min-w-0 overflow-y-auto flex flex-col">
+        {isFullWidth ? (
+          <div className="flex-1 min-h-0 flex">
+            <TabsContent value="subagents" className="flex-1 min-h-0 flex"><SubagentsPage /></TabsContent>
+          </div>
+        ) : (
+          <div className="w-full max-w-3xl mx-auto p-6">
+            <TabsContent value="overview"><OverviewTab /></TabsContent>
+            <TabsContent value="agents"><AgentListTab /></TabsContent>
+            <TabsContent value="add-agent"><AddAgentTab /></TabsContent>
+            <TabsContent value="hierarchy"><OverviewTab /></TabsContent>
+          </div>
+        )}
       </div>
     </Tabs>
   )

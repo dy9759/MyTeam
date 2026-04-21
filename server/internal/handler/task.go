@@ -168,16 +168,25 @@ func (h *Handler) GetTaskHandler(w http.ResponseWriter, r *http.Request) {
 // PATCH /api/tasks/{id}
 // ---------------------------------------------------------------------------
 
-// updateTaskRequest is intentionally minimal: PATCH only accepts the
-// "cancelled" status transition. Every other status change must flow
-// through SchedulerService so slot / artifact / run state stays consistent.
+// updateTaskRequest carries edits from the plan stepper UI and the
+// cancel path. Status transitions beyond "cancelled" still flow
+// through SchedulerService so run / slot / artifact state stays
+// consistent; title / description / primary_assignee / required_skills
+// / acceptance_criteria are user-level metadata and are safe to edit
+// in-place via UpdateTaskFields.
 type updateTaskRequest struct {
-	Status string `json:"status,omitempty"`
+	Status             *string   `json:"status,omitempty"`
+	Title              *string   `json:"title,omitempty"`
+	Description        *string   `json:"description,omitempty"`
+	PrimaryAssigneeID  *string   `json:"primary_assignee_id,omitempty"`
+	RequiredSkills     *[]string `json:"required_skills,omitempty"`
+	AcceptanceCriteria *string   `json:"acceptance_criteria,omitempty"`
 }
 
-// UpdateTaskHandler accepts only status=cancelled. Any other request is
-// rejected with 400 — the caller is expected to use the scheduler endpoints
-// (e.g. POST /api/runs/{id}/start) for normal lifecycle transitions.
+// UpdateTaskHandler handles PATCH /api/tasks/{id}. It accepts the
+// small surface of fields the plan-stepper UI exposes plus the
+// status=cancelled cancellation path; every other status transition
+// must go through scheduler endpoints (POST /api/runs/{id}/start etc).
 func (h *Handler) UpdateTaskHandler(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
@@ -189,14 +198,67 @@ func (h *Handler) UpdateTaskHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	if req.Status != "cancelled" {
-		writeError(w, http.StatusBadRequest, "PATCH only supports status=cancelled; other transitions go through scheduler")
+
+	// Cancel branch — unchanged.
+	if req.Status != nil {
+		if *req.Status != "cancelled" {
+			writeError(w, http.StatusBadRequest, "PATCH only supports status=cancelled; other transitions go through scheduler")
+			return
+		}
+		t, err := h.Queries.UpdateTaskStatus(r.Context(), db.UpdateTaskStatusParams{
+			ID:     pgUUIDFrom(id),
+			Status: "cancelled",
+		})
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				writeError(w, http.StatusNotFound, "not found")
+				return
+			}
+			writeError(w, http.StatusInternalServerError, "update failed: "+err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, projectTaskToResponse(t))
 		return
 	}
-	t, err := h.Queries.UpdateTaskStatus(r.Context(), db.UpdateTaskStatusParams{
-		ID:     pgUUIDFrom(id),
-		Status: "cancelled",
-	})
+
+	// Field-edit branch — reject empty bodies so the client gets a
+	// clear error rather than a silent no-op.
+	if req.Title == nil &&
+		req.Description == nil &&
+		req.PrimaryAssigneeID == nil &&
+		req.RequiredSkills == nil &&
+		req.AcceptanceCriteria == nil {
+		writeError(w, http.StatusBadRequest, "nothing to update")
+		return
+	}
+
+	params := db.UpdateTaskFieldsParams{ID: pgUUIDFrom(id)}
+	if req.Title != nil {
+		params.Title = pgtype.Text{String: *req.Title, Valid: true}
+	}
+	if req.Description != nil {
+		params.Description = pgtype.Text{String: *req.Description, Valid: true}
+	}
+	if req.PrimaryAssigneeID != nil {
+		if *req.PrimaryAssigneeID == "" {
+			params.PrimaryAssigneeID = pgtype.UUID{}
+		} else {
+			assigneeID, err := uuid.Parse(*req.PrimaryAssigneeID)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, "invalid primary_assignee_id")
+				return
+			}
+			params.PrimaryAssigneeID = pgUUIDFrom(assigneeID)
+		}
+	}
+	if req.RequiredSkills != nil {
+		params.RequiredSkills = *req.RequiredSkills
+	}
+	if req.AcceptanceCriteria != nil {
+		params.AcceptanceCriteria = pgtype.Text{String: *req.AcceptanceCriteria, Valid: true}
+	}
+
+	t, err := h.Queries.UpdateTaskFields(r.Context(), params)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "not found")

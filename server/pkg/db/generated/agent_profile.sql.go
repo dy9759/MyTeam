@@ -20,7 +20,8 @@ RETURNING
     runtime_id, instructions, archived_at, archived_by,
     auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags,
     trigger_on_channel_mention, needs_attention, needs_attention_reason,
-    agent_type, identity_card, last_active_at, scope, owner_type
+    agent_type, identity_card, last_active_at, scope, owner_type,
+    kind, is_global, source, source_ref, category
 `
 
 type CreatePageSystemAgentParams struct {
@@ -73,6 +74,11 @@ func (q *Queries) CreatePageSystemAgent(ctx context.Context, arg CreatePageSyste
 		&i.LastActiveAt,
 		&i.Scope,
 		&i.OwnerType,
+		&i.Kind,
+		&i.IsGlobal,
+		&i.Source,
+		&i.SourceRef,
+		&i.Category,
 	)
 	return i, err
 }
@@ -89,7 +95,8 @@ RETURNING
     runtime_id, instructions, archived_at, archived_by,
     auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags,
     trigger_on_channel_mention, needs_attention, needs_attention_reason,
-    agent_type, identity_card, last_active_at, scope, owner_type
+    agent_type, identity_card, last_active_at, scope, owner_type,
+    kind, is_global, source, source_ref, category
 `
 
 type CreatePersonalAgentParams struct {
@@ -139,6 +146,11 @@ func (q *Queries) CreatePersonalAgent(ctx context.Context, arg CreatePersonalAge
 		&i.LastActiveAt,
 		&i.Scope,
 		&i.OwnerType,
+		&i.Kind,
+		&i.IsGlobal,
+		&i.Source,
+		&i.SourceRef,
+		&i.Category,
 	)
 	return i, err
 }
@@ -152,7 +164,8 @@ RETURNING
     runtime_id, instructions, archived_at, archived_by,
     auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags,
     trigger_on_channel_mention, needs_attention, needs_attention_reason,
-    agent_type, identity_card, last_active_at, scope, owner_type
+    agent_type, identity_card, last_active_at, scope, owner_type,
+    kind, is_global, source, source_ref, category
 `
 
 type CreateSystemAgentParams struct {
@@ -198,6 +211,11 @@ func (q *Queries) CreateSystemAgent(ctx context.Context, arg CreateSystemAgentPa
 		&i.LastActiveAt,
 		&i.Scope,
 		&i.OwnerType,
+		&i.Kind,
+		&i.IsGlobal,
+		&i.Source,
+		&i.SourceRef,
+		&i.Category,
 	)
 	return i, err
 }
@@ -209,7 +227,8 @@ SELECT
     runtime_id, instructions, archived_at, archived_by,
     auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags,
     trigger_on_channel_mention, needs_attention, needs_attention_reason,
-    agent_type, identity_card, last_active_at, scope, owner_type
+    agent_type, identity_card, last_active_at, scope, owner_type,
+    kind, is_global, source, source_ref, category
 FROM agent WHERE workspace_id = $1 AND name = $2 AND archived_at IS NULL
 `
 
@@ -251,6 +270,11 @@ func (q *Queries) GetAgentByName(ctx context.Context, arg GetAgentByNameParams) 
 		&i.LastActiveAt,
 		&i.Scope,
 		&i.OwnerType,
+		&i.Kind,
+		&i.IsGlobal,
+		&i.Source,
+		&i.SourceRef,
+		&i.Category,
 	)
 	return i, err
 }
@@ -332,7 +356,8 @@ SELECT
     runtime_id, instructions, archived_at, archived_by,
     auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags,
     trigger_on_channel_mention, needs_attention, needs_attention_reason,
-    agent_type, identity_card, last_active_at, scope, owner_type
+    agent_type, identity_card, last_active_at, scope, owner_type,
+    kind, is_global, source, source_ref, category
 FROM agent
 WHERE workspace_id = $1 AND scope = $2 AND archived_at IS NULL
 LIMIT 1
@@ -376,6 +401,11 @@ func (q *Queries) GetPageSystemAgent(ctx context.Context, arg GetPageSystemAgent
 		&i.LastActiveAt,
 		&i.Scope,
 		&i.OwnerType,
+		&i.Kind,
+		&i.IsGlobal,
+		&i.Source,
+		&i.SourceRef,
+		&i.Category,
 	)
 	return i, err
 }
@@ -387,7 +417,8 @@ SELECT
     runtime_id, instructions, archived_at, archived_by,
     auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags,
     trigger_on_channel_mention, needs_attention, needs_attention_reason,
-    agent_type, identity_card, last_active_at, scope, owner_type
+    agent_type, identity_card, last_active_at, scope, owner_type,
+    kind, is_global, source, source_ref, category
 FROM agent
 WHERE workspace_id = $1 AND owner_id = $2 AND agent_type = 'personal_agent' AND archived_at IS NULL
 LIMIT 1
@@ -431,6 +462,11 @@ func (q *Queries) GetPersonalAgent(ctx context.Context, arg GetPersonalAgentPara
 		&i.LastActiveAt,
 		&i.Scope,
 		&i.OwnerType,
+		&i.Kind,
+		&i.IsGlobal,
+		&i.Source,
+		&i.SourceRef,
+		&i.Category,
 	)
 	return i, err
 }
@@ -442,7 +478,8 @@ SELECT
     runtime_id, instructions, archived_at, archived_by,
     auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags,
     trigger_on_channel_mention, needs_attention, needs_attention_reason,
-    agent_type, identity_card, last_active_at, scope, owner_type
+    agent_type, identity_card, last_active_at, scope, owner_type,
+    kind, is_global, source, source_ref, category
 FROM agent
 WHERE workspace_id = $1 AND agent_type = 'system_agent' AND scope IS NULL
 LIMIT 1
@@ -481,6 +518,11 @@ func (q *Queries) GetSystemAgent(ctx context.Context, workspaceID pgtype.UUID) (
 		&i.LastActiveAt,
 		&i.Scope,
 		&i.OwnerType,
+		&i.Kind,
+		&i.IsGlobal,
+		&i.Source,
+		&i.SourceRef,
+		&i.Category,
 	)
 	return i, err
 }
@@ -492,7 +534,8 @@ SELECT
     runtime_id, instructions, archived_at, archived_by,
     auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags,
     trigger_on_channel_mention, needs_attention, needs_attention_reason,
-    agent_type, identity_card, last_active_at, scope, owner_type
+    agent_type, identity_card, last_active_at, scope, owner_type,
+    kind, is_global, source, source_ref, category
 FROM agent WHERE archived_at IS NULL ORDER BY created_at ASC
 `
 
@@ -535,6 +578,11 @@ func (q *Queries) ListAllAgentsGlobal(ctx context.Context) ([]Agent, error) {
 			&i.LastActiveAt,
 			&i.Scope,
 			&i.OwnerType,
+			&i.Kind,
+			&i.IsGlobal,
+			&i.Source,
+			&i.SourceRef,
+			&i.Category,
 		); err != nil {
 			return nil, err
 		}
@@ -553,7 +601,8 @@ SELECT
     runtime_id, instructions, archived_at, archived_by,
     auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags,
     trigger_on_channel_mention, needs_attention, needs_attention_reason,
-    agent_type, identity_card, last_active_at, scope, owner_type
+    agent_type, identity_card, last_active_at, scope, owner_type,
+    kind, is_global, source, source_ref, category
 FROM agent
 WHERE workspace_id = $1 AND agent_type = 'system_agent' AND scope IS NOT NULL AND archived_at IS NULL
 ORDER BY scope ASC
@@ -598,6 +647,11 @@ func (q *Queries) ListPageSystemAgents(ctx context.Context, workspaceID pgtype.U
 			&i.LastActiveAt,
 			&i.Scope,
 			&i.OwnerType,
+			&i.Kind,
+			&i.IsGlobal,
+			&i.Source,
+			&i.SourceRef,
+			&i.Category,
 		); err != nil {
 			return nil, err
 		}

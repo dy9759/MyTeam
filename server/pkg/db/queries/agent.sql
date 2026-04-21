@@ -10,7 +10,8 @@ SELECT
     runtime_id, instructions, archived_at, archived_by,
     auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags,
     trigger_on_channel_mention, needs_attention, needs_attention_reason,
-    agent_type, identity_card, last_active_at, scope, owner_type
+    agent_type, identity_card, last_active_at, scope, owner_type,
+    kind, is_global, source, source_ref, category
 FROM agent
 WHERE workspace_id = $1 AND archived_at IS NULL
 ORDER BY created_at ASC;
@@ -22,7 +23,8 @@ SELECT
     runtime_id, instructions, archived_at, archived_by,
     auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags,
     trigger_on_channel_mention, needs_attention, needs_attention_reason,
-    agent_type, identity_card, last_active_at, scope, owner_type
+    agent_type, identity_card, last_active_at, scope, owner_type,
+    kind, is_global, source, source_ref, category
 FROM agent
 WHERE workspace_id = $1
 ORDER BY created_at ASC;
@@ -34,7 +36,8 @@ SELECT
     runtime_id, instructions, archived_at, archived_by,
     auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags,
     trigger_on_channel_mention, needs_attention, needs_attention_reason,
-    agent_type, identity_card, last_active_at, scope, owner_type
+    agent_type, identity_card, last_active_at, scope, owner_type,
+    kind, is_global, source, source_ref, category
 FROM agent
 WHERE id = $1;
 
@@ -45,7 +48,8 @@ SELECT
     runtime_id, instructions, archived_at, archived_by,
     auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags,
     trigger_on_channel_mention, needs_attention, needs_attention_reason,
-    agent_type, identity_card, last_active_at, scope, owner_type
+    agent_type, identity_card, last_active_at, scope, owner_type,
+    kind, is_global, source, source_ref, category
 FROM agent
 WHERE id = $1 AND workspace_id = $2;
 
@@ -64,7 +68,8 @@ RETURNING
     runtime_id, instructions, archived_at, archived_by,
     auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags,
     trigger_on_channel_mention, needs_attention, needs_attention_reason,
-    agent_type, identity_card, last_active_at, scope, owner_type;
+    agent_type, identity_card, last_active_at, scope, owner_type,
+    kind, is_global, source, source_ref, category;
 
 -- name: UpdateAgent :one
 UPDATE agent SET
@@ -84,7 +89,8 @@ RETURNING
     runtime_id, instructions, archived_at, archived_by,
     auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags,
     trigger_on_channel_mention, needs_attention, needs_attention_reason,
-    agent_type, identity_card, last_active_at, scope, owner_type;
+    agent_type, identity_card, last_active_at, scope, owner_type,
+    kind, is_global, source, source_ref, category;
 
 -- name: ArchiveAgent :one
 UPDATE agent SET archived_at = now(), archived_by = $2, updated_at = now()
@@ -95,7 +101,8 @@ RETURNING
     runtime_id, instructions, archived_at, archived_by,
     auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags,
     trigger_on_channel_mention, needs_attention, needs_attention_reason,
-    agent_type, identity_card, last_active_at, scope, owner_type;
+    agent_type, identity_card, last_active_at, scope, owner_type,
+    kind, is_global, source, source_ref, category;
 
 -- name: RestoreAgent :one
 UPDATE agent SET archived_at = NULL, archived_by = NULL, updated_at = now()
@@ -106,7 +113,8 @@ RETURNING
     runtime_id, instructions, archived_at, archived_by,
     auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags,
     trigger_on_channel_mention, needs_attention, needs_attention_reason,
-    agent_type, identity_card, last_active_at, scope, owner_type;
+    agent_type, identity_card, last_active_at, scope, owner_type,
+    kind, is_global, source, source_ref, category;
 
 -- name: ListAgentTasks :many
 SELECT * FROM agent_task_queue
@@ -242,7 +250,8 @@ RETURNING
     runtime_id, instructions, archived_at, archived_by,
     auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags,
     trigger_on_channel_mention, needs_attention, needs_attention_reason,
-    agent_type, identity_card, last_active_at, scope, owner_type;
+    agent_type, identity_card, last_active_at, scope, owner_type,
+    kind, is_global, source, source_ref, category;
 
 -- name: ListCloudPendingTasks :many
 SELECT atq.* FROM agent_task_queue atq

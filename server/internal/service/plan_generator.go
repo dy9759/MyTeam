@@ -101,6 +101,20 @@ type AgentIdentity struct {
 	Tools        []string `json:"tools"`
 }
 
+// SubagentIdentity holds info about a subagent template plus the
+// skills it wraps. Migration 069 / the subagent_skill join table is
+// authoritative: plan generation references these IDs (instead of raw
+// agents) for any task that requires a skill, because skills are no
+// longer directly callable from an agent.
+type SubagentIdentity struct {
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	Description string   `json:"description,omitempty"`
+	Category    string   `json:"category,omitempty"`
+	IsGlobal    bool     `json:"is_global,omitempty"`
+	Skills      []string `json:"skills,omitempty"` // skill names, for the prompt
+}
+
 // Warning code constants — emitted into GeneratePlanResult.Warnings so
 // callers can branch / display per code rather than parsing free text.
 const (
@@ -110,6 +124,11 @@ const (
 	WarnCollabModeMismatch = "COLLAB_MODE_SLOT_MISMATCH"
 	WarnSkillCoverageGap   = "SKILL_COVERAGE_GAP"
 	WarnLLMUnavailable     = "LLM_UNAVAILABLE"
+	// WarnSkillNeedsSubagent fires when a task has non-empty
+	// required_skills but its primary_assignee_agent_id does not map to
+	// a known subagent. Post-migration-069 rule: skill-bearing tasks
+	// must be routed through a subagent, not a raw agent.
+	WarnSkillNeedsSubagent = "SKILL_NEEDS_SUBAGENT"
 )
 
 // llmGeneratedPlan mirrors the JSON shape we ask the LLM for. It nests
@@ -164,20 +183,24 @@ func NewPlanGeneratorService(q *db.Queries, runner agent_runner.AgentRunner) *Pl
 // look up workspace-scoped agents/skills in a follow-up.
 func (s *PlanGeneratorService) GeneratePlanFromText(ctx context.Context, input, workspaceID string) (*GeneratePlanResult, error) {
 	prompt := buildTextPrompt(input)
-	return s.runLLMOrFallback(ctx, prompt, input, nil, workspaceID)
+	return s.runLLMOrFallback(ctx, prompt, input, nil, nil, workspaceID)
 }
 
-// GeneratePlanWithContext generates a plan using conversation context and
-// the supplied agent identities. The agents are exposed to the LLM so it
-// can assign primary_assignee_agent_id from a real candidate set.
+// GeneratePlanWithContext generates a plan using conversation context,
+// the supplied agent identities, and the subagents available to the
+// workspace. Both ID sets are exposed to the LLM so it can pick a
+// primary_assignee_agent_id from the right pool: skill-bearing tasks
+// must reference a subagent ID (post-migration 069 rule), while
+// skill-less coordination tasks may reference a raw agent.
 func (s *PlanGeneratorService) GeneratePlanWithContext(
 	ctx context.Context,
 	chatContext string,
 	agents []AgentIdentity,
+	subagents []SubagentIdentity,
 	workspaceID string,
 ) (*GeneratePlanResult, error) {
-	prompt := buildContextPrompt(chatContext, agents)
-	return s.runLLMOrFallback(ctx, prompt, chatContext, agents, workspaceID)
+	prompt := buildContextPrompt(chatContext, agents, subagents)
+	return s.runLLMOrFallback(ctx, prompt, chatContext, agents, subagents, workspaceID)
 }
 
 // runLLMOrFallback calls the LLM (when configured), parses the response,
@@ -190,6 +213,7 @@ func (s *PlanGeneratorService) runLLMOrFallback(
 	ctx context.Context,
 	prompt, fallbackInput string,
 	agents []AgentIdentity,
+	subagents []SubagentIdentity,
 	workspaceID string,
 ) (*GeneratePlanResult, error) {
 	cfg := LoadCloudLLMConfigFromEnv()
@@ -197,7 +221,7 @@ func (s *PlanGeneratorService) runLLMOrFallback(
 	if cfg.APIKey == "" || s.Runner == nil {
 		res := fallbackPlan(fallbackInput, agents)
 		res.Warnings = append(res.Warnings, WarnLLMUnavailable)
-		return s.validate(res, agents), nil
+		return s.validate(res, agents, subagents), nil
 	}
 
 	runnerCfg := agent_runner.Config{
@@ -213,11 +237,11 @@ func (s *PlanGeneratorService) runLLMOrFallback(
 		slog.Warn("plan generator: Claude Agent SDK call failed", "error", err)
 		res := fallbackPlan(fallbackInput, agents)
 		res.Warnings = append(res.Warnings, WarnLLMUnavailable)
-		return s.validate(res, agents), nil
+		return s.validate(res, agents, subagents), nil
 	}
 
 	res, parseWarn := parseLLMResponse(text, fallbackInput, agents)
-	return s.validate(res, agents).appendWarnings(parseWarn...), nil
+	return s.validate(res, agents, subagents).appendWarnings(parseWarn...), nil
 }
 
 // parseLLMResponse extracts an llmGeneratedPlan from the LLM's text and
@@ -302,16 +326,107 @@ func parseLLMResponse(text, fallbackInput string, agents []AgentIdentity) (*Gene
 
 // validate runs soft validation on the result and appends warnings.
 // It never strips tasks/slots — the goal is "always have something
-// usable, but tell the caller what looks off".
-func (s *PlanGeneratorService) validate(res *GeneratePlanResult, agents []AgentIdentity) *GeneratePlanResult {
+// usable, but tell the caller what looks off". It also backfills any
+// task whose primary_assignee the LLM left blank so the UI never
+// shows "未分配" unless the workspace truly has no candidates.
+func (s *PlanGeneratorService) validate(res *GeneratePlanResult, agents []AgentIdentity, subagents []SubagentIdentity) *GeneratePlanResult {
 	if res == nil {
 		return res
 	}
+	applyDefaultAssignees(res.Tasks, agents, subagents)
 	res.Warnings = appendUnique(res.Warnings, validateSlotTaskRefs(res.Tasks, res.Slots)...)
 	res.Warnings = appendUnique(res.Warnings, validateDAG(res.Tasks)...)
 	res.Warnings = appendUnique(res.Warnings, validateCollabModeSlotComposition(res.Tasks, res.Slots)...)
 	res.Warnings = appendUnique(res.Warnings, validateSkillCoverage(res.Tasks, agents)...)
+	res.Warnings = appendUnique(res.Warnings, validateSkillSubagent(res.Tasks, subagents)...)
 	return res
+}
+
+// applyDefaultAssignees guarantees every TaskDraft has a
+// primary_assignee_agent_id when any candidate exists. Rule:
+//
+//  1. Tasks with required_skills prefer a subagent whose skill roster
+//     covers at least one required skill, then fall back to the first
+//     subagent, then the first agent.
+//  2. Skill-less tasks prefer the first agent (human operator taking
+//     the lead) and fall back to the first subagent.
+//
+// The function is in-place on the slice; tasks the LLM already assigned
+// are left alone so the model's decision wins when it made one.
+func applyDefaultAssignees(tasks []TaskDraft, agents []AgentIdentity, subagents []SubagentIdentity) {
+	if len(agents) == 0 && len(subagents) == 0 {
+		return
+	}
+	skillToSubagent := make(map[string]string, len(subagents)*4)
+	for _, sa := range subagents {
+		for _, sk := range sa.Skills {
+			if _, exists := skillToSubagent[sk]; !exists {
+				skillToSubagent[sk] = sa.ID
+			}
+		}
+	}
+	firstSubagent := ""
+	if len(subagents) > 0 {
+		firstSubagent = subagents[0].ID
+	}
+	firstAgent := ""
+	if len(agents) > 0 {
+		firstAgent = agents[0].ID
+	}
+	for i := range tasks {
+		if strings.TrimSpace(tasks[i].PrimaryAssigneeAgentID) != "" {
+			continue
+		}
+		if len(tasks[i].RequiredSkills) > 0 {
+			picked := ""
+			for _, sk := range tasks[i].RequiredSkills {
+				if id, ok := skillToSubagent[sk]; ok {
+					picked = id
+					break
+				}
+			}
+			if picked == "" {
+				picked = firstChoice(firstSubagent, firstAgent)
+			}
+			tasks[i].PrimaryAssigneeAgentID = picked
+			continue
+		}
+		tasks[i].PrimaryAssigneeAgentID = firstChoice(firstAgent, firstSubagent)
+	}
+}
+
+func firstChoice(primary, fallback string) string {
+	if primary != "" {
+		return primary
+	}
+	return fallback
+}
+
+// validateSkillSubagent enforces the post-069 rule that any task whose
+// required_skills is non-empty must route through a subagent. It fires
+// when primary_assignee_agent_id is unset or points at something other
+// than a known subagent id. Empty subagent list downgrades this to a
+// soft warning (caller knows no subagents are available yet).
+func validateSkillSubagent(tasks []TaskDraft, subagents []SubagentIdentity) []string {
+	subIDs := make(map[string]struct{}, len(subagents))
+	for _, s := range subagents {
+		subIDs[s.ID] = struct{}{}
+	}
+	var bad []string
+	for _, t := range tasks {
+		if len(t.RequiredSkills) == 0 {
+			continue
+		}
+		if _, ok := subIDs[t.PrimaryAssigneeAgentID]; ok {
+			continue
+		}
+		bad = append(bad, t.LocalID)
+	}
+	if len(bad) == 0 {
+		return nil
+	}
+	sort.Strings(bad)
+	return []string{fmt.Sprintf("%s:%s", WarnSkillNeedsSubagent, strings.Join(bad, ","))}
 }
 
 // validateSlotTaskRefs flags any SlotDraft whose TaskLocalID doesn't
@@ -653,7 +768,7 @@ Rules:
 // buildContextPrompt is the prompt for plan generation from chat
 // context with a known agent set. The agent list is rendered so the
 // LLM can pick primary_assignee_agent_id from real IDs.
-func buildContextPrompt(chatContext string, agents []AgentIdentity) string {
+func buildContextPrompt(chatContext string, agents []AgentIdentity, subagents []SubagentIdentity) string {
 	var agentDescriptions strings.Builder
 	for _, a := range agents {
 		fmt.Fprintf(&agentDescriptions, "- Agent %q (ID: %s)\n", a.Name, a.ID)
@@ -668,13 +783,39 @@ func buildContextPrompt(chatContext string, agents []AgentIdentity) string {
 		}
 	}
 
-	return fmt.Sprintf(`You are a project planner. Based on the conversation context and the available agents below, produce a structured project plan with tasks and human/agent collaboration slots.
+	var subagentDescriptions strings.Builder
+	for _, sa := range subagents {
+		scope := "workspace"
+		if sa.IsGlobal {
+			scope = "global"
+		}
+		fmt.Fprintf(&subagentDescriptions, "- Subagent %q (ID: %s, scope: %s, category: %s)\n",
+			sa.Name, sa.ID, scope, sa.Category)
+		if sa.Description != "" {
+			fmt.Fprintf(&subagentDescriptions, "  Purpose: %s\n", truncate(sa.Description, 200))
+		}
+		if len(sa.Skills) > 0 {
+			fmt.Fprintf(&subagentDescriptions, "  Wraps skills: %s\n", strings.Join(sa.Skills, ", "))
+		}
+	}
+	if subagentDescriptions.Len() == 0 {
+		subagentDescriptions.WriteString("(no subagents available in this workspace — skill-bearing tasks will be flagged)\n")
+	}
+
+	return fmt.Sprintf(`You are a project planner. Based on the conversation context, the available agents, and the available subagents below, produce a structured project plan with tasks and human/agent collaboration slots.
 
 ## Conversation Context
 %s
 
 ## Available Agents
 %s
+
+## Available Subagents
+%s
+
+## Assignment Rule
+A *subagent* wraps one or more skills. Skills are **only reachable through a subagent** — a task that lists required_skills MUST set primary_assignee_agent_id to a subagent ID from the list above. Tasks with no required_skills may pick either a regular agent or a subagent.
+
 
 ## Output JSON Schema
 {
@@ -725,11 +866,11 @@ func buildContextPrompt(chatContext string, agents []AgentIdentity) string {
 }
 
 Rules:
-- Each task's primary_assignee_agent_id must be one of the agent IDs above (or empty if none fits).
+- Each task's primary_assignee_agent_id must be one of the IDs listed above (agent or subagent). If required_skills is non-empty, pick a subagent.
 - collaboration_mode ∈ {agent_exec_human_review, human_input_agent_exec, agent_prepare_human_action, mixed}.
 - slot_type ∈ {human_input, agent_execution, human_review}; trigger ∈ {before_execution, during_execution, before_done}.
 - depends_on lists local_id values of upstream tasks (never the same task or downstream tasks).
-- Respond with JSON only.`, truncate(chatContext, 8000), agentDescriptions.String())
+- Respond with JSON only.`, truncate(chatContext, 8000), agentDescriptions.String(), subagentDescriptions.String())
 }
 
 // MatchAgentsToSkills returns, for each TaskDraft's RequiredSkills, the

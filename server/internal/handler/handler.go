@@ -65,6 +65,11 @@ type Handler struct {
 	Secrets        service.SecretGetter
 	ASR            asr.Client
 	StorageFactory *storage.Factory
+
+	// Channel-scoped meeting transcriber — wired in main.go from env
+	// (MYTEAM_DOUBAO_*). Nil when unconfigured; SubmitChannelMeeting-
+	// Recording logs + skips transcription in that case.
+	MeetingTranscriber *service.MeetingTranscriber
 }
 
 func New(queries *db.Queries, txStarter txStarter, hub *realtime.Hub, bus *events.Bus, emailService *service.EmailService, s3 *storage.S3Storage, cfSigner *auth.CloudFrontSigner, memorySvc ...*memory.Service) *Handler {

@@ -81,6 +81,22 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 		Secrets:  secrets,
 		Fallback: storage.NewS3Adapter(s3),
 	}
+	// Channel-scoped meeting transcriber — wraps Doubao memo API.
+	// Nil-safe: endpoints degrade to "Doubao not configured" 503 when
+	// the env keys are unset so dev envs without creds still compile.
+	h.MeetingTranscriber = service.NewMeetingTranscriber(
+		queries,
+		service.LoadDoubaoMemoConfigFromEnv(),
+		func(workspaceID, eventType string, payload map[string]any) {
+			if hub == nil {
+				return
+			}
+			hub.PushSessionUpdate(workspaceID, map[string]any{
+				"type":    eventType,
+				"payload": payload,
+			})
+		},
+	)
 	// Single Claude Agent SDK runner shared across every cloud-mode invocation
 	// path so a system / personal / project agent's cloud_llm_config controls
 	// the same SDK installation regardless of who triggered it.
@@ -159,8 +175,9 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 	// WebSocket
 	mc := &membershipChecker{queries: queries}
 	pr := &patResolver{queries: queries}
+	ac := &agentActChecker{handler: h}
 	r.Get("/ws", func(w http.ResponseWriter, r *http.Request) {
-		realtime.HandleWebSocket(hub, mc, pr, w, r)
+		realtime.HandleWebSocket(hub, mc, pr, ac, w, r)
 	})
 
 	// Auth (public)
@@ -363,7 +380,21 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 					r.Post("/impersonate", h.StartImpersonation)
 					r.Post("/release", h.EndImpersonation)
 					r.Get("/impersonation", h.GetImpersonation)
+
+					// Agent inbox — pull fallback for the WS push from
+					// realtime.Hub.SendToAgent. REST is the ground truth
+					// so an agent that missed a push still recovers on poll.
+					r.Get("/inbox", h.GetAgentInbox)
 				})
+			})
+
+			// Agent ↔ agent interaction protocol (migration 075).
+			// Unified send endpoint covers DM / channel / capability
+			// broadcast / session-scoped message; schema field gives the
+			// receiver a routing hint for typed handlers.
+			r.Route("/api/interactions", func(r chi.Router) {
+				r.Post("/", h.SendInteraction)
+				r.Post("/{id}/ack", h.AckInteraction)
 			})
 
 			// Skills
@@ -379,6 +410,22 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 					r.Put("/files", h.UpsertSkillFile)
 					r.Delete("/files/{fileId}", h.DeleteSkillFile)
 					r.Post("/broadcast", h.SkillBroadcast)
+				})
+			})
+
+			// Subagents — templates that wrap skills. Only subagents can
+			// bridge an agent to a skill; agents cannot link skills
+			// directly anymore (enforced by PlanGenerator + the fact
+			// that subagent_skill is the only live write-path).
+			r.Route("/api/subagents", func(r chi.Router) {
+				r.Get("/", h.ListSubagents)
+				r.Post("/", h.CreateSubagent)
+				r.Route("/{id}", func(r chi.Router) {
+					r.Get("/", h.GetSubagent)
+					r.Patch("/", h.UpdateSubagent)
+					r.Delete("/", h.DeleteSubagent)
+					r.Post("/skills", h.LinkSubagentSkill)
+					r.Delete("/skills/{skillID}", h.UnlinkSubagentSkill)
 				})
 			})
 
@@ -434,7 +481,23 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 					// Thread API (Plan 3)
 					r.Get("/threads", h.ListThreads)
 					r.Post("/threads", h.CreateThread)
+
+					// Channel-scoped meetings (migration 076). Distinct
+					// from the thread-scoped pipeline at
+					// /api/threads/:id/meeting/*; kicked off by the
+					// channel header "开始会议" button.
+					r.Post("/meetings", h.StartChannelMeeting)
+					r.Get("/meetings", h.ListChannelMeetings)
 				})
+			})
+
+			// Meeting detail + lifecycle operations keyed by meeting id.
+			r.Route("/api/meetings/{id}", func(r chi.Router) {
+				r.Get("/", h.GetChannelMeeting)
+				r.Post("/recording", h.SubmitChannelMeetingRecording)
+				r.Post("/audio", h.UploadChannelMeetingAudio)
+				r.Patch("/notes", h.UpdateChannelMeetingNotes)
+				r.Put("/highlights", h.UpdateChannelMeetingHighlights)
 			})
 
 			// Thread API (Plan 3 / Phase 2)
@@ -496,6 +559,9 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 					r.Post("/approve", h.ApprovePlan)
 					// Plan 5 §10: Task surface scoped to a plan.
 					r.Get("/tasks", h.ListTasksByPlan)
+					// Phase 3: partial edits to the plan's input_files /
+					// user_inputs context blobs from the 计划 tab.
+					r.Patch("/context", h.UpdatePlanContext)
 				})
 			})
 
@@ -601,6 +667,18 @@ func (pr *patResolver) ResolveUserIDFromPATHash(ctx context.Context, hash string
 		return "", err
 	}
 	return uuidToString(pat.UserID), nil
+}
+
+// agentActChecker gates ws ?agent_id= against the same ownership /
+// impersonation / workspace-role rules that handler.canActAsAgent
+// enforces on the REST interaction endpoints. Reusing the handler
+// method keeps one source of truth for "can user X speak as agent Y".
+type agentActChecker struct {
+	handler *handler.Handler
+}
+
+func (ac *agentActChecker) CanActAsAgent(ctx context.Context, userID, agentID, workspaceID string) bool {
+	return ac.handler.CanActAsAgent(ctx, userID, agentID, workspaceID)
 }
 
 func uuidToString(u pgtype.UUID) string {

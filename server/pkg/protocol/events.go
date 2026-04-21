@@ -58,6 +58,14 @@ const (
 	EventSkillUpdated = "skill:updated"
 	EventSkillDeleted = "skill:deleted"
 
+	// Subagent events — subagents are agent rows with kind='subagent';
+	// keep their channel separate so UI can badge them distinctly.
+	EventSubagentCreated     = "subagent:created"
+	EventSubagentUpdated     = "subagent:updated"
+	EventSubagentDeleted     = "subagent:deleted"
+	EventSubagentSkillLinked = "subagent:skill_linked"
+	EventSubagentSkillUnlinked = "subagent:skill_unlinked"
+
 	// Daemon events
 	EventDaemonHeartbeat = "daemon:heartbeat"
 	EventDaemonRegister  = "daemon:register"

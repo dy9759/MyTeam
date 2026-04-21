@@ -132,6 +132,7 @@ func (b *opencodeBackend) processEvents(r io.Reader, ch chan<- Message) eventRes
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 0, 1024*1024), 10*1024*1024)
 
+	sawJSON := false
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
@@ -140,8 +141,19 @@ func (b *opencodeBackend) processEvents(r io.Reader, ch chan<- Message) eventRes
 
 		var event opencodeEvent
 		if err := json.Unmarshal([]byte(line), &event); err != nil {
+			// If OpenCode hasn't emitted any valid JSON yet, treat leading
+			// non-JSON output as plain text so users still see warnings,
+			// auth prompts, or early-exit messages. After the first valid
+			// JSON event, subsequent parse failures are treated as protocol
+			// corruption and silently dropped.
+			if !sawJSON {
+				content := line + "\n"
+				output.WriteString(content)
+				trySend(ch, Message{Type: MessageText, Content: content})
+			}
 			continue
 		}
+		sawJSON = true
 
 		if event.SessionID != "" {
 			sessionID = event.SessionID

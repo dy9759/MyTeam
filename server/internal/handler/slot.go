@@ -205,7 +205,21 @@ func (h *Handler) SubmitSlotInput(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "slot service unavailable")
 		return
 	}
-	updated, err := h.Slots.MarkSubmitted(r.Context(), slotID, []byte(req.Content))
+	if h.TxStarter == nil {
+		writeError(w, http.StatusInternalServerError, "transaction support unavailable")
+		return
+	}
+
+	tx, err := h.TxStarter.Begin(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "begin tx failed: "+err.Error())
+		return
+	}
+	defer func() { _ = tx.Rollback(r.Context()) }()
+
+	txQueries := h.Queries.WithTx(tx)
+	txSlots := service.NewSlotService(txQueries)
+	updated, err := txSlots.SubmitHumanInput(r.Context(), slotID, userUUID, []byte(req.Content), req.Comment)
 	if err != nil {
 		if errors.Is(err, service.ErrSlotInvalidTransition) {
 			writeError(w, http.StatusBadRequest, err.Error())
@@ -215,15 +229,65 @@ func (h *Handler) SubmitSlotInput(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	task, err = h.Queries.GetTask(r.Context(), updated.TaskID)
+	task, err = txQueries.GetTask(r.Context(), updated.TaskID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "get task failed: "+err.Error())
+		return
+	}
+	if err := tx.Commit(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "commit tx failed: "+err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"slot":            slotToResponse(*updated),
 		"task_new_status": task.Status,
 	})
+}
+
+// ListSlotSubmissions returns append-only human input submission history
+// for the given slot, newest first.
+func (h *Handler) ListSlotSubmissions(w http.ResponseWriter, r *http.Request) {
+	slotID, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+
+	slot, err := h.Queries.GetSlot(r.Context(), pgUUIDFrom(slotID))
+	if err != nil {
+		if isNotFound(err) {
+			writeError(w, http.StatusNotFound, "slot not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "get slot failed: "+err.Error())
+		return
+	}
+
+	task, err := h.Queries.GetTask(r.Context(), slot.TaskID)
+	if err != nil {
+		if isNotFound(err) {
+			writeError(w, http.StatusNotFound, "task not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "get task failed: "+err.Error())
+		return
+	}
+	if workspaceID := resolveWorkspaceID(r); workspaceID != "" && uuidToString(task.WorkspaceID) != workspaceID {
+		writeError(w, http.StatusForbidden, "slot is outside the current workspace")
+		return
+	}
+
+	rows, err := h.Queries.ListParticipantSlotSubmissions(r.Context(), pgUUIDFrom(slotID))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "list submissions failed: "+err.Error())
+		return
+	}
+
+	out := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, slotSubmissionToResponse(row))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"submissions": out})
 }
 
 // slotToResponse maps a db.ParticipantSlot into a JSON-friendly map. Mirrors
@@ -268,6 +332,26 @@ func slotToResponse(s db.ParticipantSlot) map[string]any {
 	}
 	if s.UpdatedAt.Valid {
 		out["updated_at"] = s.UpdatedAt.Time
+	}
+	return out
+}
+
+func slotSubmissionToResponse(s db.ParticipantSlotSubmission) map[string]any {
+	out := map[string]any{
+		"id":         uuidToString(s.ID),
+		"slot_id":    uuidToString(s.SlotID),
+		"task_id":    uuidToString(s.TaskID),
+		"content":    json.RawMessage(s.Content),
+		"created_at": timestampToString(s.CreatedAt),
+	}
+	if s.RunID.Valid {
+		out["run_id"] = uuidToString(s.RunID)
+	}
+	if s.SubmittedBy.Valid {
+		out["submitted_by"] = uuidToString(s.SubmittedBy)
+	}
+	if s.Comment.Valid {
+		out["comment"] = s.Comment.String
 	}
 	return out
 }

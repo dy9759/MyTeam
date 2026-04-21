@@ -18,24 +18,34 @@ import (
 // response will gain a "tasks" field in Batch D once /api/plans is wired
 // against the new Task / Slot model.
 type PlanResponse struct {
-	ID             string  `json:"id"`
-	WorkspaceID    string  `json:"workspace_id"`
-	Title          string  `json:"title"`
-	Description    *string `json:"description"`
-	SourceType     *string `json:"source_type"`
-	SourceRefID    *string `json:"source_ref_id"`
-	Constraints    *string `json:"constraints"`
-	ExpectedOutput *string `json:"expected_output"`
-	CreatedBy      string  `json:"created_by"`
-	CreatedAt      string  `json:"created_at"`
-	UpdatedAt      string  `json:"updated_at"`
-	ApprovalStatus string  `json:"approval_status"`
-	ApprovedBy     *string `json:"approved_by"`
-	ApprovedAt     *string `json:"approved_at"`
-	ProjectID      *string `json:"project_id"`
+	ID             string          `json:"id"`
+	WorkspaceID    string          `json:"workspace_id"`
+	Title          string          `json:"title"`
+	Description    *string         `json:"description"`
+	SourceType     *string         `json:"source_type"`
+	SourceRefID    *string         `json:"source_ref_id"`
+	Constraints    *string         `json:"constraints"`
+	ExpectedOutput *string         `json:"expected_output"`
+	CreatedBy      string          `json:"created_by"`
+	CreatedAt      string          `json:"created_at"`
+	UpdatedAt      string          `json:"updated_at"`
+	ApprovalStatus string          `json:"approval_status"`
+	ApprovedBy     *string         `json:"approved_by"`
+	ApprovedAt     *string         `json:"approved_at"`
+	ProjectID      *string         `json:"project_id"`
+	InputFiles     json.RawMessage `json:"input_files"`
+	UserInputs     json.RawMessage `json:"user_inputs"`
 }
 
 func planToResponse(p db.Plan) PlanResponse {
+	inputFiles := p.InputFiles
+	if inputFiles == nil {
+		inputFiles = json.RawMessage("[]")
+	}
+	userInputs := p.UserInputs
+	if userInputs == nil {
+		userInputs = json.RawMessage("{}")
+	}
 	return PlanResponse{
 		ID:             uuidToString(p.ID),
 		WorkspaceID:    uuidToString(p.WorkspaceID),
@@ -52,7 +62,56 @@ func planToResponse(p db.Plan) PlanResponse {
 		ApprovedBy:     uuidToPtr(p.ApprovedBy),
 		ApprovedAt:     timestampToPtr(p.ApprovedAt),
 		ProjectID:      uuidToPtr(p.ProjectID),
+		InputFiles:     inputFiles,
+		UserInputs:     userInputs,
 	}
+}
+
+// UpdatePlanContextRequest accepts partial updates for the plan's
+// input_files / user_inputs fields. Both are free-form JSON: files is
+// an array of {id,name,mime} entries, inputs is an object of string-
+// keyed values. Missing fields leave the stored value alone.
+type UpdatePlanContextRequest struct {
+	InputFiles *json.RawMessage `json:"input_files,omitempty"`
+	UserInputs *json.RawMessage `json:"user_inputs,omitempty"`
+}
+
+// UpdatePlanContext handles PATCH /api/plans/{planID}/context.
+func (h *Handler) UpdatePlanContext(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "planID")
+	if id == "" {
+		writeError(w, http.StatusBadRequest, "planID is required")
+		return
+	}
+	var req UpdatePlanContextRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.InputFiles == nil && req.UserInputs == nil {
+		writeError(w, http.StatusBadRequest, "nothing to update")
+		return
+	}
+
+	if _, ok := requireUserID(w, r); !ok {
+		return
+	}
+
+	params := db.UpdatePlanContextParams{ID: parseUUID(id)}
+	if req.InputFiles != nil {
+		params.InputFiles = []byte(*req.InputFiles)
+	}
+	if req.UserInputs != nil {
+		params.UserInputs = []byte(*req.UserInputs)
+	}
+
+	updated, err := h.Queries.UpdatePlanContext(r.Context(), params)
+	if err != nil {
+		slog.Error("update plan context failed", "error", err, "plan_id", id)
+		writeError(w, http.StatusInternalServerError, "failed to update plan context")
+		return
+	}
+	writeJSON(w, http.StatusOK, planToResponse(updated))
 }
 
 // CreatePlanRequest is the JSON body for POST /api/plans.

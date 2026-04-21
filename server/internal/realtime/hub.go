@@ -26,6 +26,15 @@ type PATResolver interface {
 	ResolveUserIDFromPATHash(ctx context.Context, hash string) (string, error)
 }
 
+// AgentActChecker gates the optional ?agent_id= query param on /ws.
+// Returning false makes the upgrader drop agent_id and keep the
+// connection user-scoped only (still auth'd against the workspace).
+// Nil is acceptable — when no checker is provided, agent_id is
+// ignored unconditionally (fail-closed).
+type AgentActChecker interface {
+	CanActAsAgent(ctx context.Context, userID, agentID, workspaceID string) bool
+}
+
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
 		// TODO: Restrict origins in production
@@ -34,12 +43,59 @@ var upgrader = websocket.Upgrader{
 }
 
 // Client represents a single WebSocket connection with identity.
+// agentID is optional — set when the connection is attached to a
+// specific agent identity (via impersonation / daemon runtime) so the
+// agent-interaction layer can do addressed push via SendToAgent.
+//
+// recentPushes is a small bounded set of interaction IDs that were
+// already pushed to this connection. Prevents duplicate delivery on
+// reconnect / rapid re-resolve. Ported from AgentmeshHub's
+// BoundedUUIDSet pattern (recent 2k ids is enough for typical bursts).
 type Client struct {
-	hub         *Hub
-	conn        *websocket.Conn
-	send        chan []byte
-	userID      string
-	workspaceID string
+	hub          *Hub
+	conn         *websocket.Conn
+	send         chan []byte
+	userID       string
+	workspaceID  string
+	agentID      string
+	recentPushes *boundedIDSet
+}
+
+// boundedIDSet is a FIFO-capped set of string IDs. Add returns true
+// when the id is new; false when already seen (caller should skip).
+type boundedIDSet struct {
+	mu    sync.Mutex
+	cap   int
+	order []string
+	set   map[string]struct{}
+}
+
+func newBoundedIDSet(cap int) *boundedIDSet {
+	return &boundedIDSet{
+		cap:   cap,
+		order: make([]string, 0, cap),
+		set:   make(map[string]struct{}, cap),
+	}
+}
+
+func (b *boundedIDSet) Add(id string) bool {
+	if id == "" {
+		return true
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if _, ok := b.set[id]; ok {
+		return false
+	}
+	if len(b.order) >= b.cap {
+		// Evict oldest
+		drop := b.order[0]
+		b.order = b.order[1:]
+		delete(b.set, drop)
+	}
+	b.order = append(b.order, id)
+	b.set[id] = struct{}{}
+	return true
 }
 
 // Hub manages WebSocket connections organized by workspace rooms.
@@ -223,6 +279,101 @@ func (h *Hub) Broadcast(message []byte) {
 	h.broadcast <- message
 }
 
+// SendToAgent pushes a message to every connection whose client.agentID
+// matches. No-op when no such client is connected — callers rely on the
+// REST inbox endpoint as the pull fallback (mirrors AgentMesh's WS+poll
+// resiliency).
+//
+// When dedupID is non-empty, each target client's bounded recent-push
+// set is consulted to skip duplicate delivery. This matters on
+// reconnect — an interaction that was already pushed seconds ago
+// won't hit the agent twice.
+func (h *Hub) SendToAgent(agentID string, dedupID string, message []byte) int {
+	if agentID == "" {
+		return 0
+	}
+
+	h.mu.RLock()
+	type target struct {
+		client      *Client
+		workspaceID string
+	}
+	var targets []target
+	for wsID, clients := range h.rooms {
+		for client := range clients {
+			if client.agentID == agentID {
+				targets = append(targets, target{client, wsID})
+			}
+		}
+	}
+	h.mu.RUnlock()
+
+	delivered := 0
+	var slow []target
+	for _, t := range targets {
+		if dedupID != "" && t.client.recentPushes != nil {
+			if !t.client.recentPushes.Add(dedupID) {
+				// Already pushed to this client, treat as success
+				// (AgentMesh semantics — avoid re-sending).
+				delivered++
+				continue
+			}
+		}
+		select {
+		case t.client.send <- message:
+			delivered++
+		default:
+			slow = append(slow, t)
+		}
+	}
+
+	if len(slow) > 0 {
+		h.mu.Lock()
+		for _, t := range slow {
+			if room, ok := h.rooms[t.workspaceID]; ok {
+				if _, exists := room[t.client]; exists {
+					delete(room, t.client)
+					close(t.client.send)
+					if len(room) == 0 {
+						delete(h.rooms, t.workspaceID)
+					}
+				}
+			}
+		}
+		h.mu.Unlock()
+	}
+	return delivered
+}
+
+// PushToAgent marshals msg and delegates to SendToAgent. When msg has
+// an `id` field at the top level we use it as the dedup key so the
+// bounded recent-push set can suppress duplicates across reconnects.
+// Callers without an id can pass msg through SendToAgent directly
+// with an empty dedup string.
+func (h *Hub) PushToAgent(agentID string, msg any) int {
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return 0
+	}
+	// Best-effort dedup key extraction — unmarshal lazily only when
+	// msg is a map (the common case: handlers build `map[string]any`).
+	dedupID := ""
+	if m, ok := msg.(map[string]any); ok {
+		if payload, ok := m["payload"].(map[string]any); ok {
+			if id, ok := payload["id"].(string); ok {
+				dedupID = id
+			}
+		}
+		// interaction envelopes use {type, payload: {id,...}}
+		if dedupID == "" {
+			if id, ok := m["id"].(string); ok {
+				dedupID = id
+			}
+		}
+	}
+	return h.SendToAgent(agentID, dedupID, data)
+}
+
 // PushToUser sends a message to all connections of a specific user.
 func (h *Hub) PushToUser(userID string, msg any) {
 	data, err := json.Marshal(msg)
@@ -264,9 +415,14 @@ func (h *Hub) PushSessionUpdate(workspaceID string, payload map[string]any) {
 }
 
 // HandleWebSocket upgrades an HTTP connection to WebSocket with JWT or PAT auth.
-func HandleWebSocket(hub *Hub, mc MembershipChecker, pr PATResolver, w http.ResponseWriter, r *http.Request) {
+func HandleWebSocket(hub *Hub, mc MembershipChecker, pr PATResolver, ac AgentActChecker, w http.ResponseWriter, r *http.Request) {
 	tokenStr := r.URL.Query().Get("token")
 	workspaceID := r.URL.Query().Get("workspace_id")
+	// Optional: agent_id binds this socket to an agent identity so the
+	// message bus can push addressed interactions via SendToAgent.
+	// Trusted only after the AgentActChecker says this user can speak
+	// as the given agent; without a checker the value is discarded.
+	agentID := r.URL.Query().Get("agent_id")
 
 	if tokenStr == "" || workspaceID == "" {
 		slog.Warn("ws: missing auth params", "has_token", tokenStr != "", "has_workspace", workspaceID != "")
@@ -321,6 +477,17 @@ func HandleWebSocket(hub *Hub, mc MembershipChecker, pr PATResolver, w http.Resp
 		return
 	}
 
+	// Gate the agent_id binding. Fail-closed: drop the param if we
+	// can't verify the user may act as the named agent, rather than
+	// rejecting the whole connection (web clients send this param
+	// speculatively and should still get a plain user socket).
+	if agentID != "" {
+		if ac == nil || !ac.CanActAsAgent(r.Context(), userID, agentID, workspaceID) {
+			slog.Warn("ws: agent_id rejected", "user_id", userID, "agent_id", agentID)
+			agentID = ""
+		}
+	}
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		slog.Error("websocket upgrade failed", "error", err)
@@ -328,11 +495,13 @@ func HandleWebSocket(hub *Hub, mc MembershipChecker, pr PATResolver, w http.Resp
 	}
 
 	client := &Client{
-		hub:         hub,
-		conn:        conn,
-		send:        make(chan []byte, 256),
-		userID:      userID,
-		workspaceID: workspaceID,
+		hub:          hub,
+		conn:         conn,
+		send:         make(chan []byte, 256),
+		userID:       userID,
+		workspaceID:  workspaceID,
+		agentID:      agentID,
+		recentPushes: newBoundedIDSet(2000),
 	}
 	hub.register <- client
 

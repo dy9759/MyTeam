@@ -585,6 +585,7 @@ func agentValues(a db.Agent) []any {
 		a.AutoReplyEnabled, a.AutoReplyConfig, a.DisplayName, a.Avatar, a.Bio, a.Tags,
 		a.TriggerOnChannelMention, a.NeedsAttention, a.NeedsAttentionReason,
 		a.AgentType, a.IdentityCard, a.LastActiveAt, a.Scope, a.OwnerType,
+		a.Kind, a.IsGlobal, a.Source, a.SourceRef, a.Category,
 	}
 }
 
@@ -602,6 +603,7 @@ func planValues(p db.Plan) []any {
 		p.Constraints, p.ExpectedOutput, p.CreatedBy, p.CreatedAt, p.UpdatedAt,
 		p.ApprovalStatus, p.ApprovedBy, p.ApprovedAt, p.ProjectID, p.VersionID,
 		p.TaskBrief, p.AssignedAgents, p.RiskPoints, p.ThreadID,
+		p.InputFiles, p.UserInputs,
 	}
 }
 

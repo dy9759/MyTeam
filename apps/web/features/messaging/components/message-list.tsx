@@ -19,6 +19,12 @@ interface MessageListProps {
     reply_count?: number;
     is_impersonated?: boolean;
     status?: MessageStatus;
+    // Thread bookkeeping — server stamps thread_id = parent_message_id
+    // on every row that belongs to a thread (root + replies both). A
+    // row is a reply iff thread_id is set AND not equal to the row's
+    // own id. The channel view only renders roots; replies live inside
+    // the ThreadPanel drilldown.
+    thread_id?: string;
   }>;
   currentUserId?: string;
   onOpenThread?: (messageId: string) => void;
@@ -66,10 +72,34 @@ export function MessageList({ messages, currentUserId, onOpenThread, typingUsers
     return member?.name ?? senderId.slice(0, 12);
   };
 
+  // Collapse thread replies — any message with a thread_id that isn't
+  // its own id is a reply and should live inside ThreadPanel, not the
+  // main feed. Root messages (thread_id IS NULL, or thread_id === id)
+  // stay visible and still render the "N 条回复" drill-in button.
+  const replyCountByRoot = new Map<string, number>();
+  for (const m of messages) {
+    if (m.thread_id && m.thread_id !== m.id) {
+      replyCountByRoot.set(
+        m.thread_id,
+        (replyCountByRoot.get(m.thread_id) ?? 0) + 1,
+      );
+    }
+  }
+  const rootMessages = messages.filter(
+    (m) => !m.thread_id || m.thread_id === m.id,
+  );
+
   return (
     <div className="flex-1 overflow-auto p-4 space-y-1">
-      {messages.map((msg) => {
+      {rootMessages.map((msg) => {
         const isSelected = selectedIds.has(msg.id);
+        // Merge server-provided count with the client-side tally so
+        // threads whose replies are on the current page still render
+        // the drill-in chip even when the server row lacks reply_count.
+        const effectiveReplyCount = Math.max(
+          msg.reply_count ?? 0,
+          replyCountByRoot.get(msg.id) ?? 0,
+        );
         return (
         <div
           key={msg.id}
@@ -138,13 +168,13 @@ export function MessageList({ messages, currentUserId, onOpenThread, typingUsers
               )}
 
               {/* Thread indicator */}
-              {(msg.reply_count ?? 0) > 0 && onOpenThread && (
+              {effectiveReplyCount > 0 && onOpenThread && (
                 <button
                   onClick={() => onOpenThread(msg.id)}
                   className="mt-1.5 flex items-center gap-1 text-[12px] text-primary hover:underline"
                 >
                   <MessageSquare className="h-3 w-3" />
-                  {msg.reply_count} 条回复
+                  {effectiveReplyCount} 条回复
                 </button>
               )}
             </div>

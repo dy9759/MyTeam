@@ -65,6 +65,22 @@ UPDATE task SET
     updated_at = now()
 WHERE id = $1;
 
+-- UpdateTaskFields is the user-facing edit path from the plan stepper.
+-- Accepts only the fields the UI exposes; every field is a narg so
+-- callers can omit what they don't change. The scheduler still owns
+-- status/run transitions — this statement intentionally does not touch
+-- status so the "A" (inline edit) vs "B" (re-generate) split holds.
+-- name: UpdateTaskFields :one
+UPDATE task SET
+    title               = COALESCE(sqlc.narg('title')::text,             title),
+    description         = COALESCE(sqlc.narg('description')::text,       description),
+    primary_assignee_id = COALESCE(sqlc.narg('primary_assignee_id')::uuid, primary_assignee_id),
+    required_skills     = COALESCE(sqlc.narg('required_skills')::text[], required_skills),
+    acceptance_criteria = COALESCE(sqlc.narg('acceptance_criteria')::text, acceptance_criteria),
+    updated_at          = now()
+WHERE id = $1
+RETURNING *;
+
 -- name: IncrementTaskRetry :exec
 UPDATE task SET
     current_retry = current_retry + 1,

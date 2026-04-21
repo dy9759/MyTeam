@@ -1,12 +1,16 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
-import type { Agent, Task, TaskStatus } from "@/shared/types";
+import type { Agent, Subagent, Task, TaskStatus } from "@/shared/types";
 import { Bot, Clock } from "lucide-react";
 
 interface ExecutionStepCardProps {
   step: Task;
   agents: Agent[];
+  // Optional subagent roster — required when PlanGenerator's default-
+  // assign picks a subagent (post migration 069). Without it the card
+  // falls back to the truncated UUID.
+  subagents?: Subagent[];
 }
 
 const STATUS_CONFIG: Record<
@@ -68,22 +72,27 @@ function formatDuration(startedAt?: string | null, completedAt?: string | null):
   return `${hours}时${mins}分`;
 }
 
-function getAgentDisplayName(
-  agentId: string | undefined,
+function getAssigneeDisplayName(
+  assigneeId: string | undefined,
   agents: Agent[],
+  subagents: Subagent[],
 ): string {
-  if (!agentId) return "未分配";
-  const agent = agents.find((a) => a.id === agentId);
-  return agent?.name ?? agentId.slice(0, 8);
+  if (!assigneeId) return "未分配";
+  const agent = agents.find((a) => a.id === assigneeId);
+  if (agent) return agent.name;
+  const subagent = subagents.find((s) => s.id === assigneeId);
+  if (subagent) return subagent.name;
+  return assigneeId.slice(0, 8);
 }
 
 export function ExecutionStepCard({
   step,
   agents,
+  subagents = [],
 }: ExecutionStepCardProps) {
   const statusConfig = STATUS_CONFIG[step.status] ?? STATUS_CONFIG.draft;
   const displayAgentId = step.actual_agent_id ?? step.primary_assignee_id ?? undefined;
-  const agentName = getAgentDisplayName(displayAgentId, agents);
+  const agentName = getAssigneeDisplayName(displayAgentId, agents, subagents);
   const duration = formatDuration(step.started_at, step.completed_at);
   const maxRetries = step.retry_rule?.max_retries ?? 2;
   const currentRetry = step.current_retry ?? 0;
@@ -115,7 +124,9 @@ export function ExecutionStepCard({
                 : step.step_order}
           </div>
           <div className="min-w-0 flex-1">
-            <div className="font-medium text-sm">{step.description ?? step.title}</div>
+            <div className="font-medium text-sm break-words line-clamp-3">
+              {step.description ?? step.title}
+            </div>
             <div className="flex flex-wrap items-center gap-2 mt-1.5 text-xs text-muted-foreground">
               {/* Agent */}
               <span className="inline-flex items-center gap-1">

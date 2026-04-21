@@ -26,6 +26,11 @@ import type {
   Skill,
   CreateSkillRequest,
   UpdateSkillRequest,
+  AgentInteraction,
+  ChannelMeeting,
+  Subagent,
+  CreateSubagentRequest,
+  UpdateSubagentRequest,
   SetAgentSkillsRequest,
   PersonalAccessToken,
   CreatePersonalAccessTokenRequest,
@@ -585,8 +590,15 @@ export class ApiClient implements ApiTransport {
   }
 
   // Skills
-  async listSkills(): Promise<Skill[]> {
-    return this.fetch("/api/skills");
+  async listSkills(filters?: {
+    category?: string;
+    source?: "manual" | "bundle" | "upload";
+  }): Promise<Skill[]> {
+    const qs = new URLSearchParams();
+    if (filters?.category) qs.set("category", filters.category);
+    if (filters?.source) qs.set("source", filters.source);
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return this.fetch(`/api/skills${suffix}`);
   }
 
   async getSkill(id: string): Promise<Skill> {
@@ -618,6 +630,54 @@ export class ApiClient implements ApiTransport {
     });
   }
 
+  // Subagents — templates that wrap skills; agents reach skills only
+  // through one of these (migration 069 rule).
+  async listSubagents(filters?: {
+    category?: string;
+    scope?: "global" | "workspace" | "all";
+  }): Promise<Subagent[]> {
+    const qs = new URLSearchParams();
+    if (filters?.category) qs.set("category", filters.category);
+    if (filters?.scope) qs.set("scope", filters.scope);
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return this.fetch(`/api/subagents${suffix}`);
+  }
+
+  async getSubagent(id: string): Promise<Subagent> {
+    return this.fetch(`/api/subagents/${id}`);
+  }
+
+  async createSubagent(data: CreateSubagentRequest): Promise<Subagent> {
+    return this.fetch("/api/subagents", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateSubagent(id: string, data: UpdateSubagentRequest): Promise<Subagent> {
+    return this.fetch(`/api/subagents/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteSubagent(id: string): Promise<void> {
+    await this.fetch(`/api/subagents/${id}`, { method: "DELETE" });
+  }
+
+  async linkSubagentSkill(subagentId: string, skillId: string, position = 0): Promise<void> {
+    await this.fetch(`/api/subagents/${subagentId}/skills`, {
+      method: "POST",
+      body: JSON.stringify({ skill_id: skillId, position }),
+    });
+  }
+
+  async unlinkSubagentSkill(subagentId: string, skillId: string): Promise<void> {
+    await this.fetch(`/api/subagents/${subagentId}/skills/${skillId}`, {
+      method: "DELETE",
+    });
+  }
+
   async listAgentSkills(agentId: string): Promise<Skill[]> {
     return this.fetch(`/api/agents/${agentId}/skills`);
   }
@@ -626,6 +686,116 @@ export class ApiClient implements ApiTransport {
     await this.fetch(`/api/agents/${agentId}/skills`, {
       method: "PUT",
       body: JSON.stringify(data),
+    });
+  }
+
+  // --- Agent interaction protocol (migration 075) -------------------
+  // Unified send endpoint. `target` is union-typed, exactly one field.
+  async sendInteraction(data: {
+    type: "message" | "task" | "query" | "event" | "broadcast";
+    content_type?: "text" | "json" | "file";
+    target: {
+      agent_id?: string;
+      channel?: string;
+      capability?: string;
+      session_id?: string;
+    };
+    schema?: string;
+    payload: unknown;
+    metadata?: Record<string, unknown>;
+  }): Promise<AgentInteraction> {
+    return this.fetch("/api/interactions", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  // Pull fallback for WS push. `after` is a RFC3339 timestamp cursor;
+  // omit to fetch the newest page.
+  async getAgentInbox(
+    agentId: string,
+    params?: { after?: string; limit?: number },
+  ): Promise<{ interactions: AgentInteraction[]; count: number }> {
+    const q = new URLSearchParams();
+    if (params?.after) q.set("after", params.after);
+    if (params?.limit) q.set("limit", String(params.limit));
+    const suffix = q.toString() ? `?${q.toString()}` : "";
+    return this.fetch(`/api/agents/${agentId}/inbox${suffix}`);
+  }
+
+  async ackInteraction(
+    id: string,
+    state: "delivered" | "read" = "delivered",
+  ): Promise<void> {
+    await this.fetch(`/api/interactions/${id}/ack?state=${state}`, {
+      method: "POST",
+    });
+  }
+
+  // --- Channel-scoped meetings (migration 076) ----------------------
+  async startChannelMeeting(
+    channelId: string,
+    data: { topic?: string } = {},
+  ): Promise<ChannelMeeting> {
+    return this.fetch(`/api/channels/${channelId}/meetings`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async listChannelMeetings(channelId: string, limit = 20) {
+    return this.fetch<{ meetings: ChannelMeeting[] }>(
+      `/api/channels/${channelId}/meetings?limit=${limit}`,
+    );
+  }
+
+  async getChannelMeeting(id: string): Promise<ChannelMeeting> {
+    return this.fetch(`/api/meetings/${id}`);
+  }
+
+  async uploadChannelMeetingAudio(
+    id: string,
+    blob: Blob,
+    opts: { filename?: string; durationSec?: number } = {},
+  ): Promise<ChannelMeeting> {
+    const form = new FormData();
+    form.append("file", blob, opts.filename ?? "meeting.webm");
+    if (opts.durationSec) form.append("duration", String(opts.durationSec));
+    // Raw fetch to avoid the JSON Content-Type the shared `fetch`
+    // helper injects — multipart must set its own boundary.
+    const res = await fetch(
+      `${this.baseUrl}/api/meetings/${id}/audio`,
+      {
+        method: "POST",
+        headers: this.getAuthHeaders(),
+        body: form,
+        credentials: "include",
+      },
+    );
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(body || `upload failed: ${res.status}`);
+    }
+    return res.json();
+  }
+
+  async updateChannelMeetingNotes(
+    id: string,
+    notes: string,
+  ): Promise<ChannelMeeting> {
+    return this.fetch(`/api/meetings/${id}/notes`, {
+      method: "PATCH",
+      body: JSON.stringify({ notes }),
+    });
+  }
+
+  async updateChannelMeetingHighlights(
+    id: string,
+    highlights: Array<{ t?: number; text: string; [k: string]: unknown }>,
+  ): Promise<ChannelMeeting> {
+    return this.fetch(`/api/meetings/${id}/highlights`, {
+      method: "PUT",
+      body: JSON.stringify({ highlights }),
     });
   }
 
@@ -938,15 +1108,39 @@ export class ApiClient implements ApiTransport {
   }
 
   async listProjectVersions(id: string, init?: RequestInit): Promise<ProjectVersion[]> {
-    return this.fetch(`/api/projects/${id}/versions`, init);
+    // Server returns {versions: [...], total: N}; older call sites treat
+    // the response as a bare array, which used to cause `s.versions is
+    // not iterable` crashes in the store after a fork. Unwrap here so
+    // every caller gets the array shape the type signature promises.
+    const resp = await this.fetch<{ versions: ProjectVersion[]; total: number } | ProjectVersion[]>(
+      `/api/projects/${id}/versions`,
+      init,
+    );
+    return Array.isArray(resp) ? resp : resp.versions ?? [];
   }
 
   async listProjectRuns(id: string, init?: RequestInit): Promise<ProjectRun[]> {
-    return this.fetch(`/api/projects/${id}/runs`, init);
+    const resp = await this.fetch<{ runs: ProjectRun[]; total: number } | ProjectRun[]>(
+      `/api/projects/${id}/runs`,
+      init,
+    );
+    return Array.isArray(resp) ? resp : resp.runs ?? [];
   }
 
   async approvePlan(planId: string): Promise<void> {
     await this.fetch(`/api/plans/${planId}/approve`, { method: 'POST' });
+  }
+
+  // Phase 3 plan context editor — partial update of input_files +
+  // user_inputs. Pass only the keys you're changing.
+  async updatePlanContext(
+    planId: string,
+    body: { input_files?: unknown[]; user_inputs?: Record<string, unknown> },
+  ): Promise<void> {
+    await this.fetch(`/api/plans/${planId}/context`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
   }
 
   async rejectPlan(projectId: string, reason: string): Promise<void> {
@@ -1013,6 +1207,28 @@ export class ApiClient implements ApiTransport {
 
   async getTask(id: string): Promise<Task> {
     return this.fetch<Task>(`/api/tasks/${id}`);
+  }
+
+  // Matches the PATCH surface UpdateTaskHandler exposes: status-only
+  // for cancel, and the editable metadata fields the plan stepper
+  // writes back (title / description / primary_assignee_id /
+  // required_skills / acceptance_criteria). Every field is optional so
+  // callers send only what they changed.
+  async updateTask(
+    id: string,
+    body: {
+      status?: "cancelled";
+      title?: string;
+      description?: string;
+      primary_assignee_id?: string | null;
+      required_skills?: string[];
+      acceptance_criteria?: string;
+    },
+  ): Promise<Task> {
+    return this.fetch<Task>(`/api/tasks/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
   }
 
   async listTasksByPlan(planId: string): Promise<Task[]> {

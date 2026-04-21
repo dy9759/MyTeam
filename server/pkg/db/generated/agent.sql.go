@@ -20,7 +20,8 @@ RETURNING
     runtime_id, instructions, archived_at, archived_by,
     auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags,
     trigger_on_channel_mention, needs_attention, needs_attention_reason,
-    agent_type, identity_card, last_active_at, scope, owner_type
+    agent_type, identity_card, last_active_at, scope, owner_type,
+    kind, is_global, source, source_ref, category
 `
 
 type ArchiveAgentParams struct {
@@ -61,6 +62,11 @@ func (q *Queries) ArchiveAgent(ctx context.Context, arg ArchiveAgentParams) (Age
 		&i.LastActiveAt,
 		&i.Scope,
 		&i.OwnerType,
+		&i.Kind,
+		&i.IsGlobal,
+		&i.Source,
+		&i.SourceRef,
+		&i.Category,
 	)
 	return i, err
 }
@@ -266,7 +272,8 @@ RETURNING
     runtime_id, instructions, archived_at, archived_by,
     auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags,
     trigger_on_channel_mention, needs_attention, needs_attention_reason,
-    agent_type, identity_card, last_active_at, scope, owner_type
+    agent_type, identity_card, last_active_at, scope, owner_type,
+    kind, is_global, source, source_ref, category
 `
 
 type CreateAgentParams struct {
@@ -327,6 +334,11 @@ func (q *Queries) CreateAgent(ctx context.Context, arg CreateAgentParams) (Agent
 		&i.LastActiveAt,
 		&i.Scope,
 		&i.OwnerType,
+		&i.Kind,
+		&i.IsGlobal,
+		&i.Source,
+		&i.SourceRef,
+		&i.Category,
 	)
 	return i, err
 }
@@ -472,7 +484,8 @@ SELECT
     runtime_id, instructions, archived_at, archived_by,
     auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags,
     trigger_on_channel_mention, needs_attention, needs_attention_reason,
-    agent_type, identity_card, last_active_at, scope, owner_type
+    agent_type, identity_card, last_active_at, scope, owner_type,
+    kind, is_global, source, source_ref, category
 FROM agent
 WHERE id = $1
 `
@@ -510,6 +523,11 @@ func (q *Queries) GetAgent(ctx context.Context, id pgtype.UUID) (Agent, error) {
 		&i.LastActiveAt,
 		&i.Scope,
 		&i.OwnerType,
+		&i.Kind,
+		&i.IsGlobal,
+		&i.Source,
+		&i.SourceRef,
+		&i.Category,
 	)
 	return i, err
 }
@@ -521,7 +539,8 @@ SELECT
     runtime_id, instructions, archived_at, archived_by,
     auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags,
     trigger_on_channel_mention, needs_attention, needs_attention_reason,
-    agent_type, identity_card, last_active_at, scope, owner_type
+    agent_type, identity_card, last_active_at, scope, owner_type,
+    kind, is_global, source, source_ref, category
 FROM agent
 WHERE id = $1 AND workspace_id = $2
 `
@@ -564,6 +583,11 @@ func (q *Queries) GetAgentInWorkspace(ctx context.Context, arg GetAgentInWorkspa
 		&i.LastActiveAt,
 		&i.Scope,
 		&i.OwnerType,
+		&i.Kind,
+		&i.IsGlobal,
+		&i.Source,
+		&i.SourceRef,
+		&i.Category,
 	)
 	return i, err
 }
@@ -783,7 +807,8 @@ SELECT
     runtime_id, instructions, archived_at, archived_by,
     auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags,
     trigger_on_channel_mention, needs_attention, needs_attention_reason,
-    agent_type, identity_card, last_active_at, scope, owner_type
+    agent_type, identity_card, last_active_at, scope, owner_type,
+    kind, is_global, source, source_ref, category
 FROM agent
 WHERE workspace_id = $1 AND archived_at IS NULL
 ORDER BY created_at ASC
@@ -832,6 +857,11 @@ func (q *Queries) ListAgents(ctx context.Context, workspaceID pgtype.UUID) ([]Ag
 			&i.LastActiveAt,
 			&i.Scope,
 			&i.OwnerType,
+			&i.Kind,
+			&i.IsGlobal,
+			&i.Source,
+			&i.SourceRef,
+			&i.Category,
 		); err != nil {
 			return nil, err
 		}
@@ -850,7 +880,8 @@ SELECT
     runtime_id, instructions, archived_at, archived_by,
     auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags,
     trigger_on_channel_mention, needs_attention, needs_attention_reason,
-    agent_type, identity_card, last_active_at, scope, owner_type
+    agent_type, identity_card, last_active_at, scope, owner_type,
+    kind, is_global, source, source_ref, category
 FROM agent
 WHERE workspace_id = $1
 ORDER BY created_at ASC
@@ -895,6 +926,11 @@ func (q *Queries) ListAllAgents(ctx context.Context, workspaceID pgtype.UUID) ([
 			&i.LastActiveAt,
 			&i.Scope,
 			&i.OwnerType,
+			&i.Kind,
+			&i.IsGlobal,
+			&i.Source,
+			&i.SourceRef,
+			&i.Category,
 		); err != nil {
 			return nil, err
 		}
@@ -1066,7 +1102,8 @@ RETURNING
     runtime_id, instructions, archived_at, archived_by,
     auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags,
     trigger_on_channel_mention, needs_attention, needs_attention_reason,
-    agent_type, identity_card, last_active_at, scope, owner_type
+    agent_type, identity_card, last_active_at, scope, owner_type,
+    kind, is_global, source, source_ref, category
 `
 
 func (q *Queries) RestoreAgent(ctx context.Context, id pgtype.UUID) (Agent, error) {
@@ -1102,6 +1139,11 @@ func (q *Queries) RestoreAgent(ctx context.Context, id pgtype.UUID) (Agent, erro
 		&i.LastActiveAt,
 		&i.Scope,
 		&i.OwnerType,
+		&i.Kind,
+		&i.IsGlobal,
+		&i.Source,
+		&i.SourceRef,
+		&i.Category,
 	)
 	return i, err
 }
@@ -1195,7 +1237,8 @@ RETURNING
     runtime_id, instructions, archived_at, archived_by,
     auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags,
     trigger_on_channel_mention, needs_attention, needs_attention_reason,
-    agent_type, identity_card, last_active_at, scope, owner_type
+    agent_type, identity_card, last_active_at, scope, owner_type,
+    kind, is_global, source, source_ref, category
 `
 
 type UpdateAgentParams struct {
@@ -1253,6 +1296,11 @@ func (q *Queries) UpdateAgent(ctx context.Context, arg UpdateAgentParams) (Agent
 		&i.LastActiveAt,
 		&i.Scope,
 		&i.OwnerType,
+		&i.Kind,
+		&i.IsGlobal,
+		&i.Source,
+		&i.SourceRef,
+		&i.Category,
 	)
 	return i, err
 }
@@ -1266,7 +1314,8 @@ RETURNING
     runtime_id, instructions, archived_at, archived_by,
     auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags,
     trigger_on_channel_mention, needs_attention, needs_attention_reason,
-    agent_type, identity_card, last_active_at, scope, owner_type
+    agent_type, identity_card, last_active_at, scope, owner_type,
+    kind, is_global, source, source_ref, category
 `
 
 type UpdateAgentStatusParams struct {
@@ -1307,6 +1356,11 @@ func (q *Queries) UpdateAgentStatus(ctx context.Context, arg UpdateAgentStatusPa
 		&i.LastActiveAt,
 		&i.Scope,
 		&i.OwnerType,
+		&i.Kind,
+		&i.IsGlobal,
+		&i.Source,
+		&i.SourceRef,
+		&i.Category,
 	)
 	return i, err
 }

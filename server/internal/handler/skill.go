@@ -20,15 +20,19 @@ import (
 // --- Response structs ---
 
 type SkillResponse struct {
-	ID          string `json:"id"`
-	WorkspaceID string `json:"workspace_id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Content     string `json:"content"`
-	Config      any    `json:"config"`
+	ID          string  `json:"id"`
+	WorkspaceID string  `json:"workspace_id"`
+	Name        string  `json:"name"`
+	Description string  `json:"description"`
+	Content     string  `json:"content"`
+	Config      any     `json:"config"`
+	Category    string  `json:"category"`
+	Source      string  `json:"source"`
+	SourceRef   *string `json:"source_ref,omitempty"`
+	IsGlobal    bool    `json:"is_global"`
 	CreatedBy   *string `json:"created_by"`
-	CreatedAt   string `json:"created_at"`
-	UpdatedAt   string `json:"updated_at"`
+	CreatedAt   string  `json:"created_at"`
+	UpdatedAt   string  `json:"updated_at"`
 }
 
 type SkillFileResponse struct {
@@ -61,6 +65,10 @@ func skillToResponse(s db.Skill) SkillResponse {
 		Description: s.Description,
 		Content:     s.Content,
 		Config:      config,
+		Category:    s.Category,
+		Source:      s.Source,
+		SourceRef:   textToPtr(s.SourceRef),
+		IsGlobal:    s.IsGlobal,
 		CreatedBy:   uuidToPtr(s.CreatedBy),
 		CreatedAt:   timestampToString(s.CreatedAt),
 		UpdatedAt:   timestampToString(s.UpdatedAt),
@@ -142,11 +150,27 @@ func (h *Handler) loadSkillForUser(w http.ResponseWriter, r *http.Request, id st
 
 // --- Skill CRUD ---
 
+// ListSkills returns the union of workspace-scoped skills and global
+// bundle/upload skills, optionally filtered by `category` and/or
+// `source` query params. Migration 069 added the columns that make this
+// a single SQL query (no per-scope fan-out).
 func (h *Handler) ListSkills(w http.ResponseWriter, r *http.Request) {
 	workspaceID := resolveWorkspaceID(r)
 
-	skills, err := h.Queries.ListSkillsByWorkspace(r.Context(), parseUUID(workspaceID))
+	var wsParam pgtype.UUID
+	if workspaceID != "" {
+		wsParam = parseUUID(workspaceID)
+	}
+
+	params := db.ListSkillsCombinedParams{
+		WorkspaceID: wsParam,
+		Category:    textFromQuery(r, "category"),
+		Source:      textFromQuery(r, "source"),
+	}
+
+	skills, err := h.Queries.ListSkillsCombined(r.Context(), params)
 	if err != nil {
+		slog.Error("list skills combined failed", "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to list skills")
 		return
 	}
@@ -157,6 +181,17 @@ func (h *Handler) ListSkills(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// textFromQuery returns a pgtype.Text that is Valid only when the
+// query param is explicitly present and non-empty, so SQL `narg()`
+// handling treats absent filters as NULL (match all).
+func textFromQuery(r *http.Request, key string) pgtype.Text {
+	v := strings.TrimSpace(r.URL.Query().Get(key))
+	if v == "" {
+		return pgtype.Text{}
+	}
+	return pgtype.Text{String: v, Valid: true}
 }
 
 func (h *Handler) GetSkill(w http.ResponseWriter, r *http.Request) {

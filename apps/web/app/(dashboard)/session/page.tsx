@@ -10,6 +10,7 @@ import { useAuthStore } from "@/features/auth";
 import { MessageList } from "@/features/messaging/components/message-list";
 import { MessageInput } from "@/features/messaging/components/message-input";
 import { ThreadPanel } from "@/features/messaging/components/thread-panel";
+import { MeetingPanel } from "@/features/messaging/components/meeting-panel";
 import { GenerateProjectButton } from "@/features/messaging/components/generate-project-button";
 import { PromoteToChannelButton } from "@/features/messaging/components/promote-to-channel-button";
 import { InviteChannelMemberDialog } from "@/features/messaging/components/invite-channel-member-dialog";
@@ -35,6 +36,7 @@ import {
   Search,
   Plus,
   UserPlus,
+  Mic,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -660,6 +662,7 @@ export default function SessionPage() {
 
   // Thread state
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+  const [meetingPanelOpen, setMeetingPanelOpen] = useState(false);
 
   // Threads have their own UUIDs, distinct from the root message. Opening
   // a thread from a message requires creating the thread row first (or
@@ -897,15 +900,32 @@ export default function SessionPage() {
                       />
                     )}
                     {selectedType === "channel" && (
-                      <button
-                        type="button"
-                        onClick={() => setShowInviteDialog(true)}
-                        title="邀请成员/Agent"
-                        className="flex items-center gap-1 px-2 h-7 rounded-md text-[12px] text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-                      >
-                        <UserPlus className="h-3.5 w-3.5" />
-                        邀请
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMeetingPanelOpen(true);
+                            // Meeting + thread panels share the same
+                            // right-rail slot so opening one closes the
+                            // other.
+                            setActiveThreadId(null);
+                          }}
+                          title="开始会议"
+                          className="flex items-center gap-1 px-2 h-7 rounded-md text-[12px] text-primary hover:bg-accent transition-colors"
+                        >
+                          <Mic className="h-3.5 w-3.5" />
+                          开始会议
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowInviteDialog(true)}
+                          title="邀请成员/Agent"
+                          className="flex items-center gap-1 px-2 h-7 rounded-md text-[12px] text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                        >
+                          <UserPlus className="h-3.5 w-3.5" />
+                          邀请
+                        </button>
+                      </>
                     )}
                   </>
                 )}
@@ -950,6 +970,12 @@ export default function SessionPage() {
                   threadId={activeThreadId}
                   channelId={selectedId}
                   onClose={() => setActiveThreadId(null)}
+                />
+              )}
+              {meetingPanelOpen && selectedType === "channel" && selectedId && (
+                <MeetingPanel
+                  channelId={selectedId}
+                  onClose={() => setMeetingPanelOpen(false)}
                 />
               )}
             </div>

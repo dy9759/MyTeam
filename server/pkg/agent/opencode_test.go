@@ -655,11 +655,10 @@ func TestOpencodeProcessEventsEmptyLines(t *testing.T) {
 	b := &opencodeBackend{cfg: Config{Logger: slog.Default()}}
 	ch := make(chan Message, 256)
 
-	// Empty lines and invalid JSON should be skipped without error.
+	// Empty and whitespace-only lines are skipped; valid JSON still parses.
 	lines := strings.Join([]string{
 		"",
 		"   ",
-		"not json at all",
 		`{"type":"text","sessionID":"ses_ok","part":{"text":"valid"}}`,
 		"",
 	}, "\n")
@@ -683,6 +682,82 @@ func TestOpencodeProcessEventsEmptyLines(t *testing.T) {
 	}
 	if len(msgs) != 1 || msgs[0].Type != MessageText {
 		t.Errorf("expected 1 text message, got %d: %+v", len(msgs), msgs)
+	}
+}
+
+// TestOpencodeProcessEventsPlainTextFallbackBeforeJSON verifies that non-JSON
+// lines emitted before the first valid JSON event are surfaced as text so
+// users don't lose auth prompts, warnings, or early-exit messages if OpenCode
+// prints them to stdout instead of stderr.
+func TestOpencodeProcessEventsPlainTextFallbackBeforeJSON(t *testing.T) {
+	t.Parallel()
+
+	b := &opencodeBackend{cfg: Config{Logger: slog.Default()}}
+	ch := make(chan Message, 256)
+
+	lines := strings.Join([]string{
+		"Checking authentication...",
+		"Warning: using beta model",
+		`{"type":"text","sessionID":"ses_ok","part":{"text":"hello"}}`,
+	}, "\n")
+
+	result := b.processEvents(strings.NewReader(lines), ch)
+
+	if result.status != "completed" {
+		t.Errorf("status: got %q, want %q", result.status, "completed")
+	}
+	wantOutput := "Checking authentication...\nWarning: using beta model\nhello"
+	if result.output != wantOutput {
+		t.Errorf("output: got %q, want %q", result.output, wantOutput)
+	}
+
+	close(ch)
+	var msgs []Message
+	for m := range ch {
+		msgs = append(msgs, m)
+	}
+	if len(msgs) != 3 {
+		t.Fatalf("expected 3 text messages, got %d: %+v", len(msgs), msgs)
+	}
+	for i, want := range []string{"Checking authentication...\n", "Warning: using beta model\n", "hello"} {
+		if msgs[i].Type != MessageText {
+			t.Errorf("msg[%d].Type: got %v, want MessageText", i, msgs[i].Type)
+		}
+		if msgs[i].Content != want {
+			t.Errorf("msg[%d].Content: got %q, want %q", i, msgs[i].Content, want)
+		}
+	}
+}
+
+// TestOpencodeProcessEventsNoFallbackAfterJSON verifies that once the first
+// valid JSON event has been observed, subsequent non-JSON lines are treated
+// as protocol corruption and silently dropped — we don't want garbled output
+// mixed into the message stream once the JSON protocol is confirmed active.
+func TestOpencodeProcessEventsNoFallbackAfterJSON(t *testing.T) {
+	t.Parallel()
+
+	b := &opencodeBackend{cfg: Config{Logger: slog.Default()}}
+	ch := make(chan Message, 256)
+
+	lines := strings.Join([]string{
+		`{"type":"text","sessionID":"ses_ok","part":{"text":"first"}}`,
+		"corrupt line after JSON",
+		`{"type":"text","sessionID":"ses_ok","part":{"text":"second"}}`,
+	}, "\n")
+
+	result := b.processEvents(strings.NewReader(lines), ch)
+
+	if result.output != "firstsecond" {
+		t.Errorf("output: got %q, want %q", result.output, "firstsecond")
+	}
+
+	close(ch)
+	var msgs []Message
+	for m := range ch {
+		msgs = append(msgs, m)
+	}
+	if len(msgs) != 2 {
+		t.Fatalf("expected 2 messages (corrupt line dropped), got %d: %+v", len(msgs), msgs)
 	}
 }
 

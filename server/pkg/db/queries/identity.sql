@@ -17,7 +17,8 @@ SELECT
     runtime_id, instructions, archived_at, archived_by,
     auto_reply_enabled, auto_reply_config, display_name, avatar, bio, tags,
     trigger_on_channel_mention, needs_attention, needs_attention_reason,
-    agent_type, identity_card, last_active_at, scope, owner_type
+    agent_type, identity_card, last_active_at, scope, owner_type,
+    kind, is_global, source, source_ref, category
 FROM agent
 WHERE workspace_id = $1 AND agent_type = $2 AND archived_at IS NULL
 ORDER BY created_at ASC;

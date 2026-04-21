@@ -234,8 +234,19 @@ func (h *Handler) CreateProjectFromChat(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	// Step 3: Generate plan with context using PlanGenerator
-	genResult, err := h.PlanGenerator.GeneratePlanWithContext(ctx, chatContext, agentIdentities, workspaceID)
+	// Step 3a: Load subagent templates (global + workspace) so the
+	// planner can route skill-bearing tasks through them. Per
+	// migration 069, skills are only reachable via a subagent; the
+	// generator enforces this through validateSkillSubagent.
+	subagentIdentities, err := h.loadSubagentIdentities(ctx, workspaceID)
+	if err != nil {
+		slog.Error("failed to load subagents for plan generation", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to load subagents")
+		return
+	}
+
+	// Step 3b: Generate plan with context using PlanGenerator
+	genResult, err := h.PlanGenerator.GeneratePlanWithContext(ctx, chatContext, agentIdentities, subagentIdentities, workspaceID)
 	if err != nil {
 		slog.Error("failed to generate plan from chat context", "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to generate plan")
@@ -329,6 +340,54 @@ func (h *Handler) CreateProjectFromChat(w http.ResponseWriter, r *http.Request) 
 		slog.Warn("link plan to project failed", "error", err, "plan_id", uuidToString(plan.ID), "project_id", uuidToString(project.ID))
 	}
 
+	// Step 8.5: Create the plan's companion thread inside the project
+	// channel. This thread is where the scheduler posts per-task
+	// completion updates so the channel gets a structured feed instead
+	// of raw event spam. Failure is non-fatal — the plan still works
+	// without a thread, it just loses the progress stream.
+	planThreadTitle := fmt.Sprintf("Plan · %s", genResult.Plan.Title)
+	thread, err := h.Queries.CreateThread(ctx, db.CreateThreadParams{
+		ChannelID:     ch.ID,
+		WorkspaceID:   parseUUID(workspaceID),
+		Title:         pgtype.Text{String: planThreadTitle, Valid: true},
+		CreatedBy:     parseUUID(userID),
+		CreatedByType: pgtype.Text{String: "member", Valid: true},
+		Status:        pgtype.Text{String: "active", Valid: true},
+	})
+	if err != nil {
+		slog.Warn("create plan thread failed", "error", err, "plan_id", uuidToString(plan.ID))
+	} else {
+		if err := h.Queries.UpdatePlanThreadID(ctx, db.UpdatePlanThreadIDParams{
+			ID:       plan.ID,
+			ThreadID: thread.ID,
+		}); err != nil {
+			slog.Warn("link plan thread failed", "error", err, "plan_id", uuidToString(plan.ID), "thread_id", uuidToString(thread.ID))
+		}
+		// Seed the thread with an intro message so the channel feed has
+		// context and the thread is immediately navigable. Use the
+		// creator's identity as sender — system messages would hide the
+		// plan owner and defeat the "who started this" question.
+		introContent := fmt.Sprintf(
+			"📋 **%s**\n\n已创建 %d 个任务。每当任务完成，会在该 thread 中更新执行信息。",
+			genResult.Plan.Title,
+			len(taskRefs),
+		)
+		if _, err := h.Queries.CreateMessage(ctx, db.CreateMessageParams{
+			WorkspaceID: parseUUID(workspaceID),
+			SenderID:    parseUUID(userID),
+			SenderType:  "member",
+			ChannelID:   ch.ID,
+			ThreadID:    thread.ID,
+			Content:     introContent,
+			ContentType: "text",
+			Type:        "channel",
+			Metadata:    []byte("{}"),
+		}); err != nil {
+			slog.Warn("post plan thread intro failed", "error", err)
+		}
+		plan.ThreadID = thread.ID
+	}
+
 	channelIDStr := uuidToString(ch.ID)
 	projectResp := projectToResponse(project)
 	// from-chat returns the channel id at the response level for convenience —
@@ -374,6 +433,41 @@ func (h *Handler) CreateProjectFromChat(w http.ResponseWriter, r *http.Request) 
 	)
 
 	writeJSON(w, http.StatusCreated, resp)
+}
+
+// loadSubagentIdentities returns the subagent pool visible to the
+// workspace (globals + workspace-local), hydrated with their linked
+// skills so the plan-generation prompt can steer skill-bearing tasks
+// toward a subagent. Enumerating skills per subagent is bounded by the
+// bundle size + user-linked rows, so the extra query count is small.
+func (h *Handler) loadSubagentIdentities(ctx context.Context, workspaceID string) ([]service.SubagentIdentity, error) {
+	rows, err := h.Queries.ListSubagents(ctx, db.ListSubagentsParams{
+		WorkspaceID: parseUUID(workspaceID),
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]service.SubagentIdentity, 0, len(rows))
+	for _, row := range rows {
+		skills, err := h.Queries.ListSubagentSkills(ctx, row.ID)
+		if err != nil {
+			slog.Warn("loadSubagentIdentities: skills query failed; continuing without roster",
+				"subagent_id", uuidToString(row.ID), "error", err)
+		}
+		skillNames := make([]string, 0, len(skills))
+		for _, s := range skills {
+			skillNames = append(skillNames, s.Name)
+		}
+		out = append(out, service.SubagentIdentity{
+			ID:          uuidToString(row.ID),
+			Name:        row.Name,
+			Description: row.Description,
+			Category:    row.Category,
+			IsGlobal:    row.IsGlobal,
+			Skills:      skillNames,
+		})
+	}
+	return out, nil
 }
 
 // materializePlanDrafts inserts Task and ParticipantSlot rows for the
