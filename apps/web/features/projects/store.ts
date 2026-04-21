@@ -110,7 +110,14 @@ export const useProjectStore = create<ProjectState & ProjectActions>((set, get) 
   forkProject: async (id, branchName, reason) => {
     try {
       const version = await api.forkProject(id, { branch_name: branchName, fork_reason: reason });
-      set((s) => ({ versions: [...s.versions, version] }));
+      set((s) => {
+        // Guard: older api.listProjectVersions returned the raw
+        // {versions,total} wrapper and poisoned state as an object.
+        // Keep a tight invariant here so a stale session can't crash
+        // the fork flow even before the user reloads.
+        const prior = Array.isArray(s.versions) ? s.versions : [];
+        return { versions: [...prior, version] };
+      });
       toast.success("项目已分叉");
     } catch (err) {
       logger.error("fork project failed", err);

@@ -996,11 +996,23 @@ export class ApiClient implements ApiTransport {
   }
 
   async listProjectVersions(id: string, init?: RequestInit): Promise<ProjectVersion[]> {
-    return this.fetch(`/api/projects/${id}/versions`, init);
+    // Server returns {versions: [...], total: N}; older call sites treat
+    // the response as a bare array, which used to cause `s.versions is
+    // not iterable` crashes in the store after a fork. Unwrap here so
+    // every caller gets the array shape the type signature promises.
+    const resp = await this.fetch<{ versions: ProjectVersion[]; total: number } | ProjectVersion[]>(
+      `/api/projects/${id}/versions`,
+      init,
+    );
+    return Array.isArray(resp) ? resp : resp.versions ?? [];
   }
 
   async listProjectRuns(id: string, init?: RequestInit): Promise<ProjectRun[]> {
-    return this.fetch(`/api/projects/${id}/runs`, init);
+    const resp = await this.fetch<{ runs: ProjectRun[]; total: number } | ProjectRun[]>(
+      `/api/projects/${id}/runs`,
+      init,
+    );
+    return Array.isArray(resp) ? resp : resp.runs ?? [];
   }
 
   async approvePlan(planId: string): Promise<void> {
