@@ -1085,6 +1085,28 @@ export class ApiClient implements ApiTransport {
     return this.fetch<Task>(`/api/tasks/${id}`);
   }
 
+  // Matches the PATCH surface UpdateTaskHandler exposes: status-only
+  // for cancel, and the editable metadata fields the plan stepper
+  // writes back (title / description / primary_assignee_id /
+  // required_skills / acceptance_criteria). Every field is optional so
+  // callers send only what they changed.
+  async updateTask(
+    id: string,
+    body: {
+      status?: "cancelled";
+      title?: string;
+      description?: string;
+      primary_assignee_id?: string | null;
+      required_skills?: string[];
+      acceptance_criteria?: string;
+    },
+  ): Promise<Task> {
+    return this.fetch<Task>(`/api/tasks/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
+  }
+
   async listTasksByPlan(planId: string): Promise<Task[]> {
     // Server may wrap as {tasks: []}; if so, unwrap. Adapt after Batch D wires API.
     const resp = await this.fetch<{ tasks: Task[] } | Task[]>(`/api/plans/${planId}/tasks`);

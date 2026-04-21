@@ -19,6 +19,7 @@ import { VersionTree } from "@/features/projects/components/version-tree";
 import { ExecutionStepCard } from "@/features/projects/components/execution-step-card";
 import { OrchestrationGraph } from "@/features/projects/components/orchestration-graph";
 import { OrchestrationDAG } from "@/features/projects/components/orchestration-dag";
+import { PlanStepper } from "@/features/projects/components/plan-stepper";
 import { MessageInput } from "@/features/messaging/components/message-input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -498,6 +499,23 @@ export default function ProjectDetailPage({ projectId }: ProjectDetailProps) {
   const hasPlan = Boolean(plan);
   const hasTasks = sortedTasks.length > 0;
 
+  // Edit gate for the plan stepper. Inline field edits (A) are cheap
+  // and safe, so we allow them any time a run isn't actively touching
+  // the tasks; lifecycle-changing regeneration (B) has its own guard
+  // wherever it's wired.
+  const runStatus = activeRun?.status;
+  const planEditable =
+    currentProject.status !== "archived" &&
+    runStatus !== "running" &&
+    runStatus !== "paused";
+  const planReadOnlyReason = !planEditable
+    ? runStatus === "running" || runStatus === "paused"
+      ? "执行中,暂不可编辑"
+      : currentProject.status === "archived"
+        ? "项目已归档"
+        : undefined
+    : undefined;
+
   return (
     <div className="flex flex-1 min-h-0 flex-col overflow-auto p-6">
       {pollingErrors.length > 0 && (
@@ -620,8 +638,11 @@ export default function ProjectDetailPage({ projectId }: ProjectDetailProps) {
           )}
         </TabsContent>
 
-        {/* Tab 1: Plan */}
+        {/* Tab: 计划 */}
         <TabsContent value="plan" className="space-y-4">
+          {/* 上下文 — chat refs + placeholders for files / user inputs */}
+          <PlanContextSection project={currentProject} plan={plan} />
+
           {(plan as any)?.task_brief && (
             <div className="border border-border rounded-lg p-4 bg-card">
               <h3 className="text-sm font-medium text-foreground mb-2">任务简报</h3>
@@ -632,21 +653,31 @@ export default function ProjectDetailPage({ projectId }: ProjectDetailProps) {
           )}
 
           <div>
-            <h3 className="text-sm font-medium mb-3">计划步骤</h3>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium">计划步骤</h3>
+              {hasTasks && (
+                <span className="text-[11px] text-muted-foreground">
+                  {sortedTasks.length} 步
+                </span>
+              )}
+            </div>
             {!hasPlan ? (
               <div className="text-center py-8 border-2 border-dashed rounded-lg text-muted-foreground text-sm">
                 暂无计划。将聊天消息选中并通过“Generate Project”生成计划。
               </div>
-            ) : !hasTasks ? (
-              <div className="text-center py-8 border-2 border-dashed rounded-lg text-muted-foreground text-sm">
-                计划已创建，但尚未生成任务。稍后刷新或检查 Plan Generator 日志。
-              </div>
             ) : (
-              <div className="space-y-3">
-                {sortedTasks.map((t) => (
-                  <ExecutionStepCard key={t.id} step={t} agents={agents} subagents={subagents} />
-                ))}
-              </div>
+              <PlanStepper
+                tasks={sortedTasks}
+                agents={agents}
+                subagents={subagents}
+                editable={planEditable}
+                readOnlyReason={planReadOnlyReason}
+                onTaskUpdated={(updated) => {
+                  setTasks((prev) =>
+                    prev.map((t) => (t.id === updated.id ? updated : t)),
+                  );
+                }}
+              />
             )}
           </div>
 
@@ -1064,6 +1095,120 @@ function RunSummaryBar({
         </span>
       </div>
       <Progress value={progressPct} className="h-2" />
+    </div>
+  );
+}
+
+/* ---------- Plan context section ---------- */
+
+// Renders the plan's input surface — chat refs today, plus slotted
+// placeholders for input_files and user_inputs so the UI is ready to
+// pick up those fields once Phase 3 lands them in the plan row.
+function PlanContextSection({
+  project,
+  plan,
+}: {
+  project: import("@/shared/types").Project;
+  plan: import("@/shared/types").Plan | undefined;
+}) {
+  const convs = project.source_conversations ?? [];
+  const files = ((plan as any)?.input_files ?? []) as Array<{
+    id?: string;
+    name?: string;
+  }>;
+  const userInputs = ((plan as any)?.user_inputs ?? {}) as Record<string, unknown>;
+
+  const emptyEverywhere =
+    convs.length === 0 &&
+    files.length === 0 &&
+    Object.keys(userInputs).length === 0;
+
+  return (
+    <div className="border border-border rounded-lg bg-card">
+      <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+        <h3 className="text-sm font-medium">上下文</h3>
+        <span className="text-[11px] text-muted-foreground font-mono">
+          会话 {convs.length} · 文件 {files.length} · 字段 {Object.keys(userInputs).length}
+        </span>
+      </div>
+      {emptyEverywhere ? (
+        <div className="p-4 text-xs text-muted-foreground">
+          尚无上下文。生成计划时选中的消息、附加文件、填写字段都会在此汇总。
+        </div>
+      ) : (
+        <div className="divide-y divide-border">
+          {convs.length > 0 && (
+            <div className="p-4">
+              <div className="text-[10px] text-muted-foreground/80 font-mono uppercase tracking-wider mb-1.5">
+                会话引用
+              </div>
+              <ul className="space-y-1">
+                {convs.map((c, i) => {
+                  const subset = (c as any).type === "message_subset";
+                  const msgIds =
+                    subset && Array.isArray((c as any).message_ids)
+                      ? (c as any).message_ids
+                      : [];
+                  return (
+                    <li
+                      key={`${c.conversation_id}-${i}`}
+                      className="flex items-center gap-2 text-xs font-mono text-muted-foreground"
+                    >
+                      <Badge variant="outline" className="text-[10px]">
+                        {c.type}
+                      </Badge>
+                      <span className="truncate">
+                        {c.conversation_id.slice(0, 12)}…
+                      </span>
+                      {subset && (
+                        <span className="text-[10px] text-muted-foreground/70">
+                          {msgIds.length} 条消息
+                        </span>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
+          {files.length > 0 && (
+            <div className="p-4">
+              <div className="text-[10px] text-muted-foreground/80 font-mono uppercase tracking-wider mb-1.5">
+                附加文件
+              </div>
+              <ul className="space-y-1">
+                {files.map((f, i) => (
+                  <li
+                    key={f.id ?? i}
+                    className="text-xs font-mono text-muted-foreground truncate"
+                  >
+                    {f.name ?? f.id ?? "file"}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {Object.keys(userInputs).length > 0 && (
+            <div className="p-4">
+              <div className="text-[10px] text-muted-foreground/80 font-mono uppercase tracking-wider mb-1.5">
+                用户填写
+              </div>
+              <dl className="space-y-1 text-xs">
+                {Object.entries(userInputs).map(([k, v]) => (
+                  <div key={k} className="flex gap-2">
+                    <dt className="text-muted-foreground shrink-0 font-mono">
+                      {k}
+                    </dt>
+                    <dd className="truncate">
+                      {typeof v === "string" ? v : JSON.stringify(v)}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

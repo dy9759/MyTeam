@@ -441,6 +441,74 @@ func (q *Queries) UpdateTaskDependsOn(ctx context.Context, arg UpdateTaskDepends
 	return err
 }
 
+const updateTaskFields = `-- name: UpdateTaskFields :one
+UPDATE task SET
+    title               = COALESCE($2::text,             title),
+    description         = COALESCE($3::text,       description),
+    primary_assignee_id = COALESCE($4::uuid, primary_assignee_id),
+    required_skills     = COALESCE($5::text[], required_skills),
+    acceptance_criteria = COALESCE($6::text, acceptance_criteria),
+    updated_at          = now()
+WHERE id = $1
+RETURNING id, plan_id, run_id, workspace_id, title, description, step_order, depends_on, primary_assignee_id, fallback_agent_ids, required_skills, collaboration_mode, acceptance_criteria, status, actual_agent_id, current_retry, started_at, completed_at, result, error, timeout_rule, retry_rule, escalation_policy, input_context_refs, output_refs, created_at, updated_at
+`
+
+type UpdateTaskFieldsParams struct {
+	ID                 pgtype.UUID `json:"id"`
+	Title              pgtype.Text `json:"title"`
+	Description        pgtype.Text `json:"description"`
+	PrimaryAssigneeID  pgtype.UUID `json:"primary_assignee_id"`
+	RequiredSkills     []string    `json:"required_skills"`
+	AcceptanceCriteria pgtype.Text `json:"acceptance_criteria"`
+}
+
+// UpdateTaskFields is the user-facing edit path from the plan stepper.
+// Accepts only the fields the UI exposes; every field is a narg so
+// callers can omit what they don't change. The scheduler still owns
+// status/run transitions — this statement intentionally does not touch
+// status so the "A" (inline edit) vs "B" (re-generate) split holds.
+func (q *Queries) UpdateTaskFields(ctx context.Context, arg UpdateTaskFieldsParams) (Task, error) {
+	row := q.db.QueryRow(ctx, updateTaskFields,
+		arg.ID,
+		arg.Title,
+		arg.Description,
+		arg.PrimaryAssigneeID,
+		arg.RequiredSkills,
+		arg.AcceptanceCriteria,
+	)
+	var i Task
+	err := row.Scan(
+		&i.ID,
+		&i.PlanID,
+		&i.RunID,
+		&i.WorkspaceID,
+		&i.Title,
+		&i.Description,
+		&i.StepOrder,
+		&i.DependsOn,
+		&i.PrimaryAssigneeID,
+		&i.FallbackAgentIds,
+		&i.RequiredSkills,
+		&i.CollaborationMode,
+		&i.AcceptanceCriteria,
+		&i.Status,
+		&i.ActualAgentID,
+		&i.CurrentRetry,
+		&i.StartedAt,
+		&i.CompletedAt,
+		&i.Result,
+		&i.Error,
+		&i.TimeoutRule,
+		&i.RetryRule,
+		&i.EscalationPolicy,
+		&i.InputContextRefs,
+		&i.OutputRefs,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const updateTaskStatus = `-- name: UpdateTaskStatus :one
 UPDATE task SET
     status = $2,
