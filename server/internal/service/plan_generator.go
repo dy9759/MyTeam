@@ -31,8 +31,8 @@ import (
 	"strings"
 
 	"github.com/multica-ai/multica/server/internal/util"
+	"github.com/multica-ai/multica/server/pkg/agent_runner"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
-	"github.com/multica-ai/multica/server/pkg/llmclient"
 )
 
 // GeneratePlanResult is the unified return type of every PlanGenerator
@@ -146,12 +146,17 @@ type llmGeneratedSlot struct {
 	ExpectedOutput  string `json:"expected_output"`
 }
 
+// PlanGeneratorService runs structured plan generation via the Claude Agent
+// SDK (server/pkg/agent_runner). It routes every call through the same
+// Python child-process pipeline used by personal-agent auto-replies, so the
+// model + kernel + base_url are configured in one place (AGENT_LLM_* env).
 type PlanGeneratorService struct {
 	Queries *db.Queries
+	Runner  agent_runner.AgentRunner
 }
 
-func NewPlanGeneratorService(q *db.Queries) *PlanGeneratorService {
-	return &PlanGeneratorService{Queries: q}
+func NewPlanGeneratorService(q *db.Queries, runner agent_runner.AgentRunner) *PlanGeneratorService {
+	return &PlanGeneratorService{Queries: q, Runner: runner}
 }
 
 // GeneratePlanFromText parses a natural-language request into a Task +
@@ -187,22 +192,25 @@ func (s *PlanGeneratorService) runLLMOrFallback(
 	agents []AgentIdentity,
 	workspaceID string,
 ) (*GeneratePlanResult, error) {
-	llmCfg := llmclient.FromEnv()
-	llmCfg.MaxTokens = 4096
+	cfg := LoadCloudLLMConfigFromEnv()
 
-	if llmCfg.APIKey == "" {
+	if cfg.APIKey == "" || s.Runner == nil {
 		res := fallbackPlan(fallbackInput, agents)
 		res.Warnings = append(res.Warnings, WarnLLMUnavailable)
 		return s.validate(res, agents), nil
 	}
 
-	text, err := llmclient.New(llmCfg).Chat(
-		ctx,
-		"You are a project planning assistant. Always respond with valid JSON matching the requested schema. Never include any prose outside the JSON.",
-		[]llmclient.Message{{Role: "user", Content: prompt}},
-	)
+	runnerCfg := agent_runner.Config{
+		Kernel:       cfg.Kernel,
+		BaseURL:      cfg.BaseURL,
+		APIKey:       cfg.APIKey,
+		Model:        cfg.Model,
+		SystemPrompt: "You are a project planning assistant. Always respond with valid JSON matching the requested schema. Never include any prose outside the JSON.",
+	}
+
+	text, err := s.Runner.Run(ctx, prompt, runnerCfg)
 	if err != nil {
-		slog.Warn("plan generator: LLM call failed", "error", err)
+		slog.Warn("plan generator: Claude Agent SDK call failed", "error", err)
 		res := fallbackPlan(fallbackInput, agents)
 		res.Warnings = append(res.Warnings, WarnLLMUnavailable)
 		return s.validate(res, agents), nil

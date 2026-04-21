@@ -8,19 +8,22 @@ import (
 	"strings"
 
 	"github.com/multica-ai/multica/server/internal/util"
+	"github.com/multica-ai/multica/server/pkg/agent_runner"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
-	"github.com/multica-ai/multica/server/pkg/llmclient"
 )
 
 // IdentityGeneratorService generates identity cards for agents based on their
-// profile, task history, skills, and workspace context.
+// profile, task history, skills, and workspace context. Calls run through
+// the same Claude Agent SDK runner as PlanGenerator and personal-agent
+// auto-replies — single env config (AGENT_LLM_*) for every system agent.
 type IdentityGeneratorService struct {
 	Queries *db.Queries
+	Runner  agent_runner.AgentRunner
 }
 
 // NewIdentityGeneratorService creates a new IdentityGeneratorService.
-func NewIdentityGeneratorService(q *db.Queries) *IdentityGeneratorService {
-	return &IdentityGeneratorService{Queries: q}
+func NewIdentityGeneratorService(q *db.Queries, runner agent_runner.AgentRunner) *IdentityGeneratorService {
+	return &IdentityGeneratorService{Queries: q, Runner: runner}
 }
 
 // GenerateCard generates an identity card for an agent based on:
@@ -84,9 +87,9 @@ Completed Task Summaries: %s`,
 		strings.Join(completedSummaries, "; "),
 	)
 
-	// 6. Call LLM to generate structured identity card.
-	llmCfg := llmclient.FromEnv()
-	if llmCfg.APIKey == "" {
+	// 6. Call Claude Agent SDK to generate structured identity card.
+	cfg := LoadCloudLLMConfigFromEnv()
+	if cfg.APIKey == "" || s.Runner == nil {
 		// Fallback: build a basic card without LLM.
 		return buildBasicIdentityCard(agent, skillNames, completedSummaries), nil
 	}
@@ -105,11 +108,17 @@ Respond with JSON only:
   "description_auto": "A concise auto-generated description of this agent based on its history and capabilities"
 }`, contextInfo)
 
-	text, err := llmclient.New(llmCfg).Chat(ctx, "You are an agent profiler. Always respond with valid JSON matching the requested schema.", []llmclient.Message{
-		{Role: "user", Content: prompt},
-	})
+	runnerCfg := agent_runner.Config{
+		Kernel:       cfg.Kernel,
+		BaseURL:      cfg.BaseURL,
+		APIKey:       cfg.APIKey,
+		Model:        cfg.Model,
+		SystemPrompt: "You are an agent profiler. Always respond with valid JSON matching the requested schema.",
+	}
+
+	text, err := s.Runner.Run(ctx, prompt, runnerCfg)
 	if err != nil {
-		slog.Warn("identity generator: LLM call failed", "error", err)
+		slog.Warn("identity generator: Claude Agent SDK call failed", "error", err)
 		return buildBasicIdentityCard(agent, skillNames, completedSummaries), nil
 	}
 

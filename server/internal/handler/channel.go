@@ -101,6 +101,127 @@ func (h *Handler) GetChannel(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, channelToResponse(ch))
 }
 
+// POST /api/channels/from-dm
+//
+// Creates a new channel and seeds it with the selected DM messages as
+// history. Adds the current user, the peer (when peer_type == "member"),
+// and the peer (when peer_type == "agent") as channel members. Message
+// authorship is preserved so the resulting channel reads as a continuation
+// of the original chat.
+func (h *Handler) CreateChannelFromDM(w http.ResponseWriter, r *http.Request) {
+	type CreateRequest struct {
+		Name       string   `json:"name"`
+		PeerID     string   `json:"peer_id"`
+		PeerType   string   `json:"peer_type"`
+		MessageIDs []string `json:"message_ids,omitempty"`
+	}
+
+	var req CreateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.Name == "" {
+		writeError(w, http.StatusBadRequest, "name required")
+		return
+	}
+	if req.PeerID == "" {
+		writeError(w, http.StatusBadRequest, "peer_id required")
+		return
+	}
+	if req.PeerType != "member" && req.PeerType != "agent" {
+		writeError(w, http.StatusBadRequest, "peer_type must be 'member' or 'agent'")
+		return
+	}
+
+	userID, ok := requireUserID(w, r)
+	if !ok {
+		return
+	}
+	workspaceID := resolveWorkspaceID(r)
+	if workspaceID == "" {
+		writeError(w, http.StatusBadRequest, "workspace_id is required")
+		return
+	}
+
+	ctx := r.Context()
+
+	ch, err := h.Queries.CreateChannel(ctx, db.CreateChannelParams{
+		WorkspaceID:   parseUUID(workspaceID),
+		Name:          req.Name,
+		CreatedBy:     parseUUID(userID),
+		CreatedByType: "member",
+	})
+	if err != nil {
+		if isUniqueViolation(err) {
+			writeError(w, http.StatusConflict, "channel name already exists")
+			return
+		}
+		slog.Warn("create channel from dm failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to create channel")
+		return
+	}
+
+	// Auto-join creator.
+	_ = h.Queries.AddChannelMember(ctx, db.AddChannelMemberParams{
+		ChannelID:  ch.ID,
+		MemberID:   parseUUID(userID),
+		MemberType: "member",
+	})
+
+	// Add the DM peer. Agents count as members for channel-membership purposes.
+	_ = h.Queries.AddChannelMember(ctx, db.AddChannelMemberParams{
+		ChannelID:  ch.ID,
+		MemberID:   parseUUID(req.PeerID),
+		MemberType: req.PeerType,
+	})
+
+	// Copy selected DM messages into the new channel so users keep context.
+	// When MessageIDs is empty we skip copying — the channel stays empty and
+	// the user can start fresh.
+	copied := 0
+	if len(req.MessageIDs) > 0 {
+		messages, err := h.Queries.ListDMMessages(ctx, db.ListDMMessagesParams{
+			WorkspaceID: parseUUID(workspaceID),
+			SelfID:      parseUUID(userID),
+			SelfType:    "member",
+			PeerID:      parseUUID(req.PeerID),
+			PeerType:    strToText(req.PeerType),
+			LimitCount:  500,
+			OffsetCount: 0,
+		})
+		if err != nil {
+			slog.Warn("list dm messages for channel seed failed", "error", err)
+		} else {
+			messages = filterMessagesByID(messages, req.MessageIDs)
+			for _, m := range messages {
+				_, err := h.Queries.CreateMessage(ctx, db.CreateMessageParams{
+					WorkspaceID: parseUUID(workspaceID),
+					SenderID:    m.SenderID,
+					SenderType:  m.SenderType,
+					ChannelID:   ch.ID,
+					Content:     m.Content,
+					ContentType: m.ContentType,
+					Type:        m.Type,
+				})
+				if err != nil {
+					slog.Warn("copy dm message to channel failed", "error", err, "message_id", uuidToString(m.ID))
+					continue
+				}
+				copied++
+			}
+		}
+	}
+
+	h.publish("channel:created", workspaceID, "member", userID, map[string]any{
+		"channel": channelToResponse(ch),
+	})
+
+	resp := channelToResponse(ch)
+	resp["copied_messages"] = copied
+	writeJSON(w, http.StatusCreated, resp)
+}
+
 // POST /api/channels/{channelID}/join
 func (h *Handler) JoinChannel(w http.ResponseWriter, r *http.Request) {
 	channelID := chi.URLParam(r, "channelID")
@@ -124,6 +245,96 @@ func (h *Handler) JoinChannel(w http.ResponseWriter, r *http.Request) {
 	h.publish("channel:member_added", workspaceID, "member", userID, map[string]any{
 		"channel_id": channelID,
 		"member_id":  userID,
+	})
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// POST /api/channels/{channelID}/members
+//
+// Invites a workspace member or agent into the channel. Idempotent — a
+// second invite for the same (member_id, member_type) pair is a no-op.
+func (h *Handler) AddChannelMemberByID(w http.ResponseWriter, r *http.Request) {
+	channelID := chi.URLParam(r, "channelID")
+
+	type InviteRequest struct {
+		MemberID   string `json:"member_id"`
+		MemberType string `json:"member_type"`
+	}
+	var req InviteRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.MemberID == "" {
+		writeError(w, http.StatusBadRequest, "member_id required")
+		return
+	}
+	if req.MemberType != "member" && req.MemberType != "agent" {
+		writeError(w, http.StatusBadRequest, "member_type must be 'member' or 'agent'")
+		return
+	}
+
+	userID, ok := requireUserID(w, r)
+	if !ok {
+		return
+	}
+
+	err := h.Queries.AddChannelMember(r.Context(), db.AddChannelMemberParams{
+		ChannelID:  parseUUID(channelID),
+		MemberID:   parseUUID(req.MemberID),
+		MemberType: req.MemberType,
+	})
+	if err != nil {
+		slog.Warn("invite channel member failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to invite member")
+		return
+	}
+
+	workspaceID := resolveWorkspaceID(r)
+	h.publish("channel:member_added", workspaceID, "member", userID, map[string]any{
+		"channel_id":  channelID,
+		"member_id":   req.MemberID,
+		"member_type": req.MemberType,
+	})
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// DELETE /api/channels/{channelID}/members/{memberID}
+//
+// Removes a member or agent from the channel. `member_type` is required
+// as a query param since members and agents share the UUID space.
+func (h *Handler) RemoveChannelMemberByID(w http.ResponseWriter, r *http.Request) {
+	channelID := chi.URLParam(r, "channelID")
+	memberID := chi.URLParam(r, "memberID")
+	memberType := r.URL.Query().Get("member_type")
+	if memberType != "member" && memberType != "agent" {
+		writeError(w, http.StatusBadRequest, "member_type query param must be 'member' or 'agent'")
+		return
+	}
+
+	userID, ok := requireUserID(w, r)
+	if !ok {
+		return
+	}
+
+	err := h.Queries.RemoveChannelMember(r.Context(), db.RemoveChannelMemberParams{
+		ChannelID:  parseUUID(channelID),
+		MemberID:   parseUUID(memberID),
+		MemberType: memberType,
+	})
+	if err != nil {
+		slog.Warn("remove channel member failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to remove member")
+		return
+	}
+
+	workspaceID := resolveWorkspaceID(r)
+	h.publish("channel:member_removed", workspaceID, "member", userID, map[string]any{
+		"channel_id":  channelID,
+		"member_id":   memberID,
+		"member_type": memberType,
 	})
 
 	w.WriteHeader(http.StatusNoContent)
@@ -399,6 +610,11 @@ func (h *Handler) TransferFounder(w http.ResponseWriter, r *http.Request) {
 }
 
 func channelToResponse(ch db.Channel) map[string]any {
+	var archivedAt *string
+	if ch.ArchivedAt.Valid {
+		s := timestampToString(ch.ArchivedAt)
+		archivedAt = &s
+	}
 	return map[string]any{
 		"id":              uuidToString(ch.ID),
 		"workspace_id":    uuidToString(ch.WorkspaceID),
@@ -409,5 +625,55 @@ func channelToResponse(ch db.Channel) map[string]any {
 		"visibility":      ch.Visibility,
 		"category":        textToPtr(ch.Category),
 		"created_at":      timestampToString(ch.CreatedAt),
+		"archived_at":     archivedAt,
 	}
+}
+
+// PATCH /api/channels/{channelID}/archive
+// Marks the channel as archived (archived_at = NOW()). Idempotent — a
+// second archive is a no-op. Archive is workspace-wide; use Unarchive to
+// restore.
+func (h *Handler) ArchiveChannel(w http.ResponseWriter, r *http.Request) {
+	channelID := chi.URLParam(r, "channelID")
+	userID, ok := requireUserID(w, r)
+	if !ok {
+		return
+	}
+
+	if err := h.Queries.ArchiveChannel(r.Context(), parseUUID(channelID)); err != nil {
+		slog.Warn("archive channel failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to archive channel")
+		return
+	}
+
+	workspaceID := resolveWorkspaceID(r)
+	h.publish("channel:archived", workspaceID, "member", userID, map[string]any{
+		"channel_id": channelID,
+	})
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// PATCH /api/channels/{channelID}/unarchive
+// Clears archived_at (sets it to NULL), returning the channel to the
+// active list.
+func (h *Handler) UnarchiveChannel(w http.ResponseWriter, r *http.Request) {
+	channelID := chi.URLParam(r, "channelID")
+	userID, ok := requireUserID(w, r)
+	if !ok {
+		return
+	}
+
+	if err := h.Queries.UnarchiveChannel(r.Context(), parseUUID(channelID)); err != nil {
+		slog.Warn("unarchive channel failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to unarchive channel")
+		return
+	}
+
+	workspaceID := resolveWorkspaceID(r)
+	h.publish("channel:unarchived", workspaceID, "member", userID, map[string]any{
+		"channel_id": channelID,
+	})
+
+	w.WriteHeader(http.StatusNoContent)
 }

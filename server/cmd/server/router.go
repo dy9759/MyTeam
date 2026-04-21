@@ -86,15 +86,15 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 	// the same SDK installation regardless of who triggered it.
 	cloudRunner := agent_runner.NewRunner()
 	h.AutoReplyService = service.NewAutoReplyService(queries, hub, cloudRunner)
-	h.PlanGenerator = service.NewPlanGeneratorService(queries)
-	h.IdentityGenerator = service.NewIdentityGeneratorService(queries)
+	h.PlanGenerator = service.NewPlanGeneratorService(queries, cloudRunner)
+	h.IdentityGenerator = service.NewIdentityGeneratorService(queries, cloudRunner)
 	// Scheduler / Slots / Artifacts / Reviews / Quota are constructed inside
 	// handler.New so route handlers and lifecycle services share the same
 	// instances. See internal/handler/handler.go.
 
-	// Identity generator + scheduler
-	identityGen := service.NewIdentityGeneratorService(queries)
-	identitySched := service.NewIdentitySchedulerService(queries, identityGen)
+	// Identity generator + scheduler. Reuse the handler-bound instance so the
+	// scheduler writes through the same Runner + Queries as ad-hoc invocations.
+	identitySched := service.NewIdentitySchedulerService(queries, h.IdentityGenerator)
 	identitySched.Start()
 
 	// Start auto-reply poll daemon
@@ -393,6 +393,12 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 				r.Get("/{runtimeId}/update/{updateId}", h.GetUpdate)
 			})
 
+			// DM conversation per-user state (archive).
+			r.Route("/api/conversations", func(r chi.Router) {
+				r.Post("/archive", h.ArchiveDMConversation)
+				r.Get("/archived", h.ListArchivedDMPeers)
+			})
+
 			// Messaging (AgentMesh integration)
 			r.Route("/api/messages", func(r chi.Router) {
 				r.Post("/", h.CreateMessage)
@@ -408,17 +414,22 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 			r.Route("/api/channels", func(r chi.Router) {
 				r.Post("/", h.CreateChannel)
 				r.Get("/", h.ListChannels)
+				r.Post("/from-dm", h.CreateChannelFromDM)
 				r.Route("/{channelID}", func(r chi.Router) {
 					r.Get("/", h.GetChannel)
 					r.Post("/join", h.JoinChannel)
 					r.Post("/leave", h.LeaveChannel)
 					r.Get("/members", h.ListChannelMembers)
+					r.Post("/members", h.AddChannelMemberByID)
+					r.Delete("/members/{memberID}", h.RemoveChannelMemberByID)
 					r.Get("/messages", h.ListChannelMessages)
 					r.Patch("/visibility", h.UpdateChannelVisibility)
 					r.Patch("/category", h.UpdateChannelCategory)
 					r.Post("/transfer-founder", h.TransferFounder)
 					r.Post("/split", h.SplitChannel)
 					r.Post("/merge-request", h.CreateMergeRequest)
+					r.Post("/archive", h.ArchiveChannel)
+					r.Post("/unarchive", h.UnarchiveChannel)
 					// Thread API (Plan 3)
 					r.Get("/threads", h.ListThreads)
 					r.Post("/threads", h.CreateThread)
@@ -502,6 +513,7 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 					r.Get("/artifacts", h.ListTaskArtifacts)
 				})
 			})
+			r.Get("/api/slots/{id}/submissions", h.ListSlotSubmissions)
 			r.Post("/api/slots/{id}/submit", h.SubmitSlotInput)
 			r.Route("/api/artifacts/{id}", func(r chi.Router) {
 				r.Get("/", h.GetArtifactHandler)
@@ -528,7 +540,7 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 					r.Post("/fork", h.ForkProject)
 					r.Get("/versions", h.ListProjectVersions)
 					r.Get("/runs", h.GetProjectRuns)
-					r.Post("/approve", h.ApprovePlan)
+					r.Post("/start", h.StartProjectExecution)
 					r.Post("/reject", h.RejectPlan)
 					r.Get("/files", h.GetFilesByProject)
 				})

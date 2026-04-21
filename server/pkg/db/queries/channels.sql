@@ -12,6 +12,12 @@ SELECT * FROM channel WHERE workspace_id = $1 AND name = $2;
 -- name: ListChannels :many
 SELECT * FROM channel WHERE workspace_id = $1 ORDER BY created_at ASC;
 
+-- name: ArchiveChannel :exec
+UPDATE channel SET archived_at = NOW() WHERE id = $1;
+
+-- name: UnarchiveChannel :exec
+UPDATE channel SET archived_at = NULL WHERE id = $1;
+
 -- name: DeleteChannel :exec
 DELETE FROM channel WHERE id = $1;
 

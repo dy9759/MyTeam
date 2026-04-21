@@ -22,10 +22,15 @@ import (
 // recent 100 messages — the legacy whole-conversation behavior. The UI uses
 // this to let a user multi-select messages and turn just those into a
 // project (PRD §7 "selected chat → todolist").
+//
+// PeerType is required when Type == "dm". DM messages are stored with
+// recipient_id/recipient_type, so we must know whether the peer is a member
+// or an agent to query the right rows via ListDMMessages.
 type SourceRef struct {
 	Type       string   `json:"type"`                  // "channel", "dm", "thread"
-	ID         string   `json:"id"`                    // UUID of the channel/dm/thread
+	ID         string   `json:"id"`                    // UUID of the channel/dm/thread peer
 	MessageIDs []string `json:"message_ids,omitempty"` // optional subset filter
+	PeerType   string   `json:"peer_type,omitempty"`   // "member" | "agent" — required for dm
 }
 
 // CreateProjectFromChatRequest is the request body for POST /api/projects/from-chat.
@@ -148,13 +153,25 @@ func (h *Handler) CreateProjectFromChat(w http.ResponseWriter, r *http.Request) 
 			sourceConversations = append(sourceConversations, sourceConversationEntry(ref))
 
 		case "dm":
-			messages, err := h.Queries.ListChannelMessages(ctx, db.ListChannelMessagesParams{
-				ChannelID: parseUUID(ref.ID),
-				Limit:     100,
-				Offset:    0,
+			peerType := ref.PeerType
+			if peerType == "" {
+				peerType = "member"
+			}
+			if peerType != "member" && peerType != "agent" {
+				writeError(w, http.StatusBadRequest, fmt.Sprintf("invalid peer_type: %s", peerType))
+				return
+			}
+			messages, err := h.Queries.ListDMMessages(ctx, db.ListDMMessagesParams{
+				WorkspaceID: parseUUID(workspaceID),
+				SelfID:      parseUUID(userID),
+				SelfType:    "member",
+				PeerID:      parseUUID(ref.ID),
+				PeerType:    strToText(peerType),
+				LimitCount:  100,
+				OffsetCount: 0,
 			})
 			if err != nil {
-				slog.Warn("failed to fetch DM messages for project context", "dm_id", ref.ID, "error", err)
+				slog.Warn("failed to fetch DM messages for project context", "peer_id", ref.ID, "error", err)
 			} else {
 				messages = filterMessagesByID(messages, ref.MessageIDs)
 				contextParts = append(contextParts, formatMessagesAsContext(messages, "dm", ""))
@@ -325,7 +342,7 @@ func (h *Handler) CreateProjectFromChat(w http.ResponseWriter, r *http.Request) 
 		PlanResponse:   planToResponse(plan),
 		TaskBrief:      genResult.Plan.TaskBrief,
 		AssignedAgents: assignedAgentsJSON,
-		ApprovalStatus: "draft",
+		ApprovalStatus: plan.ApprovalStatus,
 	}
 
 	combinedWarnings := append([]string{}, genResult.Warnings...)

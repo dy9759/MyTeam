@@ -6,6 +6,7 @@ package db
 
 import (
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/pgvector/pgvector-go"
 )
 
 type ActivityLog struct {
@@ -215,6 +216,7 @@ type Channel struct {
 	ProjectID            pgtype.UUID        `json:"project_id"`
 	LinkedProjectIds     []pgtype.UUID      `json:"linked_project_ids"`
 	FounderID            pgtype.UUID        `json:"founder_id"`
+	ArchivedAt           pgtype.Timestamptz `json:"archived_at"`
 }
 
 type ChannelMember struct {
@@ -265,6 +267,15 @@ type DaemonToken struct {
 	DaemonID    string             `json:"daemon_id"`
 	ExpiresAt   pgtype.Timestamptz `json:"expires_at"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
+type DmConversationState struct {
+	UserID      pgtype.UUID        `json:"user_id"`
+	PeerID      pgtype.UUID        `json:"peer_id"`
+	PeerType    string             `json:"peer_type"`
+	WorkspaceID pgtype.UUID        `json:"workspace_id"`
+	ArchivedAt  pgtype.Timestamptz `json:"archived_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }
 
 type Execution struct {
@@ -431,6 +442,19 @@ type Member struct {
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 }
 
+type MemoryChunk struct {
+	ID          pgtype.UUID        `json:"id"`
+	MemoryID    pgtype.UUID        `json:"memory_id"`
+	WorkspaceID pgtype.UUID        `json:"workspace_id"`
+	ByteOffset  int64              `json:"byte_offset"`
+	ByteLen     int64              `json:"byte_len"`
+	Text        string             `json:"text"`
+	Embedding   pgvector.Vector    `json:"embedding"`
+	Model       string             `json:"model"`
+	Dim         int32              `json:"dim"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
 type MemoryRecord struct {
 	ID          pgtype.UUID        `json:"id"`
 	WorkspaceID pgtype.UUID        `json:"workspace_id"`
@@ -512,6 +536,17 @@ type ParticipantSlot struct {
 	CreatedAt       pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
 	Content         []byte             `json:"content"`
+}
+
+type ParticipantSlotSubmission struct {
+	ID          pgtype.UUID        `json:"id"`
+	SlotID      pgtype.UUID        `json:"slot_id"`
+	TaskID      pgtype.UUID        `json:"task_id"`
+	RunID       pgtype.UUID        `json:"run_id"`
+	SubmittedBy pgtype.UUID        `json:"submitted_by"`
+	Content     []byte             `json:"content"`
+	Comment     pgtype.Text        `json:"comment"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 }
 
 type PersonalAccessToken struct {
