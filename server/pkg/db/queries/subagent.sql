@@ -100,6 +100,67 @@ RETURNING
 -- name: DeleteSubagent :exec
 DELETE FROM agent WHERE id = $1 AND kind = 'subagent' AND source <> 'bundle';
 
+-- Idempotent INSERT…SELECT mirroring migration 074. Called by the
+-- skills bundle loader after each sync so newly-added bundle
+-- subagents automatically materialize into workspace-level role
+-- agents the plan generator can pick from. NOT EXISTS on
+-- (workspace_id, name) keeps it a no-op for subagents that were
+-- already seeded on a prior boot.
+-- name: SeedRoleAgentsFromBundleSubagents :exec
+INSERT INTO agent (
+    workspace_id, name, description, instructions,
+    status, visibility, agent_type, kind,
+    owner_type, owner_id, category, source,
+    identity_card, runtime_id
+)
+SELECT
+    w.id AS workspace_id,
+    sa.name,
+    sa.description,
+    sa.instructions,
+    'idle',
+    'workspace',
+    'personal_agent',
+    'agent',
+    'organization',
+    NULL::uuid,
+    sa.category,
+    'manual',
+    jsonb_build_object(
+        'seeded_from_subagent_id', sa.id,
+        'source_ref',              sa.source_ref,
+        'category',                sa.category,
+        'capabilities',            jsonb_build_array(sa.category)
+    ) AS identity_card,
+    (
+        SELECT r.id
+        FROM agent_runtime r
+        WHERE r.workspace_id = w.id
+          AND r.mode         = 'cloud'
+        ORDER BY r.created_at ASC
+        LIMIT 1
+    ) AS runtime_id
+FROM workspace w
+CROSS JOIN agent sa
+WHERE sa.kind      = 'subagent'
+  AND sa.source    = 'bundle'
+  AND sa.is_global = TRUE
+  AND NOT EXISTS (
+      SELECT 1
+      FROM agent existing
+      WHERE existing.workspace_id = w.id
+        AND existing.kind         = 'agent'
+        AND existing.name         = sa.name
+  )
+  AND EXISTS (
+      SELECT 1
+      FROM agent sys
+      WHERE sys.workspace_id = w.id
+        AND sys.agent_type   = 'system_agent'
+        AND sys.kind         = 'agent'
+        AND sys.archived_at IS NULL
+  );
+
 -- ---------- subagent_skill ----------
 
 -- name: LinkSubagentSkill :exec

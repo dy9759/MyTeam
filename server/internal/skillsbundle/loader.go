@@ -90,6 +90,15 @@ func (l *Loader) Run(ctx context.Context) error {
 		return fmt.Errorf("prune subagents: %w", err)
 	}
 
+	// Re-run the role-agent seed (same logic as migration 074) so any
+	// bundle subagents that just landed on disk get a runnable
+	// workspace agent counterpart. The query's NOT EXISTS guard makes
+	// this idempotent — workspaces that already have a role agent for
+	// a given subagent name are skipped.
+	if err := l.Queries.SeedRoleAgentsFromBundleSubagents(ctx); err != nil {
+		return fmt.Errorf("seed role agents: %w", err)
+	}
+
 	slog.Info("skills bundle synced",
 		"skills", len(skillRefs),
 		"subagents", len(subRefs),
