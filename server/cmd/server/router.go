@@ -151,6 +151,11 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 
 	r := chi.NewRouter()
 
+	// Per-sender rate limiter for the agent-to-agent messaging
+	// endpoint. Shared across all requests, mounted only on the send
+	// route below. See middleware/rate_limit.go for tuning.
+	interactionLimiter := middleware.NewInteractionRateLimiter()
+
 	// Global middleware
 	r.Use(chimw.RequestID)
 	r.Use(middleware.RequestLogger)
@@ -394,7 +399,10 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 			// broadcast / session-scoped message; schema field gives the
 			// receiver a routing hint for typed handlers.
 			r.Route("/api/interactions", func(r chi.Router) {
-				r.Post("/", h.SendInteraction)
+				// Rate limit only on send — ack and inbox reads
+				// don't fan out to other inboxes / the WS hub.
+				r.With(middleware.InteractionRateLimit(interactionLimiter)).
+					Post("/", h.SendInteraction)
 				r.Post("/{id}/ack", h.AckInteraction)
 			})
 
