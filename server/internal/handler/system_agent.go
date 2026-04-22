@@ -156,7 +156,7 @@ func (h *Handler) UpdateSystemAgent(w http.ResponseWriter, r *http.Request) {
 
 	maxConcurrentTasks := pgtype.Int4{}
 	if req.MaxConcurrentTasks != nil {
-		maxConcurrentTasks = pgtype.Int4{Int32: *req.MaxConcurrentTasks, Valid: true}
+		maxConcurrentTasks = int4Of(*req.MaxConcurrentTasks)
 	}
 
 	agent, err := scanSystemAgentRow(h.DB.QueryRow(r.Context(), `
@@ -372,7 +372,7 @@ func (h *Handler) GetPageAgent(w http.ResponseWriter, r *http.Request) {
 
 	agent, err := h.Queries.GetPageSystemAgent(r.Context(), db.GetPageSystemAgentParams{
 		WorkspaceID: parseUUID(workspaceID),
-		Scope:       pgtype.Text{String: scope, Valid: true},
+		Scope:       textOf(scope),
 	})
 	if err != nil {
 		if isNotFound(err) {
@@ -417,7 +417,7 @@ func systemAgentScope(value *string) (pgtype.Text, bool, error) {
 	if !isValidScope(scope) {
 		return pgtype.Text{}, true, errors.New("invalid page scope")
 	}
-	return pgtype.Text{String: scope, Valid: true}, true, nil
+	return textOf(scope), true, nil
 }
 
 func (h *Handler) resolveSystemAgentRuntime(w http.ResponseWriter, r *http.Request, workspaceID string, runtimeID *string) (pgtype.UUID, bool) {

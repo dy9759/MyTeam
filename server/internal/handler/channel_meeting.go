@@ -221,7 +221,7 @@ func (h *Handler) SubmitChannelMeetingRecording(w http.ResponseWriter, r *http.R
 	}
 	m, err := h.Queries.UpdateMeetingRecording(r.Context(), db.UpdateMeetingRecordingParams{
 		ID:            parseUUID(id),
-		AudioUrl:      pgtype.Text{String: req.AudioURL, Valid: true},
+		AudioUrl:      textOf(req.AudioURL),
 		AudioDuration: pgtype.Int4{Int32: req.AudioDuration, Valid: req.AudioDuration > 0},
 	})
 	if err != nil {
@@ -339,7 +339,7 @@ func (h *Handler) UploadChannelMeetingAudio(w http.ResponseWriter, r *http.Reque
 
 	m, err = h.Queries.UpdateMeetingRecording(r.Context(), db.UpdateMeetingRecordingParams{
 		ID:            parseUUID(id),
-		AudioUrl:      pgtype.Text{String: url, Valid: true},
+		AudioUrl:      textOf(url),
 		AudioDuration: pgtype.Int4{Int32: durationSec, Valid: durationSec > 0},
 	})
 	if err != nil {

@@ -8,7 +8,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/auth"
 	"github.com/multica-ai/multica/server/internal/logger"
 	"github.com/multica-ai/multica/server/internal/service"
@@ -353,16 +352,16 @@ func (h *Handler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		ID: parseUUID(id),
 	}
 	if req.Name != nil {
-		params.Name = pgtype.Text{String: *req.Name, Valid: true}
+		params.Name = textOf(*req.Name)
 	}
 	if req.Description != nil {
-		params.Description = pgtype.Text{String: *req.Description, Valid: true}
+		params.Description = textOf(*req.Description)
 	}
 	if req.Instructions != nil {
-		params.Instructions = pgtype.Text{String: *req.Instructions, Valid: true}
+		params.Instructions = textOf(*req.Instructions)
 	}
 	if req.AvatarURL != nil {
-		params.AvatarUrl = pgtype.Text{String: *req.AvatarURL, Valid: true}
+		params.AvatarUrl = textOf(*req.AvatarURL)
 	}
 	if req.RuntimeID != nil {
 		runtime, err := h.Queries.GetAgentRuntimeForWorkspace(r.Context(), db.GetAgentRuntimeForWorkspaceParams{
@@ -376,13 +375,13 @@ func (h *Handler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		params.RuntimeID = runtime.ID
 	}
 	if req.Visibility != nil {
-		params.Visibility = pgtype.Text{String: *req.Visibility, Valid: true}
+		params.Visibility = textOf(*req.Visibility)
 	}
 	if req.Status != nil {
-		params.Status = pgtype.Text{String: *req.Status, Valid: true}
+		params.Status = textOf(*req.Status)
 	}
 	if req.MaxConcurrentTasks != nil {
-		params.MaxConcurrentTasks = pgtype.Int4{Int32: *req.MaxConcurrentTasks, Valid: true}
+		params.MaxConcurrentTasks = int4Of(*req.MaxConcurrentTasks)
 	}
 
 	agent, err := h.Queries.UpdateAgent(r.Context(), params)

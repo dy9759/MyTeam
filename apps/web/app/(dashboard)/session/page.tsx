@@ -665,26 +665,27 @@ export default function SessionPage() {
     [selectedId],
   );
 
-  // Thread state
-  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
-  const [meetingPanelOpen, setMeetingPanelOpen] = useState(false);
-  const [searchPanelOpen, setSearchPanelOpen] = useState(false);
-  const [filesPanelOpen, setFilesPanelOpen] = useState(false);
-  const [initialMeetingId, setInitialMeetingId] = useState<string | null>(null);
+  // Right-rail panels share a single slot. Modeled as a discriminated union
+  // so the panel kind and its payload stay consistent, and the user doesn't
+  // end up with a sliver-wide thread squeezed next to a search panel.
+  type RightPanel =
+    | { kind: "thread"; threadId: string }
+    | { kind: "meeting"; initialId: string | null }
+    | { kind: "search" }
+    | { kind: "files" }
+    | null;
+
+  const [rightPanel, setRightPanel] = useState<RightPanel>(null);
   const [channelMeetings, setChannelMeetings] = useState<ChannelMeeting[]>([]);
   const activeFile = useFileViewerStore((s) => s.active);
   const closeFileViewer = useFileViewerStore((s) => s.close);
 
-  // Right-rail panels share a single slot. Opening one closes the others so
-  // the user doesn't end up with a sliver-wide thread squeezed next to a
-  // search panel.
-  const openExclusivePanel = (which: "thread" | "meeting" | "search" | "files" | null, threadId?: string) => {
-    setActiveThreadId(which === "thread" ? (threadId ?? null) : null);
-    setMeetingPanelOpen(which === "meeting");
-    setSearchPanelOpen(which === "search");
-    setFilesPanelOpen(which === "files");
-    if (which !== "meeting") setInitialMeetingId(null);
-  };
+  // File viewer is mutually exclusive with the other right-rail panels.
+  // Opening a file (e.g. from ChannelFilesPanel or a message chip) closes
+  // whatever right panel was active.
+  useEffect(() => {
+    if (activeFile) setRightPanel(null);
+  }, [activeFile]);
 
   // Load channel meetings whenever the user flips to a channel. Poll while
   // any meeting is still recording/processing so the inline bubbles tick
@@ -732,11 +733,8 @@ export default function SessionPage() {
 
   const handleOpenMeeting = useCallback(
     (meetingId: string) => {
-      setInitialMeetingId(meetingId);
-      setActiveThreadId(null);
-      setSearchPanelOpen(false);
-      setFilesPanelOpen(false);
-      setMeetingPanelOpen(true);
+      useFileViewerStore.getState().close();
+      setRightPanel({ kind: "meeting", initialId: meetingId });
     },
     [],
   );
@@ -750,10 +748,8 @@ export default function SessionPage() {
       if (!selectedId || selectedType !== "channel") return;
       try {
         const thread = await api.createThread(selectedId, { root_message_id: msgId });
-        setActiveThreadId(thread.id);
-        setMeetingPanelOpen(false);
-        setSearchPanelOpen(false);
-        setFilesPanelOpen(false);
+        useFileViewerStore.getState().close();
+        setRightPanel({ kind: "thread", threadId: thread.id });
       } catch {
         toast.error("打开讨论串失败");
       }
@@ -983,7 +979,10 @@ export default function SessionPage() {
                       <>
                         <button
                           type="button"
-                          onClick={() => openExclusivePanel("meeting")}
+                          onClick={() => {
+                            useFileViewerStore.getState().close();
+                            setRightPanel({ kind: "meeting", initialId: null });
+                          }}
                           title="开始会议"
                           className="flex items-center gap-1 px-2 h-7 rounded-md text-[12px] text-primary hover:bg-accent transition-colors"
                         >
@@ -992,18 +991,24 @@ export default function SessionPage() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => openExclusivePanel(searchPanelOpen ? null : "search")}
+                          onClick={() => {
+                            useFileViewerStore.getState().close();
+                            setRightPanel(rightPanel?.kind === "search" ? null : { kind: "search" });
+                          }}
                           title="搜索聊天记录"
-                          className={`flex items-center gap-1 px-2 h-7 rounded-md text-[12px] hover:bg-accent transition-colors ${searchPanelOpen ? "text-foreground bg-accent" : "text-muted-foreground hover:text-foreground"}`}
+                          className={`flex items-center gap-1 px-2 h-7 rounded-md text-[12px] hover:bg-accent transition-colors ${rightPanel?.kind === "search" ? "text-foreground bg-accent" : "text-muted-foreground hover:text-foreground"}`}
                         >
                           <Search className="h-3.5 w-3.5" />
                           搜索
                         </button>
                         <button
                           type="button"
-                          onClick={() => openExclusivePanel(filesPanelOpen ? null : "files")}
+                          onClick={() => {
+                            useFileViewerStore.getState().close();
+                            setRightPanel(rightPanel?.kind === "files" ? null : { kind: "files" });
+                          }}
                           title="查看频道文件"
-                          className={`flex items-center gap-1 px-2 h-7 rounded-md text-[12px] hover:bg-accent transition-colors ${filesPanelOpen ? "text-foreground bg-accent" : "text-muted-foreground hover:text-foreground"}`}
+                          className={`flex items-center gap-1 px-2 h-7 rounded-md text-[12px] hover:bg-accent transition-colors ${rightPanel?.kind === "files" ? "text-foreground bg-accent" : "text-muted-foreground hover:text-foreground"}`}
                         >
                           <FolderOpen className="h-3.5 w-3.5" />
                           文件
@@ -1059,33 +1064,30 @@ export default function SessionPage() {
                   }
                 />
               </div>
-              {activeThreadId && selectedType === "channel" && selectedId && (
+              {rightPanel?.kind === "thread" && selectedType === "channel" && selectedId && (
                 <ThreadPanel
-                  threadId={activeThreadId}
+                  threadId={rightPanel.threadId}
                   channelId={selectedId}
-                  onClose={() => setActiveThreadId(null)}
+                  onClose={() => setRightPanel(null)}
                 />
               )}
-              {meetingPanelOpen && selectedType === "channel" && selectedId && (
+              {rightPanel?.kind === "meeting" && selectedType === "channel" && selectedId && (
                 <MeetingPanel
                   channelId={selectedId}
-                  initialMeetingId={initialMeetingId}
-                  onClose={() => {
-                    setMeetingPanelOpen(false);
-                    setInitialMeetingId(null);
-                  }}
+                  initialMeetingId={rightPanel.initialId}
+                  onClose={() => setRightPanel(null)}
                 />
               )}
-              {searchPanelOpen && selectedType === "channel" && (
+              {rightPanel?.kind === "search" && selectedType === "channel" && (
                 <ChannelSearchPanel
                   messages={messages}
-                  onClose={() => setSearchPanelOpen(false)}
+                  onClose={() => setRightPanel(null)}
                 />
               )}
-              {filesPanelOpen && selectedType === "channel" && (
+              {rightPanel?.kind === "files" && selectedType === "channel" && (
                 <ChannelFilesPanel
                   messages={messages}
-                  onClose={() => setFilesPanelOpen(false)}
+                  onClose={() => setRightPanel(null)}
                 />
               )}
               {activeFile && (

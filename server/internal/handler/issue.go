@@ -100,11 +100,11 @@ func (h *Handler) ListIssues(w http.ResponseWriter, r *http.Request) {
 	// Parse optional filter params
 	var statusFilter pgtype.Text
 	if s := r.URL.Query().Get("status"); s != "" {
-		statusFilter = pgtype.Text{String: s, Valid: true}
+		statusFilter = textOf(s)
 	}
 	var priorityFilter pgtype.Text
 	if p := r.URL.Query().Get("priority"); p != "" {
-		priorityFilter = pgtype.Text{String: p, Valid: true}
+		priorityFilter = textOf(p)
 	}
 	var assigneeFilter pgtype.UUID
 	if a := r.URL.Query().Get("assignee_id"); a != "" {
@@ -212,7 +212,7 @@ func (h *Handler) CreateIssue(w http.ResponseWriter, r *http.Request) {
 	var assigneeType pgtype.Text
 	var assigneeID pgtype.UUID
 	if req.AssigneeType != nil {
-		assigneeType = pgtype.Text{String: *req.AssigneeType, Valid: true}
+		assigneeType = textOf(*req.AssigneeType)
 	}
 	if req.AssigneeID != nil {
 		assigneeID = parseUUID(*req.AssigneeID)
@@ -238,7 +238,7 @@ func (h *Handler) CreateIssue(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "invalid due_date format, expected RFC3339")
 			return
 		}
-		dueDate = pgtype.Timestamptz{Time: t, Valid: true}
+		dueDate = timestamptzOf(t)
 	}
 
 	// Use a transaction to atomically increment the workspace issue counter
@@ -349,16 +349,16 @@ func (h *Handler) UpdateIssue(w http.ResponseWriter, r *http.Request) {
 
 	// COALESCE fields — only set when explicitly provided
 	if req.Title != nil {
-		params.Title = pgtype.Text{String: *req.Title, Valid: true}
+		params.Title = textOf(*req.Title)
 	}
 	if req.Description != nil {
-		params.Description = pgtype.Text{String: *req.Description, Valid: true}
+		params.Description = textOf(*req.Description)
 	}
 	if req.Status != nil {
-		params.Status = pgtype.Text{String: *req.Status, Valid: true}
+		params.Status = textOf(*req.Status)
 	}
 	if req.Priority != nil {
-		params.Priority = pgtype.Text{String: *req.Priority, Valid: true}
+		params.Priority = textOf(*req.Priority)
 	}
 	if req.Position != nil {
 		params.Position = pgtype.Float8{Float64: *req.Position, Valid: true}
@@ -366,7 +366,7 @@ func (h *Handler) UpdateIssue(w http.ResponseWriter, r *http.Request) {
 	// Nullable fields — only override when explicitly present in JSON
 	if _, ok := rawFields["assignee_type"]; ok {
 		if req.AssigneeType != nil {
-			params.AssigneeType = pgtype.Text{String: *req.AssigneeType, Valid: true}
+			params.AssigneeType = textOf(*req.AssigneeType)
 		} else {
 			params.AssigneeType = pgtype.Text{Valid: false} // explicit null = unassign
 		}
@@ -385,7 +385,7 @@ func (h *Handler) UpdateIssue(w http.ResponseWriter, r *http.Request) {
 				writeError(w, http.StatusBadRequest, "invalid due_date format, expected RFC3339")
 				return
 			}
-			params.DueDate = pgtype.Timestamptz{Time: t, Valid: true}
+			params.DueDate = timestamptzOf(t)
 		} else {
 			params.DueDate = pgtype.Timestamptz{Valid: false} // explicit null = clear date
 		}
@@ -652,23 +652,23 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if req.Updates.Title != nil {
-			params.Title = pgtype.Text{String: *req.Updates.Title, Valid: true}
+			params.Title = textOf(*req.Updates.Title)
 		}
 		if req.Updates.Description != nil {
-			params.Description = pgtype.Text{String: *req.Updates.Description, Valid: true}
+			params.Description = textOf(*req.Updates.Description)
 		}
 		if req.Updates.Status != nil {
-			params.Status = pgtype.Text{String: *req.Updates.Status, Valid: true}
+			params.Status = textOf(*req.Updates.Status)
 		}
 		if req.Updates.Priority != nil {
-			params.Priority = pgtype.Text{String: *req.Updates.Priority, Valid: true}
+			params.Priority = textOf(*req.Updates.Priority)
 		}
 		if req.Updates.Position != nil {
 			params.Position = pgtype.Float8{Float64: *req.Updates.Position, Valid: true}
 		}
 		if _, ok := rawUpdates["assignee_type"]; ok {
 			if req.Updates.AssigneeType != nil {
-				params.AssigneeType = pgtype.Text{String: *req.Updates.AssigneeType, Valid: true}
+				params.AssigneeType = textOf(*req.Updates.AssigneeType)
 			} else {
 				params.AssigneeType = pgtype.Text{Valid: false}
 			}
@@ -686,7 +686,7 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 				if err != nil {
 					continue
 				}
-				params.DueDate = pgtype.Timestamptz{Time: t, Valid: true}
+				params.DueDate = timestamptzOf(t)
 			} else {
 				params.DueDate = pgtype.Timestamptz{Valid: false}
 			}

@@ -369,7 +369,7 @@ func (h *Handler) CreateThreadContextItem(w http.ResponseWriter, r *http.Request
 			writeError(w, http.StatusBadRequest, "invalid expires_at (RFC3339 required)")
 			return
 		}
-		expiresAt = pgtype.Timestamptz{Time: t, Valid: true}
+		expiresAt = timestamptzOf(t)
 	}
 
 	actorType, actorID := h.resolveActor(r, userID, workspaceID)
