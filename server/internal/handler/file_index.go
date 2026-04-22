@@ -4,8 +4,11 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
@@ -182,13 +185,10 @@ func (h *Handler) ListOwnerAndAgentFiles(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Step 1: Get user's member ID in this workspace.
-	member, ok := h.workspaceMember(w, r, workspaceID)
-	if !ok {
+	if _, ok := h.workspaceMember(w, r, workspaceID); !ok {
 		return
 	}
 
-	// Step 2: Get all agent IDs owned by this user in this workspace.
 	agents, err := h.Queries.ListAgents(r.Context(), parseUUID(workspaceID))
 	if err != nil {
 		slog.Error("failed to list agents for file query", "error", err)
@@ -196,11 +196,14 @@ func (h *Handler) ListOwnerAndAgentFiles(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Collect agent IDs owned by this user.
-	ownerIDs := []string{uuidToString(member.UserID)}
+	// Owner IDs: the user themselves + every agent owned by the user.
+	// Both the attachment.uploader_id (for member uploads) and the
+	// channel_member.member_id (for member-tier rows) use the user UUID,
+	// so we only need that single ID set.
+	ownerIDs := []pgtype.UUID{parseUUID(userID)}
 	for _, agent := range agents {
 		if uuidToString(agent.OwnerID) == userID {
-			ownerIDs = append(ownerIDs, uuidToString(agent.ID))
+			ownerIDs = append(ownerIDs, agent.ID)
 		}
 	}
 
@@ -210,15 +213,113 @@ func (h *Handler) ListOwnerAndAgentFiles(w http.ResponseWriter, r *http.Request)
 		"owner_ids_count", len(ownerIDs),
 	)
 
-	// TODO: Replace with sqlc query once file_index table migration exists:
-	//   rows, err := h.Queries.ListFileIndexByOwnerIDs(r.Context(), db.ListFileIndexByOwnerIDsParams{
-	//       WorkspaceID: parseUUID(workspaceID),
-	//       OwnerIDs:    ownerUUIDs,
-	//   })
-	//   if err != nil { ... }
+	// Pull every attachment in this workspace that the user can see:
+	//   1. They (or one of their agents) uploaded it, OR
+	//   2. It is referenced by a chat message in a channel the user belongs to.
+	// The LEFT JOIN to message lets us tag chat-origin files with their
+	// channel_id and surface the source_type to the UI.
+	const query = `
+		SELECT DISTINCT ON (a.id)
+			a.id,
+			a.workspace_id,
+			a.uploader_type,
+			a.uploader_id,
+			a.filename,
+			a.url,
+			a.content_type,
+			a.size_bytes,
+			a.created_at,
+			a.issue_id,
+			a.comment_id,
+			m.channel_id
+		FROM attachment a
+		LEFT JOIN message m ON m.file_id = a.id
+		WHERE a.workspace_id = $1
+		  AND (
+		    a.uploader_id = ANY($2::uuid[])
+		    OR m.channel_id IN (
+		      SELECT cm.channel_id
+		      FROM channel_member cm
+		      WHERE cm.member_id = ANY($2::uuid[])
+		    )
+		  )
+		ORDER BY a.id, a.created_at DESC
+	`
 
-	// Return empty array until file_index table exists.
-	writeJSON(w, http.StatusOK, []FileIndexResponse{})
+	rows, err := h.DB.Query(r.Context(), query, parseUUID(workspaceID), ownerIDs)
+	if err != nil {
+		slog.Error("failed to query attachments for files page", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to list files")
+		return
+	}
+	defer rows.Close()
+
+	results := []FileIndexResponse{}
+	for rows.Next() {
+		var (
+			id, wsID, uploaderID, issueID, commentID, channelID pgtype.UUID
+			uploaderType, filename, url, contentType            string
+			sizeBytes                                           int64
+			createdAt                                           pgtype.Timestamptz
+		)
+		if err := rows.Scan(
+			&id, &wsID, &uploaderType, &uploaderID,
+			&filename, &url, &contentType, &sizeBytes, &createdAt,
+			&issueID, &commentID, &channelID,
+		); err != nil {
+			slog.Error("failed to scan attachment row for files page", "error", err)
+			writeError(w, http.StatusInternalServerError, "failed to list files")
+			return
+		}
+
+		item := FileIndexResponse{
+			ID:                   uuidToString(id),
+			WorkspaceID:          uuidToString(wsID),
+			UploaderIdentityID:   uuidToString(uploaderID),
+			UploaderIdentityType: uploaderType,
+			OwnerID:              uuidToString(uploaderID),
+			FileName:             filename,
+			FileSize:             sizeBytes,
+			ContentType:          contentType,
+			StoragePath:          url,
+			CreatedAt:            createdAt.Time.Format(time.RFC3339),
+		}
+
+		switch {
+		case channelID.Valid:
+			item.SourceType = "chat"
+			item.SourceID = uuidToString(channelID)
+			cid := uuidToString(channelID)
+			item.ChannelID = &cid
+		case commentID.Valid:
+			item.SourceType = "comment"
+			item.SourceID = uuidToString(commentID)
+		case issueID.Valid:
+			item.SourceType = "issue"
+			item.SourceID = uuidToString(issueID)
+		default:
+			item.SourceType = "upload"
+			item.SourceID = uuidToString(id)
+		}
+
+		results = append(results, item)
+	}
+	if err := rows.Err(); err != nil {
+		slog.Error("attachment rows error for files page", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to list files")
+		return
+	}
+
+	// DISTINCT ON forces an a.id-first sort; re-order by recency for the UI.
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].CreatedAt > results[j].CreatedAt
+	})
+
+	if len(results) > 200 {
+		results = results[:200]
+	}
+
+	writeJSON(w, http.StatusOK, results)
 }
 
 // ---------------------------------------------------------------------------
