@@ -91,7 +91,7 @@ func (t *TOSStorage) Put(ctx context.Context, key string, body io.Reader, conten
 	}
 	disp := ""
 	if filename != "" {
-		disp = fmt.Sprintf(`inline; filename="%s"`, sanitizeFilename(filename))
+		disp = fmt.Sprintf(`inline; filename="%s"`, SanitizeFilename(filename))
 	}
 	input := &s3.PutObjectInput{
 		Bucket: aws.String(t.bucket),

@@ -13,6 +13,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/multica-ai/multica/server/internal/storage"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
@@ -105,10 +106,25 @@ func (h *Handler) UploadFile(w http.ResponseWriter, r *http.Request) {
 	// message file_id and the inline file-viewer panel.
 	workspaceID := resolveWorkspaceID(r)
 	if workspaceID == "" {
-		if h := r.Header.Get("X-Workspace-ID"); h != "" {
-			workspaceID = h
-		} else if q := r.URL.Query().Get("workspace_id"); q != "" {
-			workspaceID = q
+		if hdr := r.Header.Get("X-Workspace-ID"); hdr != "" {
+			workspaceID = hdr
+		} else if qp := r.URL.Query().Get("workspace_id"); qp != "" {
+			workspaceID = qp
+		}
+	}
+
+	// When a workspace context was resolved from any source, verify the
+	// authenticated user is actually a member of that workspace before we
+	// create an attachment row in it. Otherwise a user could inject a
+	// foreign workspace_id via header/query and write into a workspace
+	// they don't belong to.
+	if workspaceID != "" {
+		if _, err := h.Queries.GetMemberByUserAndWorkspace(r.Context(), db.GetMemberByUserAndWorkspaceParams{
+			UserID:      parseUUID(userID),
+			WorkspaceID: parseUUID(workspaceID),
+		}); err != nil {
+			writeError(w, http.StatusForbidden, "not a member of the target workspace")
+			return
 		}
 	}
 
@@ -359,6 +375,8 @@ func (h *Handler) DownloadFile(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Length", fmt.Sprintf("%d", contentLength))
 	}
 	w.Header().Set("Cache-Control", "private, max-age=60")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, storage.SanitizeFilename(att.Filename)))
 	w.WriteHeader(http.StatusOK)
 	if _, err := io.Copy(w, body); err != nil {
 		slog.Debug("download copy aborted", "file_id", fileID, "error", err)

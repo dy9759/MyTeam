@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"sort"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -218,32 +217,41 @@ func (h *Handler) ListOwnerAndAgentFiles(w http.ResponseWriter, r *http.Request)
 	//   2. It is referenced by a chat message in a channel the user belongs to.
 	// The LEFT JOIN to message lets us tag chat-origin files with their
 	// channel_id and surface the source_type to the UI.
+	// The inner query runs DISTINCT ON (a.id) first; the outer query then
+	// re-orders by recency and caps the result set so the DB does the work.
 	const query = `
-		SELECT DISTINCT ON (a.id)
-			a.id,
-			a.workspace_id,
-			a.uploader_type,
-			a.uploader_id,
-			a.filename,
-			a.url,
-			a.content_type,
-			a.size_bytes,
-			a.created_at,
-			a.issue_id,
-			a.comment_id,
-			m.channel_id
-		FROM attachment a
-		LEFT JOIN message m ON m.file_id = a.id
-		WHERE a.workspace_id = $1
-		  AND (
-		    a.uploader_id = ANY($2::uuid[])
-		    OR m.channel_id IN (
-		      SELECT cm.channel_id
-		      FROM channel_member cm
-		      WHERE cm.member_id = ANY($2::uuid[])
-		    )
-		  )
-		ORDER BY a.id, a.created_at DESC
+		SELECT id, workspace_id, uploader_type, uploader_id,
+			filename, url, content_type, size_bytes, created_at,
+			issue_id, comment_id, channel_id
+		FROM (
+			SELECT DISTINCT ON (a.id)
+				a.id,
+				a.workspace_id,
+				a.uploader_type,
+				a.uploader_id,
+				a.filename,
+				a.url,
+				a.content_type,
+				a.size_bytes,
+				a.created_at,
+				a.issue_id,
+				a.comment_id,
+				m.channel_id
+			FROM attachment a
+			LEFT JOIN message m ON m.file_id = a.id
+			WHERE a.workspace_id = $1
+			  AND (
+			    a.uploader_id = ANY($2::uuid[])
+			    OR m.channel_id IN (
+			      SELECT cm.channel_id
+			      FROM channel_member cm
+			      WHERE cm.member_id = ANY($2::uuid[])
+			    )
+			  )
+			ORDER BY a.id, a.created_at DESC
+		) AS distinct_files
+		ORDER BY created_at DESC
+		LIMIT 200
 	`
 
 	rows, err := h.DB.Query(r.Context(), query, parseUUID(workspaceID), ownerIDs)
@@ -308,15 +316,6 @@ func (h *Handler) ListOwnerAndAgentFiles(w http.ResponseWriter, r *http.Request)
 		slog.Error("attachment rows error for files page", "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to list files")
 		return
-	}
-
-	// DISTINCT ON forces an a.id-first sort; re-order by recency for the UI.
-	sort.Slice(results, func(i, j int) bool {
-		return results[i].CreatedAt > results[j].CreatedAt
-	})
-
-	if len(results) > 200 {
-		results = results[:200]
 	}
 
 	writeJSON(w, http.StatusOK, results)

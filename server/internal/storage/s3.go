@@ -93,8 +93,8 @@ func NewS3StorageFromEnv() *S3Storage {
 	}
 }
 
-// sanitizeFilename removes characters that could cause header injection in Content-Disposition.
-func sanitizeFilename(name string) string {
+// SanitizeFilename removes characters that could cause header injection in Content-Disposition.
+func SanitizeFilename(name string) string {
 	var b strings.Builder
 	b.Grow(len(name))
 	for _, r := range name {
@@ -170,7 +170,7 @@ func (s *S3Storage) DeleteKeys(ctx context.Context, keys []string) {
 }
 
 func (s *S3Storage) Upload(ctx context.Context, key string, data []byte, contentType string, filename string) (string, error) {
-	safe := sanitizeFilename(filename)
+	safe := SanitizeFilename(filename)
 	input := &s3.PutObjectInput{
 		Bucket:             aws.String(s.bucket),
 		Key:                aws.String(key),
