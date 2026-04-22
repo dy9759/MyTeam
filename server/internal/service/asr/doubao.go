@@ -45,7 +45,7 @@ type MiaojiClient struct {
 	Endpoint   string        // override for tests; defaults to upstream
 	ResourceID string        // ASR resource id, default "volc.lark.minutes"
 	PollEvery  time.Duration // poll interval, default 2s
-	PollMax    time.Duration // total deadline, default 5min
+	PollMax    time.Duration // total deadline, default 30min
 }
 
 func NewMiaojiClient() *MiaojiClient {
@@ -54,7 +54,11 @@ func NewMiaojiClient() *MiaojiClient {
 		Endpoint:   "https://openspeech.bytedance.com",
 		ResourceID: "volc.lark.minutes",
 		PollEvery:  2 * time.Second,
-		PollMax:    5 * time.Minute,
+		// Doubao transcription can take ~1 min per 10 min audio; a 30 min
+		// cap covers multi-hour meetings with margin. The previous 5 min
+		// cap timed out long recordings (>30 min audio) before upstream
+		// finished transcription. See issue #64.
+		PollMax: 30 * time.Minute,
 	}
 }
 
