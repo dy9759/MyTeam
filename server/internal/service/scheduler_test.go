@@ -1,5 +1,5 @@
 // scheduler_test.go — DB-backed tests for SchedulerService. Requires
-// DATABASE_URL pointing at a migrated multica DB (migration 059+ for
+// DATABASE_URL pointing at a migrated myteam DB (migration 059+ for
 // task / participant_slot / execution / artifact / review tables).
 package service
 
@@ -10,7 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 
 // schedTestEnv holds the seed rows shared across scheduler tests: a

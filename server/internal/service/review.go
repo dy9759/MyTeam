@@ -23,7 +23,7 @@ import (
 
 	"github.com/google/uuid"
 
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 
 // Reviewer-type strings — mirror the CHECK constraint in migration 058.

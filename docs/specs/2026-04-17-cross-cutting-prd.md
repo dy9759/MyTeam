@@ -551,7 +551,7 @@ Account PRD §8.8 列出 17 个工具，本节给出契约（input schema + outp
 
 | 规则 | 说明 |
 |------|------|
-| 工具调用方 | Claude Agent SDK（cloud）或 multica CLI（local） |
+| 工具调用方 | Claude Agent SDK（cloud）或 myteam CLI（local） |
 | 鉴权 | `workspace_id` + `user_id` + `agent_id`（从 SDK session / CLI token 解出） |
 | 权限检查位置 | 后端 handler 层，每次调用都查 |
 | 错误格式 | `{ code, message, retriable }` |

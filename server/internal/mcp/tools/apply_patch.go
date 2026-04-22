@@ -6,9 +6,9 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/multica-ai/multica/server/internal/errcode"
-	"github.com/multica-ai/multica/server/internal/mcp/mcptool"
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/MyAIOSHub/MyTeam/server/internal/errcode"
+	"github.com/MyAIOSHub/MyTeam/server/internal/mcp/mcptool"
+	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 
 // ApplyPatch applies a unified-diff patch to a local project working tree.

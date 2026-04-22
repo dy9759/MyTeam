@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/multica-ai/multica/server/internal/middleware"
-	"github.com/multica-ai/multica/server/internal/storage"
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/MyAIOSHub/MyTeam/server/internal/middleware"
+	"github.com/MyAIOSHub/MyTeam/server/internal/storage"
+	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 
 // ---------------------------------------------------------------------------
@@ -304,7 +304,7 @@ func TestDownloadFile_HappyPath(t *testing.T) {
 // Setting the header slot to nil explicitly suppresses the auto-detect.
 func TestDownloadFile_ContentTypeFallback(t *testing.T) {
 	const payload = "body-bytes"
-	const attachmentCT = "application/x-multica-fallback"
+	const attachmentCT = "application/x-myteam-fallback"
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Explicitly nil out the Content-Type slot so net/http does not
@@ -414,7 +414,7 @@ func TestListOwnerAndAgentFiles_AgentOwnedUploads(t *testing.T) {
 func TestListOwnerAndAgentFiles_VisibleViaChannel(t *testing.T) {
 	// Another user uploads a file and posts it in a channel the test user
 	// joined — must be visible with source_type="chat" + channel_id set.
-	otherUser := insertUser(t, "other-user-channel-visible@multica.ai")
+	otherUser := insertUser(t, "other-user-channel-visible@myteam.ai")
 
 	channelID := insertChannel(t, testWorkspaceID, "visible-channel")
 	insertChannelMember(t, channelID, testUserID, "member")
@@ -441,7 +441,7 @@ func TestListOwnerAndAgentFiles_VisibleViaChannel(t *testing.T) {
 func TestListOwnerAndAgentFiles_HiddenFromNonMemberChannel(t *testing.T) {
 	// Non-member uploads a file in a channel the test user is NOT a member
 	// of. The user must not see it.
-	otherUser := insertUser(t, "other-user-channel-hidden@multica.ai")
+	otherUser := insertUser(t, "other-user-channel-hidden@myteam.ai")
 
 	hiddenChannel := insertChannel(t, testWorkspaceID, "hidden-channel")
 	// testUser is NOT added to hiddenChannel.

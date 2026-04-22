@@ -104,7 +104,7 @@ Backend:
 ```
 On desktop login success (in bootstrapDesktopApp):
     wsClient = createWSClient({
-      url: env.MULTICA_SERVER_URL,     // ws://localhost:8080/ws
+      url: env.MYTEAM_SERVER_URL,     // ws://localhost:8080/ws
       getToken: () => authStore.getState().token,
       onEvent: (event) => messagingStore.handleEvent(event),
     })

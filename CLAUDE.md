@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Context
 
-Multica is an AI-native task management platform — like Linear, but with AI agents as first-class citizens.
+MyTeam is an AI-native task management platform — like Linear, but with AI agents as first-class citizens.
 
 - Agents can be assigned issues, create issues, comment, and change status
 - Supports local (daemon) and cloud agent runtimes
@@ -85,14 +85,14 @@ Browser ← WSClient (shared/api) ← WebSocket ← Hub.Broadcast() ← Handlers
 
 ### Backend Structure (`server/`)
 
-- **Entry points** (`cmd/`): `server` (HTTP API), `multica` (CLI — daemon, agent management, config), `migrate`
+- **Entry points** (`cmd/`): `server` (HTTP API), `myteam` (CLI — daemon, agent management, config), `migrate`
 - **Handlers** (`internal/handler/`): One file per domain (issue, comment, agent, auth, daemon, etc.). Each handler holds `Queries`, `DB`, `Hub`, and `TaskService`.
 - **Real-time** (`internal/realtime/`): Hub manages WebSocket clients. Server broadcasts events; inbound WS message routing is still TODO.
 - **Auth** (`internal/auth/` + `internal/middleware/`): JWT (HS256). Middleware sets `X-User-ID` and `X-User-Email` headers. Login creates user on-the-fly if not found.
 - **Task lifecycle** (`internal/service/task.go`): Orchestrates agent work — enqueue → claim → start → complete/fail. Syncs issue status automatically and broadcasts WS events at each transition.
 - **Agent SDK** (`pkg/agent/`): Unified `Backend` interface for executing prompts via Claude Code or Codex. Each backend spawns its CLI and streams results via `Session.Messages` + `Session.Result` channels.
 - **Daemon** (`internal/daemon/`): Local agent runtime — auto-detects available CLIs (claude, codex), registers runtimes, polls for tasks, routes by provider.
-- **CLI** (`internal/cli/`): Shared helpers for the `multica` CLI — API client, config management, output formatting.
+- **CLI** (`internal/cli/`): Shared helpers for the `myteam` CLI — API client, config management, output formatting.
 - **Events** (`internal/events/`): Internal event bus for decoupled communication between handlers and services.
 - **Logging** (`internal/logger/`): Structured logging via slog. `LOG_LEVEL` env var controls level (debug, info, warn, error).
 - **Database**: PostgreSQL with pgvector extension (`pgvector/pgvector:pg17`). sqlc generates Go code from SQL in `pkg/db/queries/` → `pkg/db/generated/`. Migrations in `migrations/`.
@@ -127,7 +127,7 @@ pnpm test             # TS tests (Vitest)
 make dev              # Run Go server (port 8080)
 make daemon           # Run local daemon
 make build            # Build server + CLI binaries to server/bin/
-make cli ARGS="..."   # Run multica CLI (e.g. make cli ARGS="config")
+make cli ARGS="..."   # Run myteam CLI (e.g. make cli ARGS="config")
 make test             # Go tests
 make sqlc             # Regenerate sqlc code after editing SQL in server/pkg/db/queries/
 make migrate-up       # Run database migrations
@@ -137,7 +137,7 @@ make migrate-down     # Rollback migrations
 cd server && go test ./internal/handler/ -run TestName
 
 # Run a single TS test
-pnpm --filter @multica/web exec vitest run src/path/to/file.test.ts
+pnpm --filter /web exec vitest run src/path/to/file.test.ts
 
 # Run a single E2E test (requires backend + frontend running)
 pnpm exec playwright test e2e/tests/specific-test.spec.ts

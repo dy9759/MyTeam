@@ -7,9 +7,9 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/multica-ai/multica/server/internal/util"
-	"github.com/multica-ai/multica/server/pkg/agent_runner"
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/MyAIOSHub/MyTeam/server/internal/util"
+	"github.com/MyAIOSHub/MyTeam/server/pkg/agent_runner"
+	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 
 // IdentityGeneratorService generates identity cards for agents based on their

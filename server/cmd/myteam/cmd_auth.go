@@ -17,8 +17,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/multica-ai/multica/server/internal/auth"
-	"github.com/multica-ai/multica/server/internal/cli"
+	"github.com/MyAIOSHub/MyTeam/server/internal/auth"
+	"github.com/MyAIOSHub/MyTeam/server/internal/cli"
 )
 
 var authCmd = &cobra.Command{

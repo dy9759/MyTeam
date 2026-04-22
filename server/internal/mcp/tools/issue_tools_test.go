@@ -9,11 +9,11 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/multica-ai/multica/server/internal/events"
-	"github.com/multica-ai/multica/server/internal/mcp/mcptool"
-	"github.com/multica-ai/multica/server/internal/realtime"
-	"github.com/multica-ai/multica/server/internal/service"
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/MyAIOSHub/MyTeam/server/internal/events"
+	"github.com/MyAIOSHub/MyTeam/server/internal/mcp/mcptool"
+	"github.com/MyAIOSHub/MyTeam/server/internal/realtime"
+	"github.com/MyAIOSHub/MyTeam/server/internal/service"
+	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 
 type issueToolsFixture struct {
@@ -38,7 +38,7 @@ func fixtureIDs(t *testing.T) (slug, email string) {
 	safe = strings.ReplaceAll(safe, "/", "-")
 	safe = strings.ReplaceAll(safe, " ", "-")
 	slug = "mcp-it-" + safe
-	email = "mcp-it-" + safe + "@multica.ai"
+	email = "mcp-it-" + safe + "@myteam.ai"
 	return slug, email
 }
 
@@ -48,7 +48,7 @@ func setupIssueToolsFixture(t *testing.T) *issueToolsFixture {
 
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
-		dbURL = "postgres://multica:multica@localhost:5432/multica?sslmode=disable"
+		dbURL = "postgres://myteam:myteam@localhost:5432/myteam?sslmode=disable"
 	}
 	pool, err := pgxpool.New(ctx, dbURL)
 	if err != nil {

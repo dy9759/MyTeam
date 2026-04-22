@@ -9,7 +9,7 @@
 // mcp.Tool, mcp.Context, mcp.Result, and the runtime constants.
 package mcp
 
-import "github.com/multica-ai/multica/server/internal/mcp/mcptool"
+import "github.com/MyAIOSHub/MyTeam/server/internal/mcp/mcptool"
 
 // Tool is the runtime contract every MCP tool implements.
 type Tool = mcptool.Tool

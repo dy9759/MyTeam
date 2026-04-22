@@ -48,7 +48,7 @@ DROP TABLE IF EXISTS merge_request;
 - [ ] **Step 2: Run migration**
 
 ```bash
-cd server && DATABASE_URL="postgres://multica:multica@localhost:5432/multica?sslmode=disable" go run ./cmd/migrate up
+cd server && DATABASE_URL="postgres://myteam:myteam@localhost:5432/myteam?sslmode=disable" go run ./cmd/migrate up
 ```
 
 - [ ] **Step 3: Create channel_merge.go handler**
@@ -412,7 +412,7 @@ func (h *Handler) SplitChannel(w http.ResponseWriter, r *http.Request) {
 Add missing import `db` if not already imported:
 ```go
 import (
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 ```
 
@@ -444,7 +444,7 @@ git commit -m "feat(server): channel split endpoint"
 - [ ] **Step 1: Full build**
 
 ```bash
-cd server && go build ./... && DATABASE_URL="postgres://multica:multica@localhost:5432/multica?sslmode=disable" go test ./...
+cd server && go build ./... && DATABASE_URL="postgres://myteam:myteam@localhost:5432/myteam?sslmode=disable" go test ./...
 ```
 
 - [ ] **Step 2: Merge to main**

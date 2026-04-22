@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/google/uuid"
-	"github.com/multica-ai/multica/server/internal/mcp/mcptool"
+	"github.com/MyAIOSHub/MyTeam/server/internal/mcp/mcptool"
 )
 
 // ErrPermissionDenied is re-exported from the mcptool package for callers that

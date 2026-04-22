@@ -170,7 +170,7 @@ function AgentListTab() {
   const [expandedAgentId, setExpandedAgentId] = useState<string | null>(null)
 
   const impersonate = (id: string) => {
-    localStorage.setItem("multica_impersonate_agent", id)
+    localStorage.setItem("myteam_impersonate_agent", id)
     window.location.reload()
   }
 
@@ -339,7 +339,7 @@ function AddAgentTab() {
         <Collapse title="一键接入 — 复制粘贴即可完成 CLI 安装 + 登录 + Daemon 启动" icon={Terminal} open>
           <div className="space-y-3 pt-3">
             <p className="text-[13px] text-muted-foreground">
-              整个链路：安装 <code className="font-mono text-[11px] bg-muted px-1 rounded">multica</code> CLI → 注入 Token 登录 →
+              整个链路：安装 <code className="font-mono text-[11px] bg-muted px-1 rounded">myteam</code> CLI → 注入 Token 登录 →
               启动 Daemon，Daemon 会自动探测本机 <code className="font-mono text-[11px] bg-muted px-1 rounded">claude</code>
               、<code className="font-mono text-[11px] bg-muted px-1 rounded">codex</code> 并注册成可被 Agent 绑定的 Runtime。
               粘贴下面这一段到终端，替换 <code className="font-mono text-[11px] bg-muted px-1 rounded">&lt;PASTE_TOKEN&gt;</code> 即可。
@@ -347,32 +347,32 @@ function AddAgentTab() {
             <div>
               <p className="text-[12px] text-muted-foreground mb-1">macOS / Linux（Homebrew，推荐）</p>
               <CodeBlock code={`# 1) 生成 Token：${serverUrl || "<server-url>"}/settings → API 令牌 → 复制
-export MULTICA_TOKEN="<PASTE_TOKEN>"
-export MULTICA_SERVER_URL="${serverUrl || "<server-url>"}"
+export MYTEAM_TOKEN="<PASTE_TOKEN>"
+export MYTEAM_SERVER_URL="${serverUrl || "<server-url>"}"
 
 # 2) 一行完成：安装 + 登录 + 启动 Daemon + 查看 Runtime
-brew install multica-ai/tap/multica \\
-  && echo "$MULTICA_TOKEN" | multica login --token \\
-  && multica daemon start \\
-  && multica runtime list`} />
+brew install MyAIOSHub/tap/myteam \\
+  && echo "$MYTEAM_TOKEN" | myteam login --token \\
+  && myteam daemon start \\
+  && myteam runtime list`} />
             </div>
             <div>
               <p className="text-[12px] text-muted-foreground mb-1">从源码（本地开发或未发布 Homebrew 时）</p>
               <CodeBlock code={`# 仓库根目录执行
-export MULTICA_TOKEN="<PASTE_TOKEN>"
-export MULTICA_SERVER_URL="${serverUrl || "<server-url>"}"
+export MYTEAM_TOKEN="<PASTE_TOKEN>"
+export MYTEAM_SERVER_URL="${serverUrl || "<server-url>"}"
 
 make build \\
-  && ln -sf "$(pwd)/server/bin/multica" ~/.local/bin/multica \\
-  && echo "$MULTICA_TOKEN" | multica login --token \\
-  && multica daemon start \\
-  && multica runtime list`} />
+  && ln -sf "$(pwd)/server/bin/myteam" ~/.local/bin/myteam \\
+  && echo "$MYTEAM_TOKEN" | myteam login --token \\
+  && myteam daemon start \\
+  && myteam runtime list`} />
             </div>
             <p className="text-[12px] text-muted-foreground/80 bg-secondary rounded-[6px] px-3 py-2">
               ✅ 命令结束后你会看到本机出现在线 Runtime；回到
               <a href="/account?tab=agents" className="text-primary hover:underline"> Agent 列表 </a>
-              即可创建或绑定 Agent。Daemon 需要保持运行（可用 <code className="font-mono text-[11px] bg-muted px-1 rounded">multica daemon status</code> 检查、
-              <code className="font-mono text-[11px] bg-muted px-1 rounded">multica daemon logs -f</code> 查看日志）。
+              即可创建或绑定 Agent。Daemon 需要保持运行（可用 <code className="font-mono text-[11px] bg-muted px-1 rounded">myteam daemon status</code> 检查、
+              <code className="font-mono text-[11px] bg-muted px-1 rounded">myteam daemon logs -f</code> 查看日志）。
             </p>
           </div>
         </Collapse>
@@ -386,11 +386,11 @@ make build \\
             </p>
             <div>
               <p className="text-[12px] text-muted-foreground mb-1">验证：客户端是否已被识别</p>
-              <CodeBlock code={`multica runtime list
+              <CodeBlock code={`myteam runtime list
 # 期望看到 claude / codex 作为 provider 在列`} />
             </div>
             <p className="text-[12px] text-muted-foreground/80 bg-secondary rounded-[6px] px-3 py-2">
-              ℹ️ MCP stdio 直连（在客户端 settings 里通过 <code className="font-mono text-[11px] bg-muted px-1 rounded">multica mcp serve</code>
+              ℹ️ MCP stdio 直连（在客户端 settings 里通过 <code className="font-mono text-[11px] bg-muted px-1 rounded">myteam mcp serve</code>
               反向把 MyTeam 工具暴露给客户端）目前在 <span className="text-foreground">规划中</span>，不要再参考老文档里的
               <code className="font-mono text-[11px] bg-muted px-1 rounded"> mcpServers.myteam </code>配置 — 命令未发布。
             </p>

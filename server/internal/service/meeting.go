@@ -19,10 +19,10 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/multica-ai/multica/server/internal/service/asr"
-	"github.com/multica-ai/multica/server/internal/service/memory"
-	"github.com/multica-ai/multica/server/internal/storage"
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/MyAIOSHub/MyTeam/server/internal/service/asr"
+	"github.com/MyAIOSHub/MyTeam/server/internal/service/memory"
+	"github.com/MyAIOSHub/MyTeam/server/internal/storage"
+	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 
 // TxStarter mirrors handler.txStarter — anything with a Begin(ctx) method

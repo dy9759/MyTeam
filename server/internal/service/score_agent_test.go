@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 
 func TestScoreAgentForTask_PanicsWhenConcurrencyLimitIsNonPositive(t *testing.T) {

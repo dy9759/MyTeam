@@ -13,7 +13,7 @@ import (
 func createHandlerTestMember(t *testing.T, role string) string {
 	t.Helper()
 	ctx := context.Background()
-	email := fmt.Sprintf("handler-%s-%d@multica.ai", role, time.Now().UnixNano())
+	email := fmt.Sprintf("handler-%s-%d@myteam.ai", role, time.Now().UnixNano())
 
 	var userID string
 	if err := testPool.QueryRow(ctx, `

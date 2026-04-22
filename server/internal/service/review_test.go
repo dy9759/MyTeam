@@ -1,5 +1,5 @@
 // review_test.go — DB-backed tests for ReviewService. Requires DATABASE_URL
-// pointing at a migrated multica DB (migration 058+ for the artifact /
+// pointing at a migrated myteam DB (migration 058+ for the artifact /
 // review tables).
 package service
 
@@ -11,7 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 
 // reviewTestEnv bundles the IDs needed for ReviewService tests: workspace,

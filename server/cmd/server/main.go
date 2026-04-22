@@ -11,11 +11,11 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/multica-ai/multica/server/internal/events"
-	"github.com/multica-ai/multica/server/internal/logger"
-	"github.com/multica-ai/multica/server/internal/realtime"
-	"github.com/multica-ai/multica/server/internal/skillsbundle"
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/MyAIOSHub/MyTeam/server/internal/events"
+	"github.com/MyAIOSHub/MyTeam/server/internal/logger"
+	"github.com/MyAIOSHub/MyTeam/server/internal/realtime"
+	"github.com/MyAIOSHub/MyTeam/server/internal/skillsbundle"
+	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 
 func main() {
@@ -28,7 +28,7 @@ func main() {
 
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
-		dbURL = "postgres://multica:multica@localhost:5432/multica?sslmode=disable"
+		dbURL = "postgres://myteam:myteam@localhost:5432/myteam?sslmode=disable"
 	}
 
 	// Connect to database

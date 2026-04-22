@@ -103,7 +103,7 @@ pnpm --filter @myteam/desktop dev
 
 - CI 会执行前端构建、类型检查、单元测试，桌面端类型检查与单元测试，以及基于 PostgreSQL + pgvector 的后端 Go 测试。
 - 需要隔离开发环境时，可使用 `make setup-worktree` 与 `make start-worktree`。
-- 仓库内部仍有一部分历史遗留的 `MULTICA_` 环境变量前缀和 `multica` 二进制命名；日常使用可以优先走上面列出的 `myteam` 入口。
+- 仓库内部仍有一部分历史遗留的 `MYTEAM_` 环境变量前缀和 `myteam` 二进制命名；日常使用可以优先走上面列出的 `myteam` 入口。
 
 ## 更多文档
 

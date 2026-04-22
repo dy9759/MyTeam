@@ -1108,12 +1108,12 @@ If a site reads `token`/`workspaceId` from a reactive source, wrap in a closure 
 
 - [ ] **Step 3: Verify web typecheck**
 
-Run: `pnpm --filter @multica/web typecheck`
+Run: `pnpm --filter /web typecheck`
 Expected: no errors.
 
 - [ ] **Step 4: Verify web tests**
 
-Run: `pnpm --filter @multica/web test`
+Run: `pnpm --filter /web test`
 Expected: all tests pass.
 
 - [ ] **Step 5: Commit**
@@ -1230,8 +1230,8 @@ Update every call site from step 2 to import `useThreadStore` for thread/owner-a
 
 Run:
 ```
-pnpm --filter @multica/web typecheck
-pnpm --filter @multica/web test
+pnpm --filter /web typecheck
+pnpm --filter /web test
 ```
 Expected: all green.
 
@@ -2623,7 +2623,7 @@ git commit -m "feat(desktop): add WebSocket connection status banner"
 Run from repo root:
 ```bash
 pnpm --filter @myteam/client-core typecheck
-pnpm --filter @multica/web typecheck
+pnpm --filter /web typecheck
 pnpm --filter @myteam/desktop typecheck
 ```
 Expected: all three green.
@@ -2632,7 +2632,7 @@ Expected: all three green.
 
 ```bash
 pnpm --filter @myteam/client-core test
-pnpm --filter @multica/web test
+pnpm --filter /web test
 pnpm --filter @myteam/desktop test
 ```
 Expected: all three green.

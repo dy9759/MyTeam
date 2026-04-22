@@ -149,6 +149,7 @@ func (b *claudePersistentBackend) spawnSession(key string, opts ExecOptions, exe
 		stdout:   stdout,
 		alive:    true,
 		shutdown: make(chan struct{}),
+		waitDone: make(chan struct{}),
 	}
 
 	go session.reader()

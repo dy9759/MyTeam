@@ -356,7 +356,7 @@ git commit -m "feat(server): add POST /api/threads/{threadID}/promote endpoint"
 - [ ] **Step 1: Full build + test**
 
 ```bash
-cd server && go build ./... && DATABASE_URL="postgres://multica:multica@localhost:5432/multica?sslmode=disable" go test ./...
+cd server && go build ./... && DATABASE_URL="postgres://myteam:myteam@localhost:5432/myteam?sslmode=disable" go test ./...
 pnpm --filter @myteam/desktop typecheck && pnpm --filter @myteam/desktop test
 ```
 

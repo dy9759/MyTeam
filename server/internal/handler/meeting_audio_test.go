@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/multica-ai/multica/server/internal/middleware"
+	"github.com/MyAIOSHub/MyTeam/server/internal/middleware"
 )
 
 // TestIsAllowedAudioMIME — whitelist gate for the audio upload endpoint.

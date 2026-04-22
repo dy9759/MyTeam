@@ -7,8 +7,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/multica-ai/multica/server/internal/mcp/mcptool"
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/MyAIOSHub/MyTeam/server/internal/mcp/mcptool"
+	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 
 // RequestApproval surfaces a task slot to a human reviewer for a go/no-go

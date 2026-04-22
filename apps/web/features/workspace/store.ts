@@ -66,13 +66,13 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
     if (!nextWorkspace) {
       api.setWorkspaceId(null);
-      localStorage.removeItem("multica_workspace_id");
+      localStorage.removeItem("myteam_workspace_id");
       set({ workspace: null, members: [], agents: [], skills: [] });
       return null;
     }
 
     api.setWorkspaceId(nextWorkspace.id);
-    localStorage.setItem("multica_workspace_id", nextWorkspace.id);
+    localStorage.setItem("myteam_workspace_id", nextWorkspace.id);
     set({ workspace: nextWorkspace });
 
     logger.debug("hydrate workspace", nextWorkspace.name, nextWorkspace.id);
@@ -108,7 +108,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     // (e.g. triggered by a WS event during the async gap) already
     // targets the new workspace.
     api.setWorkspaceId(ws.id);
-    localStorage.setItem("multica_workspace_id", ws.id);
+    localStorage.setItem("myteam_workspace_id", ws.id);
 
     // Clear ALL stale data across every store before hydrating.
     useIssueStore.getState().setIssues([]);
@@ -121,7 +121,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
   refreshWorkspaces: async () => {
     const { workspace, hydrateWorkspace } = get();
-    const storedWorkspaceId = localStorage.getItem("multica_workspace_id");
+    const storedWorkspaceId = localStorage.getItem("myteam_workspace_id");
     try {
       const wsList = await api.listWorkspaces();
       await hydrateWorkspace(wsList, workspace?.id ?? storedWorkspaceId);
@@ -233,7 +233,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
   clearWorkspace: () => {
     api.setWorkspaceId(null);
-    localStorage.removeItem("multica_workspace_id");
+    localStorage.removeItem("myteam_workspace_id");
     set({ workspace: null, workspaces: [], members: [], agents: [], skills: [] });
   },
 }));

@@ -33,7 +33,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"gopkg.in/yaml.v3"
 
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 
 // Data holds the compiled-in bundle tree. The `all:` prefix includes

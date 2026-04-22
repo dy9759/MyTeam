@@ -40,11 +40,11 @@ export function WSProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!user || !workspace) return;
 
-    const token = localStorage.getItem("multica_token");
+    const token = localStorage.getItem("myteam_token");
     if (!token) return;
 
     const ws = new WSClient(WS_URL, {
-      getToken: () => localStorage.getItem("multica_token"),
+      getToken: () => localStorage.getItem("myteam_token"),
       getWorkspaceId: () => useWorkspaceStore.getState().workspace?.id ?? null,
       logger: createLogger("ws"),
     });

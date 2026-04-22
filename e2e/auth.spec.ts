@@ -22,8 +22,8 @@ test.describe("Authentication", () => {
   test("unauthenticated user is redirected to /login", async ({ page }) => {
     await page.goto("/login");
     await page.evaluate(() => {
-      localStorage.removeItem("multica_token");
-      localStorage.removeItem("multica_workspace_id");
+      localStorage.removeItem("myteam_token");
+      localStorage.removeItem("myteam_workspace_id");
     });
 
     await page.goto("/projects");

@@ -17,9 +17,9 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/multica-ai/multica/server/internal/events"
-	"github.com/multica-ai/multica/server/internal/service/embed"
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/MyAIOSHub/MyTeam/server/internal/events"
+	"github.com/MyAIOSHub/MyTeam/server/internal/service/embed"
+	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 
 // Event type constants. Bus subscribers (cloud-sync handler, audit

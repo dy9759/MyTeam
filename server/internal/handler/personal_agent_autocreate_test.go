@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 
 // TestVerifyCode_AutoCreatesPersonalAgent verifies that a brand-new user signing
@@ -19,7 +19,7 @@ import (
 // workspace, and that both the agent (status='idle') and its runtime
 // (status='online') are ready to receive DMs immediately.
 func TestVerifyCode_AutoCreatesPersonalAgent(t *testing.T) {
-	const email = "auto-pa-verify@multica.ai"
+	const email = "auto-pa-verify@myteam.ai"
 	ctx := context.Background()
 
 	t.Cleanup(func() {
@@ -122,7 +122,7 @@ func TestVerifyCode_AutoCreatesPersonalAgent(t *testing.T) {
 // creation also auto-provisions the creator's personal agent so they can DM
 // it the instant the workspace appears.
 func TestCreateWorkspace_AutoCreatesPersonalAgent(t *testing.T) {
-	const email = "auto-pa-ws@multica.ai"
+	const email = "auto-pa-ws@myteam.ai"
 	ctx := context.Background()
 
 	// Create a fresh user via direct INSERT so we don't depend on verify-code.
@@ -190,7 +190,7 @@ func TestCreateWorkspace_AutoCreatesPersonalAgent(t *testing.T) {
 // member to an existing workspace provisions a personal agent for that user
 // in the workspace they were just added to.
 func TestCreateMember_AutoCreatesPersonalAgentForNewMember(t *testing.T) {
-	const inviteeEmail = "auto-pa-invitee@multica.ai"
+	const inviteeEmail = "auto-pa-invitee@myteam.ai"
 	ctx := context.Background()
 
 	t.Cleanup(func() {

@@ -521,7 +521,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 
 type sqlcMember struct{ q *generated.Queries }

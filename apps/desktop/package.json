@@ -45,7 +45,7 @@
     "vite": "^5.1.6",
     "vite-plugin-electron": "^0.28.6",
     "vite-plugin-electron-renderer": "^0.14.5",
-    "vitest": "^1.6.1"
+    "vitest": "^2.1.1"
   },
   "build": {
     "appId": "ai.myteam.desktop",

@@ -6,10 +6,10 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/multica-ai/multica/server/internal/events"
-	"github.com/multica-ai/multica/server/internal/handler"
-	"github.com/multica-ai/multica/server/internal/realtime"
-	"github.com/multica-ai/multica/server/pkg/protocol"
+	"github.com/MyAIOSHub/MyTeam/server/internal/events"
+	"github.com/MyAIOSHub/MyTeam/server/internal/handler"
+	"github.com/MyAIOSHub/MyTeam/server/internal/realtime"
+	"github.com/MyAIOSHub/MyTeam/server/pkg/protocol"
 )
 
 // registerListeners wires up event bus listeners for WS broadcasting.

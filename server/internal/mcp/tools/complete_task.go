@@ -6,11 +6,11 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/multica-ai/multica/server/internal/events"
-	"github.com/multica-ai/multica/server/internal/mcp/mcptool"
-	"github.com/multica-ai/multica/server/internal/realtime"
-	"github.com/multica-ai/multica/server/internal/service"
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/MyAIOSHub/MyTeam/server/internal/events"
+	"github.com/MyAIOSHub/MyTeam/server/internal/mcp/mcptool"
+	"github.com/MyAIOSHub/MyTeam/server/internal/realtime"
+	"github.com/MyAIOSHub/MyTeam/server/internal/service"
+	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 
 // CompleteTask marks a task as complete with a result payload, routing

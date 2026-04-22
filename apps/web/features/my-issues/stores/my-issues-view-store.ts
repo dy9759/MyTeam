@@ -15,7 +15,7 @@ export interface MyIssuesViewState extends IssueViewState {
   setScope: (scope: MyIssuesScope) => void;
 }
 
-const basePersist = viewStorePersistOptions("multica_my_issues_view");
+const basePersist = viewStorePersistOptions("myteam_my_issues_view");
 
 export const myIssuesViewStore: StoreApi<MyIssuesViewState> = createStore<MyIssuesViewState>()(
   persist(

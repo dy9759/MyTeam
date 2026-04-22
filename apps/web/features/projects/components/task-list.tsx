@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect } from "react";
-import { useTaskStore } from "../task-store";
+import { selectTasksForPlan, useTaskStore } from "../task-store";
 import type { TaskStatus } from "@/shared/types";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -25,7 +25,7 @@ const STATUS_VARIANT: Record<
 };
 
 export function TaskList({ planID }: { planID: string }) {
-  const tasks = useTaskStore((s) => s.tasksByPlan[planID] ?? []);
+  const tasks = useTaskStore(selectTasksForPlan(planID));
   const loading = useTaskStore((s) => s.loading[planID] ?? false);
   const error = useTaskStore((s) => s.error);
   const loadTasks = useTaskStore((s) => s.loadTasks);

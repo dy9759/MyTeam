@@ -103,7 +103,7 @@ The desktop app expects the backend to be running locally.
 
 - CI runs frontend build/typecheck/tests, desktop typecheck/tests, and backend Go tests against PostgreSQL with pgvector.
 - For isolated local development, use `make setup-worktree` and `make start-worktree`.
-- Some environment variables and legacy internal entry points still use the `MULTICA_` prefix or the `multica` binary name. Day-to-day use can go through the `myteam` entry points documented above.
+- Some environment variables and legacy internal entry points still use the `MYTEAM_` prefix or the `myteam` binary name. Day-to-day use can go through the `myteam` entry points documented above.
 
 ## Additional Docs
 

@@ -14,7 +14,7 @@ import type {
 
 // State for Plan 5 task / slot / execution / artifact / review entities.
 // Kept separate from the existing project store to avoid clobbering its API.
-interface TaskState {
+export interface TaskState {
   tasksByPlan: Record<string, Task[]>;
   slotsByTask: Record<string, ParticipantSlot[]>;
   executionsByTask: Record<string, Execution[]>;
@@ -23,6 +23,42 @@ interface TaskState {
   loading: Record<string, boolean>;
   error: string | null;
 }
+
+// Shared empty arrays so selectors return a stable reference when the
+// keyed bucket is missing. Without this, `s.tasksByPlan[planID] ?? []`
+// produces a new array every render which trips zustand's equality
+// check into a re-render loop (the React warning "The result of
+// getSnapshot should be cached to avoid an infinite loop").
+const EMPTY_TASKS: Task[] = [];
+const EMPTY_SLOTS: ParticipantSlot[] = [];
+const EMPTY_EXECUTIONS: Execution[] = [];
+const EMPTY_ARTIFACTS: Artifact[] = [];
+const EMPTY_REVIEWS: Review[] = [];
+
+export const selectTasksForPlan =
+  (planID: string) =>
+  (s: TaskState): Task[] =>
+    s.tasksByPlan[planID] ?? EMPTY_TASKS;
+
+export const selectSlotsForTask =
+  (taskID: string) =>
+  (s: TaskState): ParticipantSlot[] =>
+    s.slotsByTask[taskID] ?? EMPTY_SLOTS;
+
+export const selectExecutionsForTask =
+  (taskID: string) =>
+  (s: TaskState): Execution[] =>
+    s.executionsByTask[taskID] ?? EMPTY_EXECUTIONS;
+
+export const selectArtifactsForTask =
+  (taskID: string) =>
+  (s: TaskState): Artifact[] =>
+    s.artifactsByTask[taskID] ?? EMPTY_ARTIFACTS;
+
+export const selectReviewsForArtifact =
+  (artifactID: string) =>
+  (s: TaskState): Review[] =>
+    s.reviewsByArtifact[artifactID] ?? EMPTY_REVIEWS;
 
 interface TaskActions {
   loadTasks: (planID: string) => Promise<void>;

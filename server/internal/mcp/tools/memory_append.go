@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/multica-ai/multica/server/internal/mcp/mcptool"
-	"github.com/multica-ai/multica/server/internal/service/memory"
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/MyAIOSHub/MyTeam/server/internal/mcp/mcptool"
+	"github.com/MyAIOSHub/MyTeam/server/internal/service/memory"
+	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 
 // MemoryAppend appends a candidate memory derived from an existing raw record.

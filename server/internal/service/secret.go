@@ -8,8 +8,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/multica-ai/multica/server/pkg/crypto"
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/MyAIOSHub/MyTeam/server/pkg/crypto"
+	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 
 const secretKeyEnvVar = "MYTEAM_SECRET_KEY"

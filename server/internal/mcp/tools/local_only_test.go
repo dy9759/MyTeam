@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/multica-ai/multica/server/internal/errcode"
-	"github.com/multica-ai/multica/server/internal/mcp/mcptool"
+	"github.com/MyAIOSHub/MyTeam/server/internal/errcode"
+	"github.com/MyAIOSHub/MyTeam/server/internal/mcp/mcptool"
 )
 
 func TestCheckoutRepoRejectsCloudRuntime(t *testing.T) {

@@ -6,8 +6,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/multica-ai/multica/server/internal/auth"
-	"github.com/multica-ai/multica/server/internal/errcode"
+	"github.com/MyAIOSHub/MyTeam/server/internal/auth"
+	"github.com/MyAIOSHub/MyTeam/server/internal/errcode"
 )
 
 // requireWorkspaceOwner centralizes owner-only RBAC checks for handlers whose

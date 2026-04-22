@@ -8,29 +8,29 @@ func TestResolveReleaseRepoDefaultsToMyTeam(t *testing.T) {
 	if got := resolveReleaseRepo(); got != defaultReleaseRepo {
 		t.Fatalf("resolveReleaseRepo() = %q, want %q", got, defaultReleaseRepo)
 	}
-	if got := releaseListAPIURL(); got != "https://api.github.com/repos/dy9759/MyTeam/releases?per_page=20" {
+	if got := releaseListAPIURL(); got != "https://api.github.com/repos/MyAIOSHub/MyTeam/releases?per_page=20" {
 		t.Fatalf("releaseListAPIURL() = %q", got)
 	}
 }
 
 func TestResolveReleaseRepoSupportsOverride(t *testing.T) {
-	t.Setenv("MYTEAM_RELEASE_REPO", "dy9759/MyTeam")
+	t.Setenv("MYTEAM_RELEASE_REPO", "MyAIOSHub/MyTeam")
 
-	if got := resolveReleaseRepo(); got != "dy9759/MyTeam" {
+	if got := resolveReleaseRepo(); got != "MyAIOSHub/MyTeam" {
 		t.Fatalf("resolveReleaseRepo() = %q", got)
 	}
-	if got := releaseListAPIURL(); got != "https://api.github.com/repos/dy9759/MyTeam/releases?per_page=20" {
+	if got := releaseListAPIURL(); got != "https://api.github.com/repos/MyAIOSHub/MyTeam/releases?per_page=20" {
 		t.Fatalf("releaseListAPIURL() = %q", got)
 	}
-	if got := releaseDownloadURL("v1.2.3", "myteam_darwin_arm64.tar.gz"); got != "https://github.com/dy9759/MyTeam/releases/download/v1.2.3/myteam_darwin_arm64.tar.gz" {
+	if got := releaseDownloadURL("v1.2.3", "myteam_darwin_arm64.tar.gz"); got != "https://github.com/MyAIOSHub/MyTeam/releases/download/v1.2.3/myteam_darwin_arm64.tar.gz" {
 		t.Fatalf("releaseDownloadURL() = %q", got)
 	}
 }
 
 func TestResolveBrewFormulaSupportsOverride(t *testing.T) {
-	t.Setenv("MYTEAM_BREW_FORMULA", "dy9759/tap/myteam")
+	t.Setenv("MYTEAM_BREW_FORMULA", "MyAIOSHub/tap/myteam")
 
-	if got := resolveBrewFormula(); got != "dy9759/tap/myteam" {
+	if got := resolveBrewFormula(); got != "MyAIOSHub/tap/myteam" {
 		t.Fatalf("resolveBrewFormula() = %q", got)
 	}
 }

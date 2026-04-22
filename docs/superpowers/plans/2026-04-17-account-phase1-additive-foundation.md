@@ -226,7 +226,7 @@ cd /Users/chauncey2025/Documents/GitHub/MyTeam/.claude/worktrees/suspicious-gaus
 go test ./pkg/provider/...
 ```
 
-Expected: `ok  multica/server/pkg/provider`. (Module path may differ — confirm by reading `server/go.mod` first.)
+Expected: `ok  myteam/server/pkg/provider`. (Module path may differ — confirm by reading `server/go.mod` first.)
 
 - [ ] **Step 5: Commit**
 

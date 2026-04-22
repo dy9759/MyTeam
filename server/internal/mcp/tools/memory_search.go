@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/multica-ai/multica/server/internal/mcp/mcptool"
-	"github.com/multica-ai/multica/server/internal/service/memory"
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/MyAIOSHub/MyTeam/server/internal/mcp/mcptool"
+	"github.com/MyAIOSHub/MyTeam/server/internal/service/memory"
+	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 
 // MemorySearch performs semantic search over indexed memory chunks.

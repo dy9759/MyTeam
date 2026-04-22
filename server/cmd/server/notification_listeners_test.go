@@ -4,11 +4,11 @@ import (
 	"context"
 	"testing"
 
-	"github.com/multica-ai/multica/server/internal/events"
-	"github.com/multica-ai/multica/server/internal/handler"
-	"github.com/multica-ai/multica/server/internal/util"
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
-	"github.com/multica-ai/multica/server/pkg/protocol"
+	"github.com/MyAIOSHub/MyTeam/server/internal/events"
+	"github.com/MyAIOSHub/MyTeam/server/internal/handler"
+	"github.com/MyAIOSHub/MyTeam/server/internal/util"
+	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
+	"github.com/MyAIOSHub/MyTeam/server/pkg/protocol"
 )
 
 // notificationTest helpers — reuse the integration test fixtures from TestMain
@@ -63,7 +63,7 @@ func TestNotification_IssueCreated_AssigneeNotified(t *testing.T) {
 	queries := db.New(testPool)
 	bus := newNotificationBus(t, queries)
 
-	assigneeEmail := "notif-assignee-created@multica.ai"
+	assigneeEmail := "notif-assignee-created@myteam.ai"
 	assigneeID := createTestUser(t, assigneeEmail)
 	t.Cleanup(func() { cleanupTestUser(t, assigneeEmail) })
 
@@ -223,11 +223,11 @@ func TestNotification_StatusChanged(t *testing.T) {
 	bus := newNotificationBus(t, queries)
 
 	// Create two extra users as subscribers
-	sub1Email := "notif-sub1-status@multica.ai"
+	sub1Email := "notif-sub1-status@myteam.ai"
 	sub1ID := createTestUser(t, sub1Email)
 	t.Cleanup(func() { cleanupTestUser(t, sub1Email) })
 
-	sub2Email := "notif-sub2-status@multica.ai"
+	sub2Email := "notif-sub2-status@myteam.ai"
 	sub2ID := createTestUser(t, sub2Email)
 	t.Cleanup(func() { cleanupTestUser(t, sub2Email) })
 
@@ -302,11 +302,11 @@ func TestNotification_CommentCreated(t *testing.T) {
 	queries := db.New(testPool)
 	bus := newNotificationBus(t, queries)
 
-	commenterEmail := "notif-commenter@multica.ai"
+	commenterEmail := "notif-commenter@myteam.ai"
 	commenterID := createTestUser(t, commenterEmail)
 	t.Cleanup(func() { cleanupTestUser(t, commenterEmail) })
 
-	sub1Email := "notif-sub1-comment@multica.ai"
+	sub1Email := "notif-sub1-comment@myteam.ai"
 	sub1ID := createTestUser(t, sub1Email)
 	t.Cleanup(func() { cleanupTestUser(t, sub1Email) })
 
@@ -377,15 +377,15 @@ func TestNotification_AssigneeChanged(t *testing.T) {
 	queries := db.New(testPool)
 	bus := newNotificationBus(t, queries)
 
-	oldAssigneeEmail := "notif-old-assignee@multica.ai"
+	oldAssigneeEmail := "notif-old-assignee@myteam.ai"
 	oldAssigneeID := createTestUser(t, oldAssigneeEmail)
 	t.Cleanup(func() { cleanupTestUser(t, oldAssigneeEmail) })
 
-	newAssigneeEmail := "notif-new-assignee@multica.ai"
+	newAssigneeEmail := "notif-new-assignee@myteam.ai"
 	newAssigneeID := createTestUser(t, newAssigneeEmail)
 	t.Cleanup(func() { cleanupTestUser(t, newAssigneeEmail) })
 
-	bystanderEmail := "notif-bystander@multica.ai"
+	bystanderEmail := "notif-bystander@myteam.ai"
 	bystanderID := createTestUser(t, bystanderEmail)
 	t.Cleanup(func() { cleanupTestUser(t, bystanderEmail) })
 
@@ -556,7 +556,7 @@ func TestNotification_PriorityChanged(t *testing.T) {
 	queries := db.New(testPool)
 	bus := newNotificationBus(t, queries)
 
-	sub1Email := "notif-sub1-priority@multica.ai"
+	sub1Email := "notif-sub1-priority@myteam.ai"
 	sub1ID := createTestUser(t, sub1Email)
 	t.Cleanup(func() { cleanupTestUser(t, sub1Email) })
 
@@ -621,7 +621,7 @@ func TestNotification_DueDateChanged(t *testing.T) {
 	queries := db.New(testPool)
 	bus := newNotificationBus(t, queries)
 
-	sub1Email := "notif-sub1-duedate@multica.ai"
+	sub1Email := "notif-sub1-duedate@myteam.ai"
 	sub1ID := createTestUser(t, sub1Email)
 	t.Cleanup(func() { cleanupTestUser(t, sub1Email) })
 

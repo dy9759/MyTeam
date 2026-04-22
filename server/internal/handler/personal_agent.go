@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/multica-ai/multica/server/internal/service"
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/MyAIOSHub/MyTeam/server/internal/service"
+	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 
 // GetPersonalAgent — GET /api/personal-agent

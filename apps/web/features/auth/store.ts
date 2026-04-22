@@ -24,7 +24,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   isLoading: true,
 
   initialize: async () => {
-    const token = localStorage.getItem("multica_token");
+    const token = localStorage.getItem("myteam_token");
     if (!token) {
       log.info("initialize: no token found, skipping");
       set({ isLoading: false });
@@ -42,8 +42,8 @@ export const useAuthStore = create<AuthState>((set) => ({
       log.error("initialize: session invalid, clearing credentials", err);
       api.setToken(null);
       api.setWorkspaceId(null);
-      localStorage.removeItem("multica_token");
-      localStorage.removeItem("multica_workspace_id");
+      localStorage.removeItem("myteam_token");
+      localStorage.removeItem("myteam_workspace_id");
       set({ user: null, isLoading: false });
     }
   },
@@ -64,7 +64,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       const { token, user } = await api.verifyCode(email, code);
       log.info("verifyCode: success", { userId: user.id, email: user.email });
-      localStorage.setItem("multica_token", token);
+      localStorage.setItem("myteam_token", token);
       api.setToken(token);
       setLoggedInCookie();
       set({ user });
@@ -77,8 +77,8 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   logout: () => {
     log.info("logout: clearing session");
-    localStorage.removeItem("multica_token");
-    localStorage.removeItem("multica_workspace_id");
+    localStorage.removeItem("myteam_token");
+    localStorage.removeItem("myteam_workspace_id");
     api.setToken(null);
     api.setWorkspaceId(null);
     clearLoggedInCookie();

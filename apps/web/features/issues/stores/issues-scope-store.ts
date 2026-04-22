@@ -16,6 +16,6 @@ export const useIssuesScopeStore = create<IssuesScopeState>()(
       scope: "all",
       setScope: (scope) => set({ scope }),
     }),
-    { name: "multica_issues_scope" },
+    { name: "myteam_issues_scope" },
   ),
 );

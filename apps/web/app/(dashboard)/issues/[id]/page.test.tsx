@@ -31,7 +31,7 @@ vi.mock("next/link", () => ({
 vi.mock("@/features/auth", () => ({
   useAuthStore: (selector: (s: any) => any) =>
     selector({
-      user: { id: "user-1", name: "Test User", email: "test@multica.ai" },
+      user: { id: "user-1", name: "Test User", email: "test@myteam.ai" },
       isLoading: false,
     }),
 }));
@@ -42,7 +42,7 @@ vi.mock("@/features/workspace", () => ({
     selector({
       workspace: { id: "ws-1", name: "Test WS" },
       workspaces: [{ id: "ws-1", name: "Test WS" }],
-      members: [{ user_id: "user-1", name: "Test User", email: "test@multica.ai" }],
+      members: [{ user_id: "user-1", name: "Test User", email: "test@myteam.ai" }],
       agents: [{ id: "agent-1", name: "Claude Agent" }],
     }),
   useActorName: () => ({

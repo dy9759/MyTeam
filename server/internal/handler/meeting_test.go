@@ -10,9 +10,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/multica-ai/multica/server/internal/service"
-	"github.com/multica-ai/multica/server/internal/service/asr"
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/MyAIOSHub/MyTeam/server/internal/service"
+	"github.com/MyAIOSHub/MyTeam/server/internal/service/asr"
+	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 
 // handlerFakeASR returns a deterministic SummaryBundle so tests don't

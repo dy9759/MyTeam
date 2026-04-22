@@ -21,8 +21,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/multica-ai/multica/server/internal/events"
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/MyAIOSHub/MyTeam/server/internal/events"
+	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 
 // ---------------------------------------------------------------------------

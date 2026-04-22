@@ -11,14 +11,14 @@ fi
 worktree_name="${WORKTREE_NAME:-$(basename "$PWD")}"
 slug="$(printf '%s' "$worktree_name" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/_/g; s/__*/_/g; s/^_//; s/_$//')"
 if [ -z "$slug" ]; then
-  slug="multica"
+  slug="myteam"
 fi
 
 hash_value="$(printf '%s' "$PWD" | cksum | awk '{print $1}')"
 app_offset=$((hash_value % 1000))
 postgres_offset=$((hash_value % 10000))
 
-postgres_db="multica_${slug}_${postgres_offset}"
+postgres_db="myteam_${slug}_${postgres_offset}"
 postgres_port=$((15432 + postgres_offset))
 backend_port=$((18080 + app_offset))
 frontend_port=$((13000 + app_offset))
@@ -26,15 +26,15 @@ frontend_origin="http://localhost:${frontend_port}"
 
 cat > "$ENV_FILE" <<EOF
 POSTGRES_DB=${postgres_db}
-POSTGRES_USER=multica
-POSTGRES_PASSWORD=multica
+POSTGRES_USER=myteam
+POSTGRES_PASSWORD=myteam
 POSTGRES_PORT=${postgres_port}
-DATABASE_URL=postgres://multica:multica@localhost:${postgres_port}/${postgres_db}?sslmode=disable
+DATABASE_URL=postgres://myteam:myteam@localhost:${postgres_port}/${postgres_db}?sslmode=disable
 
 PORT=${backend_port}
 JWT_SECRET=change-me-in-production
-MULTICA_SERVER_URL=ws://localhost:${backend_port}/ws
-MULTICA_APP_URL=${frontend_origin}
+MYTEAM_SERVER_URL=ws://localhost:${backend_port}/ws
+MYTEAM_APP_URL=${frontend_origin}
 
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=

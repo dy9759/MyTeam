@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/multica-ai/multica/server/internal/events"
-	"github.com/multica-ai/multica/server/internal/realtime"
-	"github.com/multica-ai/multica/server/internal/service/memory"
+	"github.com/MyAIOSHub/MyTeam/server/internal/events"
+	"github.com/MyAIOSHub/MyTeam/server/internal/realtime"
+	"github.com/MyAIOSHub/MyTeam/server/internal/service/memory"
 )
 
 // TestRegisterMemoryListeners_RegistersConfirmedHandler verifies the

@@ -24,8 +24,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/multica-ai/multica/server/internal/service"
-	"github.com/multica-ai/multica/server/internal/storage"
+	"github.com/MyAIOSHub/MyTeam/server/internal/service"
+	"github.com/MyAIOSHub/MyTeam/server/internal/storage"
 )
 
 // maxAudioUploadMem caps the in-memory multipart parsing buffer at

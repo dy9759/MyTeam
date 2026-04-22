@@ -15,7 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/multica-ai/multica/server/internal/service/memory"
+	"github.com/MyAIOSHub/MyTeam/server/internal/service/memory"
 )
 
 // fakeIndexEmbedder satisfies embed.Embedder. Returns a deterministic

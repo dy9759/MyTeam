@@ -6,8 +6,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/multica-ai/multica/server/internal/mcp/mcptool"
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/MyAIOSHub/MyTeam/server/internal/mcp/mcptool"
+	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 
 func TestDownloadAttachment_HappyPath(t *testing.T) {

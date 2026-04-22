@@ -5,10 +5,10 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/multica-ai/multica/server/internal/events"
-	"github.com/multica-ai/multica/server/internal/realtime"
-	"github.com/multica-ai/multica/server/internal/service/memory"
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/MyAIOSHub/MyTeam/server/internal/events"
+	"github.com/MyAIOSHub/MyTeam/server/internal/realtime"
+	"github.com/MyAIOSHub/MyTeam/server/internal/service/memory"
+	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 
 // memoryHubURL / memoryHubBearer are the env-supplied target. Read once

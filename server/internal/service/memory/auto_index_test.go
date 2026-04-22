@@ -7,7 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/multica-ai/multica/server/internal/events"
+	"github.com/MyAIOSHub/MyTeam/server/internal/events"
 )
 
 // fakeEmbedder + fakeStore exercise the WithIndexing wiring without a

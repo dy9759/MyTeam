@@ -74,7 +74,7 @@ func TestListMessages_DefaultPeerTypeIsMember(t *testing.T) {
 	var peerUserID string
 	err := testPool.QueryRow(ctx, `
 		INSERT INTO "user" (name, email)
-		VALUES ('DM Peer User', 'dm-peer@multica.ai')
+		VALUES ('DM Peer User', 'dm-peer@myteam.ai')
 		RETURNING id
 	`).Scan(&peerUserID)
 	if err != nil {

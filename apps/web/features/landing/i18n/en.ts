@@ -126,7 +126,7 @@ export const en: LandingDict = {
       {
         title: "Install the CLI & connect your machine",
         description:
-          "Run multica login to authenticate, then multica daemon start. The daemon auto-detects Claude Code and Codex on your machine \u2014 plug in and go.",
+          "Run myteam login to authenticate, then myteam daemon start. The daemon auto-detects Claude Code and Codex on your machine \u2014 plug in and go.",
       },
       {
         title: "Create your first agent",

@@ -12,12 +12,12 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/multica-ai/multica/server/internal/events"
-	"github.com/multica-ai/multica/server/internal/realtime"
-	"github.com/multica-ai/multica/server/internal/util"
-	"github.com/multica-ai/multica/server/pkg/agent_runner"
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
-	"github.com/multica-ai/multica/server/pkg/protocol"
+	"github.com/MyAIOSHub/MyTeam/server/internal/events"
+	"github.com/MyAIOSHub/MyTeam/server/internal/realtime"
+	"github.com/MyAIOSHub/MyTeam/server/internal/util"
+	"github.com/MyAIOSHub/MyTeam/server/pkg/agent_runner"
+	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
+	"github.com/MyAIOSHub/MyTeam/server/pkg/protocol"
 )
 
 // CloudExecutorService claims and executes tasks for cloud-mode agents.
@@ -655,7 +655,7 @@ func (s *CloudExecutorService) runExecutionAsync(parentCtx context.Context, e db
 // is one obvious place rather than buried in the goroutine.
 func buildExecutionSystemPrompt(agentName string) string {
 	return fmt.Sprintf(
-		"You are %s, an AI agent on the Multica platform. Complete the task described below. "+
+		"You are %s, an AI agent on the MyTeam platform. Complete the task described below. "+
 			"Respond with the final result in plain text. If the task is unclear or you cannot "+
 			"proceed, say so explicitly so the human reviewer can intervene.",
 		agentName,

@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	"github.com/multica-ai/multica/server/internal/cli"
+	"github.com/MyAIOSHub/MyTeam/server/internal/cli"
 )
 
 func TestLegacyCompatibilityCommandsRemainAvailable(t *testing.T) {

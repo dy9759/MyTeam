@@ -1,4 +1,4 @@
-.PHONY: dev daemon cli multica myteam daemon-start daemon-stop daemon-status daemon-logs build test migrate-up migrate-down sqlc seed clean setup start stop check worktree-env setup-main start-main stop-main check-main setup-worktree start-worktree stop-worktree check-worktree db-up db-down setup-agent-runner
+.PHONY: dev daemon cli myteam myteam daemon-start daemon-stop daemon-status daemon-logs build test migrate-up migrate-down sqlc seed clean setup start stop check worktree-env setup-main start-main stop-main check-main setup-worktree start-worktree stop-worktree check-worktree db-up db-down setup-agent-runner
 
 MAIN_ENV_FILE ?= .env
 WORKTREE_ENV_FILE ?= .env.worktree
@@ -8,23 +8,23 @@ ifneq ($(wildcard $(ENV_FILE)),)
 include $(ENV_FILE)
 endif
 
-POSTGRES_DB ?= multica
-POSTGRES_USER ?= multica
-POSTGRES_PASSWORD ?= multica
+POSTGRES_DB ?= myteam
+POSTGRES_USER ?= myteam
+POSTGRES_PASSWORD ?= myteam
 POSTGRES_PORT ?= 5432
 PORT ?= 8080
 FRONTEND_PORT ?= 3000
 FRONTEND_ORIGIN ?= http://localhost:$(FRONTEND_PORT)
-MULTICA_APP_URL ?= $(FRONTEND_ORIGIN)
+MYTEAM_APP_URL ?= $(FRONTEND_ORIGIN)
 DATABASE_URL ?= postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@localhost:$(POSTGRES_PORT)/$(POSTGRES_DB)?sslmode=disable
 NEXT_PUBLIC_API_URL ?= http://localhost:$(PORT)
 NEXT_PUBLIC_WS_URL ?= ws://localhost:$(PORT)/ws
 GOOGLE_REDIRECT_URI ?= $(FRONTEND_ORIGIN)/auth/callback
-MULTICA_SERVER_URL ?= ws://localhost:$(PORT)/ws
+MYTEAM_SERVER_URL ?= ws://localhost:$(PORT)/ws
 
 export
 
-MULTICA_ARGS ?= $(ARGS)
+MYTEAM_ARGS ?= $(ARGS)
 
 COMPOSE := docker compose
 
@@ -128,39 +128,39 @@ dev:
 	cd server && go run ./cmd/server
 
 daemon:
-	@$(MAKE) multica MULTICA_ARGS="daemon start $(ARGS)"
+	@$(MAKE) run-myteam MYTEAM_ARGS="daemon start $(ARGS)"
 
 cli:
-	@$(MAKE) multica MULTICA_ARGS="$(MULTICA_ARGS)"
+	@$(MAKE) run-myteam MYTEAM_ARGS="$(MYTEAM_ARGS)"
 
-multica:
-	cd server && go run ./cmd/multica $(MULTICA_ARGS)
+run-myteam:
+	cd server && go run ./cmd/myteam $(MYTEAM_ARGS)
 
-# ---------- myteam aliases (friendlier front for the multica CLI) ----------
+# ---------- myteam aliases (friendlier front for the myteam CLI) ----------
 
-# Generic pass-through: `make myteam ARGS="daemon status"` equals `make multica ARGS="daemon status"`
+# Generic pass-through: `make myteam ARGS="daemon status"` equals `make myteam ARGS="daemon status"`
 myteam:
-	@$(MAKE) multica MULTICA_ARGS="$(ARGS)"
+	@$(MAKE) run-myteam MYTEAM_ARGS="$(ARGS)"
 
 # Common daemon shortcuts
 daemon-start:
-	@$(MAKE) multica MULTICA_ARGS="daemon start $(ARGS)"
+	@$(MAKE) run-myteam MYTEAM_ARGS="daemon start $(ARGS)"
 
 daemon-stop:
-	@$(MAKE) multica MULTICA_ARGS="daemon stop $(ARGS)"
+	@$(MAKE) run-myteam MYTEAM_ARGS="daemon stop $(ARGS)"
 
 daemon-status:
-	@$(MAKE) multica MULTICA_ARGS="daemon status $(ARGS)"
+	@$(MAKE) run-myteam MYTEAM_ARGS="daemon status $(ARGS)"
 
 daemon-logs:
-	@$(MAKE) multica MULTICA_ARGS="daemon logs $(ARGS)"
+	@$(MAKE) run-myteam MYTEAM_ARGS="daemon logs $(ARGS)"
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 
 build:
 	cd server && go build -o bin/server ./cmd/server
-	cd server && go build -ldflags "-X main.version=$(VERSION) -X main.commit=$(COMMIT)" -o bin/multica ./cmd/multica
+	cd server && go build -ldflags "-X main.version=$(VERSION) -X main.commit=$(COMMIT)" -o bin/myteam ./cmd/myteam
 
 test:
 	$(REQUIRE_ENV)

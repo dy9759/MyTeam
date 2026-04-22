@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/multica-ai/multica/server/internal/mcp/tools"
+	"github.com/MyAIOSHub/MyTeam/server/internal/mcp/tools"
 )
 
 // Registry holds every Tool keyed by Name(). Built once in init().

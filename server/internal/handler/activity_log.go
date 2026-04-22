@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/jackc/pgx/v5/pgtype"
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 
 // ActivityLogEntryResponse is the JSON shape for a single activity_log row.

@@ -9,7 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
-	"github.com/multica-ai/multica/server/internal/service/memory"
+	"github.com/MyAIOSHub/MyTeam/server/internal/service/memory"
 )
 
 type createMemoryRequest struct {

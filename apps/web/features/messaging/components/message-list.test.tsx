@@ -30,7 +30,7 @@ function buildMessage(overrides: Partial<{
 }
 
 describe("MessageList", () => {
-  it("renders messages and shows thread reply button that triggers onOpenThread", async () => {
+  it("renders thread chip for roots with replies and the hover icon triggers onOpenThread", async () => {
     const user = userEvent.setup();
     const onOpenThread = vi.fn();
 
@@ -58,12 +58,14 @@ describe("MessageList", () => {
     expect(screen.getByText("Hello world")).toBeInTheDocument();
     expect(screen.getByText("Another message")).toBeInTheDocument();
 
-    // The root message has reply_count=3, so thread button shows
-    const threadButton = screen.getByText("3 条回复");
-    expect(threadButton).toBeInTheDocument();
+    // Reply chip surfaces the count — it now toggles inline expansion
+    // instead of opening the side panel, so we assert the chip exists
+    // and the side-panel trigger is wired to the hover icon instead.
+    expect(screen.getByText(/3 条回复/)).toBeInTheDocument();
 
-    // Clicking the thread button calls onOpenThread with the message id
-    await user.click(threadButton);
+    const sidePanelTriggers = screen.getAllByTitle("在侧栏打开讨论串");
+    // Root message renders first, so its hover icon sits at index 0.
+    await user.click(sidePanelTriggers[0]);
     expect(onOpenThread).toHaveBeenCalledWith("root-message");
   });
 

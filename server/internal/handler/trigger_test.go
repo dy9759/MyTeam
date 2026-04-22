@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/multica-ai/multica/server/internal/service"
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/MyAIOSHub/MyTeam/server/internal/service"
+	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 
 // Helper to build a pgtype.UUID from a string.

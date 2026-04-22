@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-// APIClient is a REST client for the Multica server API.
+// APIClient is a REST client for the MyTeam server API.
 // Used by ctrl subcommands (agent, runtime, status, etc.).
 //
 // TODO: Add Authorization header support. Agent routes (/api/agents/...)

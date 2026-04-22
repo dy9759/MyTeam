@@ -73,7 +73,7 @@ function LoginPageContent() {
     const cliCallback = searchParams.get("cli_callback");
     if (!cliCallback) return;
 
-    const token = localStorage.getItem("multica_token");
+    const token = localStorage.getItem("myteam_token");
     if (!token) return;
 
     if (!validateCliCallback(cliCallback)) return;
@@ -89,7 +89,7 @@ function LoginPageContent() {
       .catch(() => {
         // Token expired/invalid — clear and fall through to normal login.
         api.setToken(null);
-        localStorage.removeItem("multica_token");
+        localStorage.removeItem("myteam_token");
       });
   }, [searchParams]);
 
@@ -101,7 +101,7 @@ function LoginPageContent() {
 
   const handleCliAuthorize = async () => {
     const cliCallback = searchParams.get("cli_callback");
-    const token = localStorage.getItem("multica_token");
+    const token = localStorage.getItem("myteam_token");
     if (!cliCallback || !token) return;
     const cliState = searchParams.get("cli_state") || "";
     setSubmitting(true);

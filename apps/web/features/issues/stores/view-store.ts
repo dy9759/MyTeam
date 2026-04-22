@@ -187,7 +187,7 @@ export function createIssueViewStore(persistKey: string): StoreApi<IssueViewStat
 
 /** Global singleton for the /issues page. */
 export const useIssueViewStore = create<IssueViewState>()(
-  persist(viewStoreSlice, viewStorePersistOptions("multica_issues_view"))
+  persist(viewStoreSlice, viewStorePersistOptions("myteam_issues_view"))
 );
 
 // Clear filters on all registered view stores when workspace switches.

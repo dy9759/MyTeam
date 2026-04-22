@@ -11,11 +11,11 @@ export const api = new ApiClient(API_BASE_URL, { logger: createLogger("api") });
 
 // Initialize token from localStorage on load
 if (typeof window !== "undefined") {
-  const token = localStorage.getItem("multica_token");
+  const token = localStorage.getItem("myteam_token");
   if (token) {
     api.setToken(token);
   }
-  const wsId = localStorage.getItem("multica_workspace_id");
+  const wsId = localStorage.getItem("myteam_workspace_id");
   if (wsId) {
     api.setWorkspaceId(wsId);
   }

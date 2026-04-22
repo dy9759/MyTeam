@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { MulticaIcon } from "@/components/multica-icon";
+import { MyTeamIcon } from "@/components/myteam-icon";
 import { useNavigationStore } from "@/features/navigation";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { useAuthStore } from "@/features/auth";
@@ -34,7 +34,7 @@ export default function DashboardLayout({
   if (isLoading) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
-        <MulticaIcon className="size-6" />
+        <MyTeamIcon className="size-6" />
       </div>
     );
   }
@@ -50,7 +50,7 @@ export default function DashboardLayout({
           children
         ) : (
           <div className="flex flex-1 items-center justify-center">
-            <MulticaIcon className="size-6 animate-pulse" />
+            <MyTeamIcon className="size-6 animate-pulse" />
           </div>
         )}
       </SidebarInset>

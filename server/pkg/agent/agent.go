@@ -9,7 +9,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/multica-ai/multica/server/pkg/llmclient"
+	"github.com/MyAIOSHub/MyTeam/server/pkg/llmclient"
 )
 
 // Backend is the unified interface for executing prompts via coding agents.

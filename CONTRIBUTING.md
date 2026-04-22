@@ -1,6 +1,6 @@
 # Contributing Guide
 
-This guide documents the local development workflow for contributors working on the Multica codebase.
+This guide documents the local development workflow for contributors working on the MyTeam codebase.
 
 It covers:
 
@@ -15,7 +15,7 @@ It covers:
 
 Local development uses one PostgreSQL container per checkout and one database per checkout.
 
-- the main checkout usually uses `.env` and `POSTGRES_DB=multica`
+- the main checkout usually uses `.env` and `POSTGRES_DB=myteam`
 - each Git worktree uses its own `.env.worktree`
 - the main checkout keeps PostgreSQL on `localhost:5432`
 - each worktree gets its own PostgreSQL host port and database name
@@ -54,9 +54,9 @@ cp .env.example .env
 By default, `.env` points to:
 
 ```bash
-POSTGRES_DB=multica
+POSTGRES_DB=myteam
 POSTGRES_PORT=5432
-DATABASE_URL=postgres://multica:multica@localhost:5432/multica?sslmode=disable
+DATABASE_URL=postgres://myteam:myteam@localhost:5432/myteam?sslmode=disable
 PORT=8080
 FRONTEND_PORT=3000
 ```
@@ -72,11 +72,11 @@ make worktree-env
 That generates values like:
 
 ```bash
-POSTGRES_DB=multica_my_feature_702
+POSTGRES_DB=myteam_my_feature_702
 POSTGRES_PORT=18431
 PORT=18782
 FRONTEND_PORT=13702
-DATABASE_URL=postgres://multica:multica@localhost:18431/multica_my_feature_702?sslmode=disable
+DATABASE_URL=postgres://myteam:myteam@localhost:18431/myteam_my_feature_702?sslmode=disable
 ```
 
 Notes:
@@ -169,8 +169,8 @@ make check-main
 Use a worktree when you want isolated data and separate app ports.
 
 ```bash
-git worktree add ../multica-feature -b feat/my-change main
-cd ../multica-feature
+git worktree add ../myteam-feature -b feat/my-change main
+cd ../myteam-feature
 make worktree-env
 make setup-worktree
 make start-worktree
@@ -191,11 +191,11 @@ This is a first-class workflow.
 Example:
 
 - main checkout
-  - database: `multica`
+  - database: `myteam`
   - backend: `8080`
   - frontend: `3000`
 - worktree checkout
-  - database: `multica_my_feature_702`
+  - database: `myteam_my_feature_702`
   - backend: generated worktree port such as `18782`
   - frontend: generated worktree port such as `13702`
 
@@ -217,7 +217,7 @@ git worktree list
 Then remove the worktree by path from a different checkout:
 
 ```bash
-git worktree remove ../multica-feature
+git worktree remove ../myteam-feature
 ```
 
 If a worktree directory was deleted manually or Git still shows a stale entry, prune the leftovers:
@@ -336,7 +336,7 @@ Run the local daemon:
 make daemon
 ```
 
-The daemon authenticates using the CLI's stored token (`multica login`).
+The daemon authenticates using the CLI's stored token (`myteam login`).
 It registers runtimes for all watched workspaces from the CLI config.
 
 ## Troubleshooting
@@ -388,7 +388,7 @@ Look for:
 ### List All Local Databases in Shared PostgreSQL
 
 ```bash
-docker compose exec -T postgres psql -U multica -d postgres -At -c "select datname from pg_database order by datname;"
+docker compose exec -T postgres psql -U myteam -d postgres -At -c "select datname from pg_database order by datname;"
 ```
 
 ### Worktree Is Accidentally Using the Main Database
@@ -454,8 +454,8 @@ make start-main
 ### Feature Worktree
 
 ```bash
-git worktree add ../multica-feature -b feat/my-change main
-cd ../multica-feature
+git worktree add ../myteam-feature -b feat/my-change main
+cd ../myteam-feature
 make worktree-env
 make setup-worktree
 make start-worktree
@@ -464,7 +464,7 @@ make start-worktree
 ### Return to a Previously Configured Worktree
 
 ```bash
-cd ../multica-feature
+cd ../myteam-feature
 make start-worktree
 ```
 

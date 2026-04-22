@@ -25,7 +25,7 @@ server/bin/
 server/tmp/
 server/migrate
 server/daemon
-server/multica
+server/myteam
 
 # Test artifacts
 test-results/

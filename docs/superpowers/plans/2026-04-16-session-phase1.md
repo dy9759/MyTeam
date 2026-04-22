@@ -468,7 +468,7 @@ git commit -m "feat(desktop): filter system agents from New DM picker"
 ```bash
 cd server && go build ./... && go test ./...
 pnpm --filter @myteam/client-core test
-pnpm --filter @multica/web test
+pnpm --filter /web test
 pnpm --filter @myteam/desktop test
 pnpm --filter @myteam/desktop typecheck
 ```

@@ -15,7 +15,7 @@ const logger = createLogger("auth");
  */
 export function AuthInitializer({ children }: { children: ReactNode }) {
   useEffect(() => {
-    const token = localStorage.getItem("multica_token");
+    const token = localStorage.getItem("myteam_token");
     if (!token) {
       logger.info("no stored token, skipping auth init");
       clearLoggedInCookie();
@@ -25,7 +25,7 @@ export function AuthInitializer({ children }: { children: ReactNode }) {
 
     logger.info("found stored token, restoring session...");
     api.setToken(token);
-    const wsId = localStorage.getItem("multica_workspace_id");
+    const wsId = localStorage.getItem("myteam_workspace_id");
     logger.debug("stored workspace id", { wsId });
 
     // Fire getMe and listWorkspaces in parallel
@@ -43,8 +43,8 @@ export function AuthInitializer({ children }: { children: ReactNode }) {
         logger.error("auth init failed — token expired or backend unreachable", err);
         api.setToken(null);
         api.setWorkspaceId(null);
-        localStorage.removeItem("multica_token");
-        localStorage.removeItem("multica_workspace_id");
+        localStorage.removeItem("myteam_token");
+        localStorage.removeItem("myteam_workspace_id");
         clearLoggedInCookie();
         useAuthStore.setState({ user: null, isLoading: false });
       });

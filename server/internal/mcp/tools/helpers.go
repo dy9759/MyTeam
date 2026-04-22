@@ -16,9 +16,9 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/multica-ai/multica/server/internal/errcode"
-	"github.com/multica-ai/multica/server/internal/mcp/mcptool"
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/MyAIOSHub/MyTeam/server/internal/errcode"
+	"github.com/MyAIOSHub/MyTeam/server/internal/mcp/mcptool"
+	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 
 // errMCPPermissionDenied / errArgMissing are the canonical error sentinels
@@ -321,14 +321,14 @@ func allowedPath(path string) (string, bool, error) {
 
 func allowedPathRoots() ([]string, error) {
 	var roots []string
-	for _, env := range []string{"MULTICA_DAEMON_ALLOWED_PATHS", "MULTICA_ALLOWED_PATHS"} {
+	for _, env := range []string{"MYTEAM_DAEMON_ALLOWED_PATHS", "MYTEAM_ALLOWED_PATHS"} {
 		for _, root := range filepath.SplitList(os.Getenv(env)) {
 			if strings.TrimSpace(root) != "" {
 				roots = append(roots, root)
 			}
 		}
 	}
-	for _, env := range []string{"MULTICA_WORKDIR", "MULTICA_WORKSPACES_ROOT"} {
+	for _, env := range []string{"MYTEAM_WORKDIR", "MYTEAM_WORKSPACES_ROOT"} {
 		if root := strings.TrimSpace(os.Getenv(env)); root != "" {
 			roots = append(roots, root)
 		}

@@ -26,7 +26,7 @@ export default function RuntimesPage() {
   const setSelectedId = useRuntimeStore((s) => s.setSelectedId);
 
   const { defaultLayout, onLayoutChanged } = useDefaultLayout({
-    id: "multica_runtimes_layout",
+    id: "myteam_runtimes_layout",
   });
 
   useEffect(() => {

@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/multica-ai/multica/server/internal/util"
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/MyAIOSHub/MyTeam/server/internal/util"
+	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 
 // IdentitySchedulerService periodically regenerates identity cards for all agents.

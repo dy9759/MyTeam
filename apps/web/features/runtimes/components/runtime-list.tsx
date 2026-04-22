@@ -67,7 +67,7 @@ export function RuntimeList({
           <p className="mt-1 text-xs text-muted-foreground text-center">
             运行{" "}
             <code className="rounded bg-muted px-1 py-0.5">
-              multica daemon start
+              myteam daemon start
             </code>{" "}
             以注册本地运行时
           </p>

@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/multica-ai/multica/server/internal/service"
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
-	"github.com/multica-ai/multica/server/pkg/protocol"
+	"github.com/MyAIOSHub/MyTeam/server/internal/service"
+	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
+	"github.com/MyAIOSHub/MyTeam/server/pkg/protocol"
 )
 
 // SourceRef identifies a conversation source for project context.

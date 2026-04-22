@@ -100,7 +100,7 @@ export function CreateWorkspaceModal({ onClose }: { onClose: () => void }) {
                 <Label>工作区 URL</Label>
                 <div className="flex items-center gap-0 rounded-md border bg-background focus-within:ring-2 focus-within:ring-ring">
                   <span className="pl-3 text-sm text-muted-foreground select-none">
-                    multica.app/
+                    myteam.ai/
                   </span>
                   <Input
                     type="text"

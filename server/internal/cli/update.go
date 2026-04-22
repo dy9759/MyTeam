@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	defaultReleaseRepo = "dy9759/MyTeam"
-	defaultBrewFormula = "multica-ai/tap/myteam"
+	defaultReleaseRepo = "MyAIOSHub/MyTeam"
+	defaultBrewFormula = "MyAIOSHub/tap/myteam"
 )
 
 // GitHubRelease is the subset of the GitHub releases API response we need.

@@ -269,7 +269,7 @@ writeError(w, http.StatusForbidden, "only a channel founder can initiate merge")
 errcode.Write(w, errcode.AuthForbidden, map[string]any{"hint": "only a channel founder can initiate merge"})
 ```
 
-Add `import "github.com/multica-ai/multica/server/internal/errcode"`. Migrate one more handler at most — the rest is out of scope for this plan.
+Add `import "github.com/MyAIOSHub/MyTeam/server/internal/errcode"`. Migrate one more handler at most — the rest is out of scope for this plan.
 
 - [ ] **Step 6: Commit**
 
@@ -892,9 +892,9 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/multica-ai/multica/server/internal/errcode"
-	"github.com/multica-ai/multica/server/pkg/crypto"
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/MyAIOSHub/MyTeam/server/internal/errcode"
+	"github.com/MyAIOSHub/MyTeam/server/pkg/crypto"
+	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 
 type secretRequest struct {
@@ -1031,7 +1031,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 
 // ActivityEntry is the input shape for service.WriteActivity.
@@ -1122,7 +1122,7 @@ import (
 	"net/http"
 	"strconv"
 
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 
 // QueryActivityLog — GET /api/activity-log
@@ -1453,8 +1453,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/multica-ai/multica/server/internal/errcode"
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/MyAIOSHub/MyTeam/server/internal/errcode"
+	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 
 // QuotaService enforces workspace_quota at claim time.
@@ -1581,7 +1581,7 @@ import (
 	"encoding/json"
 )
 
-// Tool is one MCP tool exposed to Claude Agent SDK / multica CLI.
+// Tool is one MCP tool exposed to Claude Agent SDK / myteam CLI.
 // Each tool is a thin wrapper over an existing handler / query.
 type Tool interface {
 	Name() string
@@ -1601,7 +1601,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/multica-ai/multica/server/internal/errcode"
+	"github.com/MyAIOSHub/MyTeam/server/internal/errcode"
 )
 
 type Registry struct {
@@ -1692,8 +1692,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/multica-ai/multica/server/internal/mcp"
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/MyAIOSHub/MyTeam/server/internal/mcp"
+	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 
 type GetIssue struct{ Q *db.Queries }
@@ -1772,8 +1772,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
-	"github.com/multica-ai/multica/server/internal/errcode"
-	"github.com/multica-ai/multica/server/internal/mcp"
+	"github.com/MyAIOSHub/MyTeam/server/internal/errcode"
+	"github.com/MyAIOSHub/MyTeam/server/internal/mcp"
 )
 
 // CallMCP — POST /api/mcp/{tool}

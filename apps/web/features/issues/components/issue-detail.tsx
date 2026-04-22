@@ -170,7 +170,7 @@ interface IssueDetailProps {
 // IssueDetail
 // ---------------------------------------------------------------------------
 
-export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layoutId = "multica_issue_detail_layout", highlightCommentId }: IssueDetailProps) {
+export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layoutId = "myteam_issue_detail_layout", highlightCommentId }: IssueDetailProps) {
   const id = issueId;
   const router = useRouter();
   const user = useAuthStore((s) => s.user);

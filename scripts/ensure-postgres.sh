@@ -14,26 +14,57 @@ set -a
 . "$ENV_FILE"
 set +a
 
-POSTGRES_DB="${POSTGRES_DB:-multica}"
-POSTGRES_USER="${POSTGRES_USER:-multica}"
-POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-multica}"
+POSTGRES_DB="${POSTGRES_DB:-myteam}"
+POSTGRES_USER="${POSTGRES_USER:-myteam}"
+POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-myteam}"
 
 export PGPASSWORD="$POSTGRES_PASSWORD"
 
-echo "==> Ensuring PostgreSQL container is running on localhost:${POSTGRES_PORT}..."
-docker compose up -d postgres
+POSTGRES_EXEC=()
+
+compose_postgres_id() {
+  docker compose ps -q postgres 2>/dev/null | head -n 1
+}
+
+is_container_running() {
+  local container_id="${1:-}"
+  [ -n "$container_id" ] && [ "$(docker inspect -f '{{.State.Running}}' "$container_id" 2>/dev/null || true)" = "true" ]
+}
+
+find_published_postgres_container() {
+  docker ps \
+    --filter "publish=${POSTGRES_PORT}" \
+    --format '{{.ID}} {{.Ports}}' \
+    | awk '/->5432\/tcp/ { print $1; exit }'
+}
+
+compose_id="$(compose_postgres_id)"
+if is_container_running "$compose_id"; then
+  echo "==> Using PostgreSQL container from current compose project on localhost:${POSTGRES_PORT}..."
+  POSTGRES_EXEC=(docker compose exec -T postgres)
+else
+  published_id="$(find_published_postgres_container)"
+  if is_container_running "$published_id"; then
+    echo "==> Reusing existing PostgreSQL container on localhost:${POSTGRES_PORT} (${published_id})..."
+    POSTGRES_EXEC=(docker exec -i "$published_id")
+  else
+    echo "==> Ensuring PostgreSQL container is running on localhost:${POSTGRES_PORT}..."
+    docker compose up -d postgres
+    POSTGRES_EXEC=(docker compose exec -T postgres)
+  fi
+fi
 
 echo "==> Waiting for PostgreSQL to be ready..."
-until docker compose exec -T postgres pg_isready -U "$POSTGRES_USER" -d postgres > /dev/null 2>&1; do
+until "${POSTGRES_EXEC[@]}" pg_isready -U "$POSTGRES_USER" -d postgres > /dev/null 2>&1; do
   sleep 1
 done
 
 echo "==> Ensuring database '$POSTGRES_DB' exists..."
-db_exists="$(docker compose exec -T postgres \
+db_exists="$("${POSTGRES_EXEC[@]}" \
   psql -U "$POSTGRES_USER" -d postgres -Atqc "SELECT 1 FROM pg_database WHERE datname = '$POSTGRES_DB'")"
 
 if [ "$db_exists" != "1" ]; then
-  docker compose exec -T postgres \
+  "${POSTGRES_EXEC[@]}" \
     psql -U "$POSTGRES_USER" -d postgres -v ON_ERROR_STOP=1 \
     -c "CREATE DATABASE \"$POSTGRES_DB\"" \
     > /dev/null

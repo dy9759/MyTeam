@@ -29,6 +29,11 @@ type persistentSession struct {
 	aliveMu sync.RWMutex
 	alive   bool
 
+	waitOnce sync.Once
+	waitDone chan struct{}
+	waitMu   sync.Mutex
+	waitErr  error
+
 	// turn is swapped under stateMu and read by the reader goroutine via
 	// loadTurn — callers must treat its fields as valid only while the
 	// turnMu is held (one turn at a time).
@@ -102,6 +107,26 @@ func (s *persistentSession) scheduleIdleCleanup() {
 	})
 }
 
+func (s *persistentSession) waitProcess() <-chan struct{} {
+	s.waitOnce.Do(func() {
+		go func() {
+			err := s.cmd.Wait()
+			s.waitMu.Lock()
+			s.waitErr = err
+			s.waitMu.Unlock()
+			close(s.waitDone)
+		}()
+	})
+	return s.waitDone
+}
+
+func (s *persistentSession) processWaitErr() error {
+	<-s.waitProcess()
+	s.waitMu.Lock()
+	defer s.waitMu.Unlock()
+	return s.waitErr
+}
+
 // shutdownProcess closes stdin, waits briefly for the child to exit, and
 // force-kills if the child hangs. Safe to call multiple times.
 func (s *persistentSession) shutdownProcess() {
@@ -109,11 +134,7 @@ func (s *persistentSession) shutdownProcess() {
 		return
 	}
 	_ = s.stdin.Close()
-	done := make(chan struct{})
-	go func() {
-		_ = s.cmd.Wait()
-		close(done)
-	}()
+	done := s.waitProcess()
 	select {
 	case <-done:
 	case <-time.After(3 * time.Second):
@@ -368,7 +389,7 @@ func (s *persistentSession) onStdoutClosed() {
 // ── Monitor goroutine ──
 
 func (s *persistentSession) monitor() {
-	err := s.cmd.Wait()
+	err := s.processWaitErr()
 	s.markDead()
 	s.backend.evict(s.key, s)
 	if err != nil {

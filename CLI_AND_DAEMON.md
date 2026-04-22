@@ -1,29 +1,29 @@
 # CLI and Agent Daemon Guide
 
-The `multica` CLI connects your local machine to Multica. It handles authentication, workspace management, issue tracking, and runs the agent daemon that executes AI tasks locally.
+The `myteam` CLI connects your local machine to MyTeam. It handles authentication, workspace management, issue tracking, and runs the agent daemon that executes AI tasks locally.
 
 ## Installation
 
 ### Homebrew (macOS/Linux)
 
 ```bash
-brew tap multica-ai/tap
-brew install multica-cli
+brew tap MyAIOSHub/tap
+brew install myteam
 ```
 
 ### Build from Source
 
 ```bash
-git clone https://github.com/multica-ai/multica.git
-cd multica
+git clone https://github.com/MyAIOSHub/MyTeam.git
+cd myteam
 make build
-cp server/bin/multica /usr/local/bin/multica
+cp server/bin/myteam /usr/local/bin/myteam
 ```
 
 ### Update
 
 ```bash
-multica update
+myteam update
 ```
 
 This auto-detects your installation method (Homebrew or manual) and upgrades accordingly.
@@ -32,22 +32,22 @@ This auto-detects your installation method (Homebrew or manual) and upgrades acc
 
 ```bash
 # 1. Authenticate (opens browser for login)
-multica login
+myteam login
 
 # 2. Start the agent daemon
-multica daemon start
+myteam daemon start
 
 # 3. Done — agents in your watched workspaces can now execute tasks on your machine
 ```
 
-`multica login` automatically discovers all workspaces you belong to and adds them to the daemon watch list.
+`myteam login` automatically discovers all workspaces you belong to and adds them to the daemon watch list.
 
 ## Authentication
 
 ### Browser Login
 
 ```bash
-multica login
+myteam login
 ```
 
 Opens your browser for OAuth authentication, creates a 90-day personal access token, and auto-configures your workspaces.
@@ -55,7 +55,7 @@ Opens your browser for OAuth authentication, creates a 90-day personal access to
 ### Token Login
 
 ```bash
-multica login --token
+myteam login --token
 ```
 
 Authenticate by pasting a personal access token directly. Useful for headless environments.
@@ -63,7 +63,7 @@ Authenticate by pasting a personal access token directly. Useful for headless en
 ### Check Status
 
 ```bash
-multica auth status
+myteam auth status
 ```
 
 Shows your current server, user, and token validity.
@@ -71,40 +71,40 @@ Shows your current server, user, and token validity.
 ### Logout
 
 ```bash
-multica auth logout
+myteam auth logout
 ```
 
 Removes the stored authentication token.
 
 ## Agent Daemon
 
-The daemon is the local agent runtime. It detects available AI CLIs on your machine, registers them with the Multica server, and executes tasks when agents are assigned work.
+The daemon is the local agent runtime. It detects available AI CLIs on your machine, registers them with the MyTeam server, and executes tasks when agents are assigned work.
 
 ### Start
 
 ```bash
-multica daemon start
+myteam daemon start
 ```
 
-By default, the daemon runs in the background and logs to `~/.multica/daemon.log`.
+By default, the daemon runs in the background and logs to `~/.myteam/daemon.log`.
 
 To run in the foreground (useful for debugging):
 
 ```bash
-multica daemon start --foreground
+myteam daemon start --foreground
 ```
 
 ### Stop
 
 ```bash
-multica daemon stop
+myteam daemon stop
 ```
 
 ### Status
 
 ```bash
-multica daemon status
-multica daemon status --output json
+myteam daemon status
+myteam daemon status --output json
 ```
 
 Shows PID, uptime, detected agents, and watched workspaces.
@@ -112,9 +112,9 @@ Shows PID, uptime, detected agents, and watched workspaces.
 ### Logs
 
 ```bash
-multica daemon logs              # Last 50 lines
-multica daemon logs -f           # Follow (tail -f)
-multica daemon logs -n 100       # Last 100 lines
+myteam daemon logs              # Last 50 lines
+myteam daemon logs -f           # Follow (tail -f)
+myteam daemon logs -n 100       # Last 100 lines
 ```
 
 ### Supported Agents
@@ -142,41 +142,41 @@ Daemon behavior is configured via flags or environment variables:
 
 | Setting | Flag | Env Variable | Default |
 |---------|------|--------------|---------|
-| Poll interval | `--poll-interval` | `MULTICA_DAEMON_POLL_INTERVAL` | `3s` |
-| Heartbeat interval | `--heartbeat-interval` | `MULTICA_DAEMON_HEARTBEAT_INTERVAL` | `15s` |
-| Agent timeout | `--agent-timeout` | `MULTICA_AGENT_TIMEOUT` | `2h` |
-| Max concurrent tasks | `--max-concurrent-tasks` | `MULTICA_DAEMON_MAX_CONCURRENT_TASKS` | `20` |
-| Daemon ID | `--daemon-id` | `MULTICA_DAEMON_ID` | hostname |
-| Device name | `--device-name` | `MULTICA_DAEMON_DEVICE_NAME` | hostname |
-| Runtime name | `--runtime-name` | `MULTICA_AGENT_RUNTIME_NAME` | `Local Agent` |
-| Workspaces root | — | `MULTICA_WORKSPACES_ROOT` | `~/multica_workspaces` |
+| Poll interval | `--poll-interval` | `MYTEAM_DAEMON_POLL_INTERVAL` | `3s` |
+| Heartbeat interval | `--heartbeat-interval` | `MYTEAM_DAEMON_HEARTBEAT_INTERVAL` | `15s` |
+| Agent timeout | `--agent-timeout` | `MYTEAM_AGENT_TIMEOUT` | `2h` |
+| Max concurrent tasks | `--max-concurrent-tasks` | `MYTEAM_DAEMON_MAX_CONCURRENT_TASKS` | `20` |
+| Daemon ID | `--daemon-id` | `MYTEAM_DAEMON_ID` | hostname |
+| Device name | `--device-name` | `MYTEAM_DAEMON_DEVICE_NAME` | hostname |
+| Runtime name | `--runtime-name` | `MYTEAM_AGENT_RUNTIME_NAME` | `Local Agent` |
+| Workspaces root | — | `MYTEAM_WORKSPACES_ROOT` | `~/myteam_workspaces` |
 
 Agent-specific overrides:
 
 | Variable | Description |
 |----------|-------------|
-| `MULTICA_CLAUDE_PATH` | Custom path to the `claude` binary |
-| `MULTICA_CLAUDE_MODEL` | Override the Claude model used |
-| `MULTICA_CODEX_PATH` | Custom path to the `codex` binary |
-| `MULTICA_CODEX_MODEL` | Override the Codex model used |
+| `MYTEAM_CLAUDE_PATH` | Custom path to the `claude` binary |
+| `MYTEAM_CLAUDE_MODEL` | Override the Claude model used |
+| `MYTEAM_CODEX_PATH` | Custom path to the `codex` binary |
+| `MYTEAM_CODEX_MODEL` | Override the Codex model used |
 
 ### Self-Hosted Server
 
-When connecting to a self-hosted Multica instance, point the CLI to your server before logging in:
+When connecting to a self-hosted MyTeam instance, point the CLI to your server before logging in:
 
 ```bash
-export MULTICA_APP_URL=https://app.example.com
-export MULTICA_SERVER_URL=wss://api.example.com/ws
+export MYTEAM_APP_URL=https://app.example.com
+export MYTEAM_SERVER_URL=wss://api.example.com/ws
 
-multica login
-multica daemon start
+myteam login
+myteam daemon start
 ```
 
 Or set them persistently:
 
 ```bash
-multica config set app_url https://app.example.com
-multica config set server_url wss://api.example.com/ws
+myteam config set app_url https://app.example.com
+myteam config set server_url wss://api.example.com/ws
 ```
 
 ### Profiles
@@ -185,21 +185,21 @@ Profiles let you run multiple daemons on the same machine — for example, one f
 
 ```bash
 # Start a daemon for the staging server
-multica --profile staging login
-multica --profile staging daemon start
+myteam --profile staging login
+myteam --profile staging daemon start
 
 # Default profile runs separately
-multica daemon start
+myteam daemon start
 ```
 
-Each profile gets its own config directory (`~/.multica/profiles/<name>/`), daemon state, health port, and workspace root.
+Each profile gets its own config directory (`~/.myteam/profiles/<name>/`), daemon state, health port, and workspace root.
 
 ## Workspaces
 
 ### List Workspaces
 
 ```bash
-multica workspace list
+myteam workspace list
 ```
 
 Watched workspaces are marked with `*`. The daemon only processes tasks for watched workspaces.
@@ -207,21 +207,21 @@ Watched workspaces are marked with `*`. The daemon only processes tasks for watc
 ### Watch / Unwatch
 
 ```bash
-multica workspace watch <workspace-id>
-multica workspace unwatch <workspace-id>
+myteam workspace watch <workspace-id>
+myteam workspace unwatch <workspace-id>
 ```
 
 ### Get Details
 
 ```bash
-multica workspace get <workspace-id>
-multica workspace get <workspace-id> --output json
+myteam workspace get <workspace-id>
+myteam workspace get <workspace-id> --output json
 ```
 
 ### List Members
 
 ```bash
-multica workspace members <workspace-id>
+myteam workspace members <workspace-id>
 ```
 
 ## Issues
@@ -229,10 +229,10 @@ multica workspace members <workspace-id>
 ### List Issues
 
 ```bash
-multica issue list
-multica issue list --status in_progress
-multica issue list --priority urgent --assignee "Agent Name"
-multica issue list --limit 20 --output json
+myteam issue list
+myteam issue list --status in_progress
+myteam issue list --priority urgent --assignee "Agent Name"
+myteam issue list --limit 20 --output json
 ```
 
 Available filters: `--status`, `--priority`, `--assignee`, `--limit`.
@@ -240,14 +240,14 @@ Available filters: `--status`, `--priority`, `--assignee`, `--limit`.
 ### Get Issue
 
 ```bash
-multica issue get <id>
-multica issue get <id> --output json
+myteam issue get <id>
+myteam issue get <id> --output json
 ```
 
 ### Create Issue
 
 ```bash
-multica issue create --title "Fix login bug" --description "..." --priority high --assignee "Lambda"
+myteam issue create --title "Fix login bug" --description "..." --priority high --assignee "Lambda"
 ```
 
 Flags: `--title` (required), `--description`, `--status`, `--priority`, `--assignee`, `--parent`, `--due-date`.
@@ -255,20 +255,20 @@ Flags: `--title` (required), `--description`, `--status`, `--priority`, `--assig
 ### Update Issue
 
 ```bash
-multica issue update <id> --title "New title" --priority urgent
+myteam issue update <id> --title "New title" --priority urgent
 ```
 
 ### Assign Issue
 
 ```bash
-multica issue assign <id> --to "Lambda"
-multica issue assign <id> --unassign
+myteam issue assign <id> --to "Lambda"
+myteam issue assign <id> --unassign
 ```
 
 ### Change Status
 
 ```bash
-multica issue status <id> in_progress
+myteam issue status <id> in_progress
 ```
 
 Valid statuses: `backlog`, `todo`, `in_progress`, `in_review`, `done`, `blocked`, `cancelled`.
@@ -277,31 +277,31 @@ Valid statuses: `backlog`, `todo`, `in_progress`, `in_review`, `done`, `blocked`
 
 ```bash
 # List comments
-multica issue comment list <issue-id>
+myteam issue comment list <issue-id>
 
 # Add a comment
-multica issue comment add <issue-id> --content "Looks good, merging now"
+myteam issue comment add <issue-id> --content "Looks good, merging now"
 
 # Reply to a specific comment
-multica issue comment add <issue-id> --parent <comment-id> --content "Thanks!"
+myteam issue comment add <issue-id> --parent <comment-id> --content "Thanks!"
 
 # Delete a comment
-multica issue comment delete <comment-id>
+myteam issue comment delete <comment-id>
 ```
 
 ### Execution History
 
 ```bash
 # List all execution runs for an issue
-multica issue runs <issue-id>
-multica issue runs <issue-id> --output json
+myteam issue runs <issue-id>
+myteam issue runs <issue-id> --output json
 
 # View messages for a specific execution run
-multica issue run-messages <task-id>
-multica issue run-messages <task-id> --output json
+myteam issue run-messages <task-id>
+myteam issue run-messages <task-id> --output json
 
 # Incremental fetch (only messages after a given sequence number)
-multica issue run-messages <task-id> --since 42 --output json
+myteam issue run-messages <task-id> --since 42 --output json
 ```
 
 The `runs` command shows all past and current executions for an issue, including running tasks. The `run-messages` command shows the detailed message log (tool calls, thinking, text, errors) for a single run. Use `--since` for efficient polling of in-progress runs.
@@ -311,7 +311,7 @@ The `runs` command shows all past and current executions for an issue, including
 ### View Config
 
 ```bash
-multica config show
+myteam config show
 ```
 
 Shows config file path, server URL, app URL, and default workspace.
@@ -319,17 +319,17 @@ Shows config file path, server URL, app URL, and default workspace.
 ### Set Values
 
 ```bash
-multica config set server_url wss://api.example.com/ws
-multica config set app_url https://app.example.com
-multica config set workspace_id <workspace-id>
+myteam config set server_url wss://api.example.com/ws
+myteam config set app_url https://app.example.com
+myteam config set workspace_id <workspace-id>
 ```
 
 ## Other Commands
 
 ```bash
-multica version              # Show CLI version and commit hash
-multica update               # Update to latest version
-multica agent list           # List agents in the current workspace
+myteam version              # Show CLI version and commit hash
+myteam update               # Update to latest version
+myteam agent list           # List agents in the current workspace
 ```
 
 ## Output Formats
@@ -340,6 +340,6 @@ Most commands support `--output` with two formats:
 - `json` — structured JSON (useful for scripting and automation)
 
 ```bash
-multica issue list --output json
-multica daemon status --output json
+myteam issue list --output json
+myteam daemon status --output json
 ```

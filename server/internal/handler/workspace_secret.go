@@ -25,10 +25,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/multica-ai/multica/server/internal/auth"
-	"github.com/multica-ai/multica/server/internal/errcode"
-	"github.com/multica-ai/multica/server/pkg/crypto"
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/MyAIOSHub/MyTeam/server/internal/auth"
+	"github.com/MyAIOSHub/MyTeam/server/internal/errcode"
+	"github.com/MyAIOSHub/MyTeam/server/pkg/crypto"
+	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 
 const secretKeyEnvVar = "MYTEAM_SECRET_KEY"

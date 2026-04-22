@@ -12,7 +12,7 @@ export function createE2EIdentity(label = "default"): E2EIdentity {
   const suffix = `${label}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   return {
     name: `E2E User ${label}`,
-    email: `e2e+${suffix}@multica.ai`,
+    email: `e2e+${suffix}@myteam.ai`,
     workspaceName: `E2E Workspace ${label}`,
     workspaceSlug: `e2e-workspace-${suffix}`,
   };
@@ -48,8 +48,8 @@ export async function loginWithApi(
   await page.goto("/login", { waitUntil: "domcontentloaded" });
   await page.evaluate(
     ({ nextToken, workspaceId }) => {
-      localStorage.setItem("multica_token", nextToken);
-      localStorage.setItem("multica_workspace_id", workspaceId);
+      localStorage.setItem("myteam_token", nextToken);
+      localStorage.setItem("myteam_workspace_id", workspaceId);
     },
     { nextToken: token, workspaceId },
   );

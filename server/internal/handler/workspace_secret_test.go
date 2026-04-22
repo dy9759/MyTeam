@@ -11,8 +11,8 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/multica-ai/multica/server/pkg/crypto"
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/MyAIOSHub/MyTeam/server/pkg/crypto"
+	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 
 // init seeds MYTEAM_SECRET_KEY for the entire test binary so secret CRUD
@@ -296,7 +296,7 @@ func TestWorkspaceSecret_MemberForbidden(t *testing.T) {
 	ctx := context.Background()
 
 	// Create a second user with member role.
-	const memberEmail = "secret-member@multica.ai"
+	const memberEmail = "secret-member@myteam.ai"
 	var memberID string
 	if err := testPool.QueryRow(ctx,
 		`INSERT INTO "user" (name, email) VALUES ($1, $2) RETURNING id`,

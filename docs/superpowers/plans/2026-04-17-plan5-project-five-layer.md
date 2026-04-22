@@ -940,9 +940,9 @@ import (
     "fmt"
 
     "github.com/jackc/pgx/v5/pgtype"
-    "github.com/multica-ai/multica/server/internal/events"
-    "github.com/multica-ai/multica/server/internal/realtime"
-    db "github.com/multica-ai/multica/server/pkg/db/generated"
+    "github.com/MyAIOSHub/MyTeam/server/internal/events"
+    "github.com/MyAIOSHub/MyTeam/server/internal/realtime"
+    db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 
 type SlotService struct {
@@ -1047,7 +1047,7 @@ import (
 
     "github.com/jackc/pgx/v5"
     "github.com/jackc/pgx/v5/pgtype"
-    db "github.com/multica-ai/multica/server/pkg/db/generated"
+    db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 
 type CreateArtifactWithFileReq struct {
@@ -1158,9 +1158,9 @@ import (
     "context"
 
     "github.com/jackc/pgx/v5/pgtype"
-    "github.com/multica-ai/multica/server/internal/events"
-    "github.com/multica-ai/multica/server/internal/realtime"
-    db "github.com/multica-ai/multica/server/pkg/db/generated"
+    "github.com/MyAIOSHub/MyTeam/server/internal/events"
+    "github.com/MyAIOSHub/MyTeam/server/internal/realtime"
+    db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 
 type ReviewService struct {

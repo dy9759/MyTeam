@@ -70,11 +70,11 @@ describe("LoginPage", () => {
     const user = userEvent.setup();
     render(<LoginPage />);
 
-    await user.type(screen.getByLabelText("邮箱"), "test@multica.ai");
+    await user.type(screen.getByLabelText("邮箱"), "test@myteam.ai");
     await user.click(screen.getByRole("button", { name: "继续" }));
 
     await waitFor(() => {
-      expect(mockSendCode).toHaveBeenCalledWith("test@multica.ai");
+      expect(mockSendCode).toHaveBeenCalledWith("test@myteam.ai");
     });
   });
 
@@ -83,7 +83,7 @@ describe("LoginPage", () => {
     const user = userEvent.setup();
     render(<LoginPage />);
 
-    await user.type(screen.getByLabelText("邮箱"), "test@multica.ai");
+    await user.type(screen.getByLabelText("邮箱"), "test@myteam.ai");
     await user.click(screen.getByRole("button", { name: "继续" }));
 
     await waitFor(() => {
@@ -96,7 +96,7 @@ describe("LoginPage", () => {
     const user = userEvent.setup();
     render(<LoginPage />);
 
-    await user.type(screen.getByLabelText("邮箱"), "test@multica.ai");
+    await user.type(screen.getByLabelText("邮箱"), "test@myteam.ai");
     await user.click(screen.getByRole("button", { name: "继续" }));
 
     await waitFor(() => {
@@ -110,7 +110,7 @@ describe("LoginPage", () => {
     const user = userEvent.setup();
     render(<LoginPage />);
 
-    await user.type(screen.getByLabelText("邮箱"), "test@multica.ai");
+    await user.type(screen.getByLabelText("邮箱"), "test@myteam.ai");
     await user.click(screen.getByRole("button", { name: "继续" }));
 
     await waitFor(() => {

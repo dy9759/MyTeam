@@ -1,5 +1,5 @@
 // artifact_test.go — DB-backed tests for ArtifactService. Requires
-// DATABASE_URL pointing at a migrated multica DB (migration 058+
+// DATABASE_URL pointing at a migrated myteam DB (migration 058+
 // for the artifact/review tables).
 package service
 
@@ -14,7 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 
 // pgxToUUID converts a pgtype.UUID into a google/uuid.UUID for use as the

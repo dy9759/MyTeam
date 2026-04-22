@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/multica-ai/multica/server/internal/middleware"
+	"github.com/MyAIOSHub/MyTeam/server/internal/middleware"
 )
 
 // fetchTestAgentID resolves the handler fixture's only agent. Kept

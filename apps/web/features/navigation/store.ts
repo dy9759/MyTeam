@@ -22,7 +22,7 @@ export const useNavigationStore = create<NavigationState>()(
       },
     }),
     {
-      name: "multica_navigation",
+      name: "myteam_navigation",
       partialize: (state) => ({ lastPath: state.lastPath }),
     }
   )

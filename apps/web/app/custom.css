@@ -1,5 +1,5 @@
 /* =============================================================================
- * Multica Web — Custom styles (non-shadcn)
+ * MyTeam Web — Custom styles (non-shadcn)
  * ============================================================================= */
 
 /* Warm paper background wash — subtle terracotta + gold radial gradients */
@@ -38,7 +38,7 @@ body::before {
   color: var(--shiki-dark) !important;
 }
 
-/* Multica icon: entrance spin animation */
+/* MyTeam icon: entrance spin animation */
 @keyframes entrance-spin {
   0% { transform: rotate(0deg); opacity: 0; }
   50% { opacity: 1; }

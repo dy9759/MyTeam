@@ -12,6 +12,6 @@ func BuildPrompt(task Task) string {
 	var b strings.Builder
 	b.WriteString("You are running as a local coding agent for a My Team workspace.\n\n")
 	fmt.Fprintf(&b, "Your assigned issue ID is: %s\n\n", task.IssueID)
-	fmt.Fprintf(&b, "Start by running `multica issue get %s --output json` to understand your task, then complete it.\n", task.IssueID)
+	fmt.Fprintf(&b, "Start by running `myteam issue get %s --output json` to understand your task, then complete it.\n", task.IssueID)
 	return b.String()
 }

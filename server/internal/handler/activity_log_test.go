@@ -8,9 +8,9 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/multica-ai/multica/server/internal/middleware"
-	"github.com/multica-ai/multica/server/internal/service"
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/MyAIOSHub/MyTeam/server/internal/middleware"
+	"github.com/MyAIOSHub/MyTeam/server/internal/service"
+	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 
 // activityCleanup deletes any activity_log rows linked to the given
@@ -296,12 +296,12 @@ func TestListActivityLog_MemberRowIsolation(t *testing.T) {
 	var member1ID, member2ID string
 	if err := testPool.QueryRow(ctx, `
 		INSERT INTO "user" (name, email) VALUES ($1, $2) RETURNING id
-	`, "Activity Iso Member 1", "activity-iso-member1@multica.ai").Scan(&member1ID); err != nil {
+	`, "Activity Iso Member 1", "activity-iso-member1@myteam.ai").Scan(&member1ID); err != nil {
 		t.Fatalf("create member1 user: %v", err)
 	}
 	if err := testPool.QueryRow(ctx, `
 		INSERT INTO "user" (name, email) VALUES ($1, $2) RETURNING id
-	`, "Activity Iso Member 2", "activity-iso-member2@multica.ai").Scan(&member2ID); err != nil {
+	`, "Activity Iso Member 2", "activity-iso-member2@myteam.ai").Scan(&member2ID); err != nil {
 		t.Fatalf("create member2 user: %v", err)
 	}
 	t.Cleanup(func() {
@@ -413,12 +413,12 @@ func TestListActivityLog_MemberChannelMembershipVisibility(t *testing.T) {
 	var member1ID, member2ID string
 	if err := testPool.QueryRow(ctx, `
 		INSERT INTO "user" (name, email) VALUES ($1, $2) RETURNING id
-	`, "Activity Channel Member 1", "activity-channel-member1@multica.ai").Scan(&member1ID); err != nil {
+	`, "Activity Channel Member 1", "activity-channel-member1@myteam.ai").Scan(&member1ID); err != nil {
 		t.Fatalf("create member1 user: %v", err)
 	}
 	if err := testPool.QueryRow(ctx, `
 		INSERT INTO "user" (name, email) VALUES ($1, $2) RETURNING id
-	`, "Activity Channel Member 2", "activity-channel-member2@multica.ai").Scan(&member2ID); err != nil {
+	`, "Activity Channel Member 2", "activity-channel-member2@myteam.ai").Scan(&member2ID); err != nil {
 		t.Fatalf("create member2 user: %v", err)
 	}
 	t.Cleanup(func() {

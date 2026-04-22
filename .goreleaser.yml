@@ -1,12 +1,12 @@
 version: 2
 
-project_name: multica
+project_name: myteam
 
 builds:
-  - id: multica
-    main: ./cmd/multica
+  - id: myteam
+    main: ./cmd/myteam
     dir: server
-    binary: multica
+    binary: myteam
     ldflags:
       - -s -w
       - -X main.version={{.Version}}
@@ -38,17 +38,17 @@ changelog:
       - "^chore:"
 
 brews:
-  - name: multica
+  - name: myteam
     repository:
-      owner: multica-ai
+      owner: MyAIOSHub
       name: homebrew-tap
       branch: main
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     directory: Formula
-    homepage: "https://github.com/multica-ai/multica"
-    description: "Multica CLI — local agent runtime and management tool for the Multica platform"
+    homepage: "https://github.com/MyAIOSHub/MyTeam"
+    description: "MyTeam CLI — local agent runtime and management tool for the MyTeam platform"
     license: "Apache-2.0"
     install: |
-      bin.install "multica"
+      bin.install "myteam"
     test: |
-      system "#{bin}/multica", "version"
+      system "#{bin}/myteam", "version"

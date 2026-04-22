@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/multica-ai/multica/server/pkg/provider"
+	"github.com/MyAIOSHub/MyTeam/server/pkg/provider"
 )
 
 // ProviderHandler exposes the static Provider registry.

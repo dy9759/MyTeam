@@ -29,7 +29,7 @@ type CachedRepo struct {
 
 // Cache manages bare git clones for workspace repositories.
 type Cache struct {
-	root   string // base directory for all caches (e.g. ~/multica_workspaces/.repos)
+	root   string // base directory for all caches (e.g. ~/myteam_workspaces/.repos)
 	logger *slog.Logger
 	mu     sync.Mutex
 }

@@ -528,7 +528,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 
 // testDB opens a pool to the dev database. Expects POSTGRES env vars to be set.
@@ -715,8 +715,8 @@ import (
 	"os"
 
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/multica-ai/multica/server/internal/util"
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/MyAIOSHub/MyTeam/server/internal/util"
+	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 
 // CloudLLMConfig is the JSON shape stored in agent.cloud_llm_config.
@@ -865,8 +865,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/multica-ai/multica/server/pkg/agent_runner"
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/MyAIOSHub/MyTeam/server/pkg/agent_runner"
+	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 
 // fakeRunner lets tests stub the Python child.
@@ -1124,7 +1124,7 @@ First, update the struct:
 ```go
 import (
 	// ... existing ...
-	"github.com/multica-ai/multica/server/pkg/agent_runner"
+	"github.com/MyAIOSHub/MyTeam/server/pkg/agent_runner"
 )
 
 type AutoReplyService struct {
@@ -1399,7 +1399,7 @@ Change the call site to also pass a new runner:
 ```go
 import (
 	// ... existing ...
-	"github.com/multica-ai/multica/server/pkg/agent_runner"
+	"github.com/MyAIOSHub/MyTeam/server/pkg/agent_runner"
 )
 
 // ...
@@ -1633,10 +1633,10 @@ Expected: all green.
 ```bash
 cd /Users/chauncey2025/Documents/GitHub/MyTeam/.claude/worktrees/personal-agent && \
 pnpm --filter @myteam/client-core test && \
-pnpm --filter @multica/web test && \
+pnpm --filter /web test && \
 pnpm --filter @myteam/desktop test && \
 pnpm --filter @myteam/client-core typecheck && \
-pnpm --filter @multica/web typecheck && \
+pnpm --filter /web typecheck && \
 pnpm --filter @myteam/desktop typecheck
 ```
 

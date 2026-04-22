@@ -15,7 +15,8 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
-      "@web/*": ["../web/*"]
+      "@web/*": ["../web/*"],
+      "vite": ["./node_modules/vite"]
     },
     "types": ["node"]
   },

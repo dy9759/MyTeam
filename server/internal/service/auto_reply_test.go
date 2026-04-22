@@ -8,9 +8,9 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/multica-ai/multica/server/internal/util"
-	"github.com/multica-ai/multica/server/pkg/agent_runner"
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/MyAIOSHub/MyTeam/server/internal/util"
+	"github.com/MyAIOSHub/MyTeam/server/pkg/agent_runner"
+	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 
 // fakeRunner stubs the Python child for tests.
@@ -99,6 +99,19 @@ func uuidToStr(u pgtype.UUID) string {
 	return util.UUIDToString(u)
 }
 
+func clearCloudLLMEnv(t *testing.T) {
+	t.Helper()
+	for _, key := range []string{
+		"AGENT_KERNEL",
+		"AGENT_LLM_BASE_URL",
+		"AGENT_LLM_API_KEY",
+		"AGENT_LLM_MODEL",
+		"AGENT_SYSTEM_PROMPT",
+	} {
+		t.Setenv(key, "")
+	}
+}
+
 func TestReplyAsMentionedAgent_DispatchesToRunner(t *testing.T) {
 	q := testDB(t)
 	wsID := createTestWorkspace(t, q)
@@ -136,6 +149,8 @@ func TestReplyAsMentionedAgent_DispatchesToRunner(t *testing.T) {
 }
 
 func TestReplyAsMentionedAgent_NoAPIKey_PostsSystemNotification(t *testing.T) {
+	clearCloudLLMEnv(t)
+
 	q := testDB(t)
 	wsID := createTestWorkspace(t, q)
 	ownerID := createTestUser(t, q, "t2+"+t.Name()+"@x.com", "T2")
@@ -164,6 +179,8 @@ func TestReplyAsMentionedAgent_NoAPIKey_PostsSystemNotification(t *testing.T) {
 }
 
 func TestReplyToDM_NoAPIKey_PostsSystemNotification(t *testing.T) {
+	clearCloudLLMEnv(t)
+
 	q := testDB(t)
 	wsID := createTestWorkspace(t, q)
 	ownerID := createTestUser(t, q, "dm-no-key+"+t.Name()+"@x.com", "DM No Key")

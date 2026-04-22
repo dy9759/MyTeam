@@ -650,7 +650,7 @@ Agent 需要数据
   └── 本地 Agent
         │
         ├── 平台数据（project、issue、channel...）
-        │     → 通过 multica CLI 或 MCP 工具
+        │     → 通过 myteam CLI 或 MCP 工具
         │     → 后端校验同云端
         │
         └── 本地数据（repo、文件、工具...）

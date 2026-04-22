@@ -1,10 +1,10 @@
 # Self-Hosting Guide
 
-This guide walks you through deploying Multica on your own infrastructure.
+This guide walks you through deploying MyTeam on your own infrastructure.
 
 ## Architecture Overview
 
-Multica has three components:
+MyTeam has three components:
 
 | Component | Description | Technology |
 |-----------|-------------|------------|
@@ -12,7 +12,7 @@ Multica has three components:
 | **Frontend** | Web application | Next.js 16 |
 | **Database** | Primary data store | PostgreSQL 17 with pgvector |
 
-Additionally, each user who wants to run AI agents locally installs the **`multica` CLI** and runs the **agent daemon** on their own machine.
+Additionally, each user who wants to run AI agents locally installs the **`myteam` CLI** and runs the **agent daemon** on their own machine.
 
 ## Prerequisites
 
@@ -24,8 +24,8 @@ Additionally, each user who wants to run AI agents locally installs the **`multi
 ## Quick Start (Docker Compose)
 
 ```bash
-git clone https://github.com/multica-ai/multica.git
-cd multica
+git clone https://github.com/MyAIOSHub/MyTeam.git
+cd myteam
 cp .env.example .env
 ```
 
@@ -64,18 +64,18 @@ All configuration is done via environment variables. Copy `.env.example` as a st
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `DATABASE_URL` | PostgreSQL connection string | `postgres://multica:multica@localhost:5432/multica?sslmode=disable` |
+| `DATABASE_URL` | PostgreSQL connection string | `postgres://myteam:myteam@localhost:5432/myteam?sslmode=disable` |
 | `JWT_SECRET` | **Must change from default.** Secret key for signing JWT tokens. Use a long random string. | `openssl rand -hex 32` |
 | `FRONTEND_ORIGIN` | URL where the frontend is served (used for CORS) | `https://app.example.com` |
 
 ### Email (Required for Authentication)
 
-Multica uses email-based magic link authentication via [Resend](https://resend.com).
+MyTeam uses email-based magic link authentication via [Resend](https://resend.com).
 
 | Variable | Description |
 |----------|-------------|
 | `RESEND_API_KEY` | Your Resend API key |
-| `RESEND_FROM_EMAIL` | Sender email address (default: `noreply@multica.ai`) |
+| `RESEND_FROM_EMAIL` | Sender email address (default: `noreply@myteam.ai`) |
 
 ### Google OAuth (Optional)
 
@@ -113,14 +113,14 @@ These are configured on each user's machine, not on the server:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `MULTICA_SERVER_URL` | `ws://localhost:8080/ws` | WebSocket URL for daemon → server connection |
-| `MULTICA_APP_URL` | `http://localhost:3000` | Frontend URL for CLI login flow |
-| `MULTICA_DAEMON_POLL_INTERVAL` | `3s` | How often the daemon polls for tasks |
-| `MULTICA_DAEMON_HEARTBEAT_INTERVAL` | `15s` | Heartbeat frequency |
+| `MYTEAM_SERVER_URL` | `ws://localhost:8080/ws` | WebSocket URL for daemon → server connection |
+| `MYTEAM_APP_URL` | `http://localhost:3000` | Frontend URL for CLI login flow |
+| `MYTEAM_DAEMON_POLL_INTERVAL` | `3s` | How often the daemon polls for tasks |
+| `MYTEAM_DAEMON_HEARTBEAT_INTERVAL` | `15s` | Heartbeat frequency |
 
 ## Database Setup
 
-Multica requires PostgreSQL 17 with the pgvector extension.
+MyTeam requires PostgreSQL 17 with the pgvector extension.
 
 ### Using the Included Docker Compose
 
@@ -128,7 +128,7 @@ Multica requires PostgreSQL 17 with the pgvector extension.
 docker compose up -d postgres
 ```
 
-This starts a `pgvector/pgvector:pg17` container on port 5432 with default credentials (`multica`/`multica`).
+This starts a `pgvector/pgvector:pg17` container on port 5432 with default credentials (`myteam`/`myteam`).
 
 ### Using Your Own PostgreSQL
 
@@ -245,8 +245,8 @@ Each team member who wants to run AI agents locally needs to:
 1. **Install the CLI**
 
    ```bash
-   brew tap multica-ai/tap
-   brew install multica-cli
+   brew tap MyAIOSHub/tap
+   brew install myteam
    ```
 
 2. **Install an AI agent CLI** — at least one of:
@@ -257,17 +257,17 @@ Each team member who wants to run AI agents locally needs to:
 
    ```bash
    # Point CLI to your server
-   export MULTICA_APP_URL=https://app.example.com
-   export MULTICA_SERVER_URL=wss://api.example.com/ws
+   export MYTEAM_APP_URL=https://app.example.com
+   export MYTEAM_SERVER_URL=wss://api.example.com/ws
 
    # Login (opens browser)
-   multica login
+   myteam login
 
    # Start the daemon
-   multica daemon start
+   myteam daemon start
    ```
 
-The daemon auto-detects installed agent CLIs and registers itself with the server. When an agent is assigned a task in Multica, the daemon picks it up, creates an isolated workspace, runs the agent, and reports results back.
+The daemon auto-detects installed agent CLIs and registers itself with the server. When an agent is assigned a task in MyTeam, the daemon picks it up, creates an isolated workspace, runs the agent, and reports results back.
 
 ## Upgrading
 

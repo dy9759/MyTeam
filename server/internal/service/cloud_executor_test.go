@@ -1,6 +1,6 @@
 // cloud_executor_test.go — DB-backed tests for the execution-table polling
 // path of CloudExecutorService (added in plan5 D3). Requires DATABASE_URL
-// pointing at a migrated multica DB with the execution + workspace_quota
+// pointing at a migrated myteam DB with the execution + workspace_quota
 // tables present.
 //
 // These tests do NOT cover the legacy agent_task_queue path (pollAndExecute);
@@ -18,8 +18,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/multica-ai/multica/server/pkg/agent_runner"
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/MyAIOSHub/MyTeam/server/pkg/agent_runner"
+	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 
 // cloudFakeRunner stubs agent_runner.AgentRunner for cloud_executor tests
@@ -159,6 +159,43 @@ func waitForExecStatus(t *testing.T, q *db.Queries, execID pgtype.UUID, want str
 	return latest
 }
 
+func waitForTaskStatus(t *testing.T, q *db.Queries, taskID pgtype.UUID, want string, deadline time.Duration) db.Task {
+	t.Helper()
+	ctx := context.Background()
+	end := time.Now().Add(deadline)
+	var latest db.Task
+	for time.Now().Before(end) {
+		row, err := q.GetTask(ctx, taskID)
+		if err != nil {
+			t.Fatalf("get task: %v", err)
+		}
+		latest = row
+		if row.Status == want {
+			return row
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	return latest
+}
+
+func waitForArtifactCount(t *testing.T, taskID pgtype.UUID, want int, deadline time.Duration) int {
+	t.Helper()
+	ctx := context.Background()
+	pool := openTestPool(t)
+	end := time.Now().Add(deadline)
+	var count int
+	for time.Now().Before(end) {
+		if err := pool.QueryRow(ctx, `SELECT count(*) FROM artifact WHERE task_id = $1`, taskID).Scan(&count); err != nil {
+			t.Fatalf("count artifacts: %v", err)
+		}
+		if count == want {
+			return count
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	return count
+}
+
 func TestPollAndExecuteExecutions_ClaimAndComplete(t *testing.T) {
 	q := testDB(t)
 	env := setupCloudExecEnv(t, q)
@@ -203,19 +240,12 @@ func TestPollAndExecuteExecutions_ClaimAndComplete(t *testing.T) {
 	// Scheduler.HandleTaskCompletion must have fired — observable via the
 	// task transitioning to 'completed' (no review slot path) and a single
 	// artifact persisted for the result payload.
-	gotTask, err := q.GetTask(ctx, task.ID)
-	if err != nil {
-		t.Fatalf("get task: %v", err)
-	}
+	gotTask := waitForTaskStatus(t, q, task.ID, TaskStatusCompleted, 3*time.Second)
 	if gotTask.Status != TaskStatusCompleted {
 		t.Fatalf("task status: want completed, got %s", gotTask.Status)
 	}
 
-	pool := openTestPool(t)
-	var artifactCount int
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM artifact WHERE task_id = $1`, task.ID).Scan(&artifactCount); err != nil {
-		t.Fatalf("count artifacts: %v", err)
-	}
+	artifactCount := waitForArtifactCount(t, task.ID, 1, 3*time.Second)
 	if artifactCount != 1 {
 		t.Fatalf("expected 1 artifact (cascade from scheduler), got %d", artifactCount)
 	}

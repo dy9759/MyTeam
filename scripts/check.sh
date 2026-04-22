@@ -18,8 +18,8 @@ set -a
 . "$ENV_FILE"
 set +a
 
-POSTGRES_DB="${POSTGRES_DB:-multica}"
-POSTGRES_USER="${POSTGRES_USER:-multica}"
+POSTGRES_DB="${POSTGRES_DB:-myteam}"
+POSTGRES_USER="${POSTGRES_USER:-myteam}"
 POSTGRES_PORT="${POSTGRES_PORT:-5432}"
 PORT="${PORT:-8080}"
 FRONTEND_PORT="${FRONTEND_PORT:-3000}"
@@ -85,7 +85,7 @@ bash scripts/ensure-postgres.sh "$ENV_FILE"
 
 # --------------------------------------------------------------------------
 # Step 1: TypeScript typecheck (web + desktop)
-# Root `pnpm typecheck` only filters @multica/web — explicitly include
+# Root `pnpm typecheck` only filters /web — explicitly include
 # @myteam/desktop so electron regressions don't ship silently. Issue #52.
 # --------------------------------------------------------------------------
 echo ""
@@ -118,7 +118,7 @@ if curl -sf "http://localhost:${PORT}/health" > /dev/null 2>&1; then
   echo "    Backend already running on :$PORT"
 else
   echo "    Starting backend..."
-  (cd server && go run ./cmd/server) > /tmp/multica-check-backend.log 2>&1 &
+  (cd server && go run ./cmd/server) > /tmp/myteam-check-backend.log 2>&1 &
   BACKEND_PID=$!
   STARTED_BACKEND=true
   wait_for_port "$PORT" "Backend" 90 "/health"
@@ -128,7 +128,7 @@ if curl -sf "http://localhost:${FRONTEND_PORT}" > /dev/null 2>&1; then
   echo "    Frontend already running on :$FRONTEND_PORT"
 else
   echo "    Starting frontend..."
-  pnpm dev:web > /tmp/multica-check-frontend.log 2>&1 &
+  pnpm dev:web > /tmp/myteam-check-frontend.log 2>&1 &
   FRONTEND_PID=$!
   STARTED_FRONTEND=true
   wait_for_port "$FRONTEND_PORT" "Frontend" 120 "/"

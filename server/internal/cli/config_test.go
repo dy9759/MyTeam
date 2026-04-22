@@ -15,7 +15,7 @@ func TestLoadCLIConfigForProfileReadsMyTeamConfig(t *testing.T) {
 		t.Fatalf("os.UserHomeDir() error = %v", err)
 	}
 
-	configPath := filepath.Join(home, ".multica", "config.json")
+	configPath := filepath.Join(home, ".myteam", "config.json")
 	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
 		t.Fatalf("os.MkdirAll() error = %v", err)
 	}

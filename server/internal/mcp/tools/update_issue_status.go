@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/multica-ai/multica/server/internal/mcp/mcptool"
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/MyAIOSHub/MyTeam/server/internal/mcp/mcptool"
+	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 
 // UpdateIssueStatus mutates the workflow status of an issue.

@@ -24,7 +24,7 @@ const (
 	// ClaudeModeSingle is the default. Each task spawns a fresh `claude` process.
 	ClaudeModeSingle = "single"
 	// ClaudeModePersistent reuses a long-lived `claude` process per (agent, issue)
-	// across turns. Opt-in via MULTICA_CLAUDE_MODE=persistent. On spawn failure
+	// across turns. Opt-in via MYTEAM_CLAUDE_MODE=persistent. On spawn failure
 	// the daemon falls back to single-shot for that task.
 	ClaudeModePersistent = "persistent"
 )
@@ -35,10 +35,10 @@ type Config struct {
 	DaemonID           string
 	DeviceName         string
 	RuntimeName        string
-	CLIVersion         string                // multica CLI version (e.g. "0.1.13")
+	CLIVersion         string                // myteam CLI version (e.g. "0.1.13")
 	Profile            string                // profile name (empty = default)
 	Agents             map[string]AgentEntry // "claude" -> entry, "codex" -> entry, "opencode" -> entry
-	WorkspacesRoot     string                // base path for execution envs (default: ~/multica_workspaces)
+	WorkspacesRoot     string                // base path for execution envs (default: ~/myteam_workspaces)
 	KeepEnvAfterTask   bool                  // preserve env after task for debugging
 	HealthPort         int                   // local HTTP port for health checks (default: 19514)
 	MaxConcurrentTasks int                   // max tasks running in parallel (default: 20)
@@ -68,7 +68,7 @@ type Overrides struct {
 // and optional CLI flag overrides.
 func LoadConfig(overrides Overrides) (Config, error) {
 	// Server URL: override > env > default
-	rawServerURL := envOrDefault("MULTICA_SERVER_URL", DefaultServerURL)
+	rawServerURL := envOrDefault("MYTEAM_SERVER_URL", DefaultServerURL)
 	if overrides.ServerURL != "" {
 		rawServerURL = overrides.ServerURL
 	}
@@ -79,25 +79,25 @@ func LoadConfig(overrides Overrides) (Config, error) {
 
 	// Probe available agent CLIs
 	agents := map[string]AgentEntry{}
-	claudePath := envOrDefault("MULTICA_CLAUDE_PATH", "claude")
+	claudePath := envOrDefault("MYTEAM_CLAUDE_PATH", "claude")
 	if _, err := exec.LookPath(claudePath); err == nil {
 		agents["claude"] = AgentEntry{
 			Path:  claudePath,
-			Model: strings.TrimSpace(os.Getenv("MULTICA_CLAUDE_MODEL")),
+			Model: strings.TrimSpace(os.Getenv("MYTEAM_CLAUDE_MODEL")),
 		}
 	}
-	codexPath := envOrDefault("MULTICA_CODEX_PATH", "codex")
+	codexPath := envOrDefault("MYTEAM_CODEX_PATH", "codex")
 	if _, err := exec.LookPath(codexPath); err == nil {
 		agents["codex"] = AgentEntry{
 			Path:  codexPath,
-			Model: strings.TrimSpace(os.Getenv("MULTICA_CODEX_MODEL")),
+			Model: strings.TrimSpace(os.Getenv("MYTEAM_CODEX_MODEL")),
 		}
 	}
-	opencodePath := envOrDefault("MULTICA_OPENCODE_PATH", "opencode")
+	opencodePath := envOrDefault("MYTEAM_OPENCODE_PATH", "opencode")
 	if _, err := exec.LookPath(opencodePath); err == nil {
 		agents["opencode"] = AgentEntry{
 			Path:  opencodePath,
-			Model: strings.TrimSpace(os.Getenv("MULTICA_OPENCODE_MODEL")),
+			Model: strings.TrimSpace(os.Getenv("MYTEAM_OPENCODE_MODEL")),
 		}
 	}
 	if len(agents) == 0 {
@@ -111,7 +111,7 @@ func LoadConfig(overrides Overrides) (Config, error) {
 	}
 
 	// Durations: override > env > default
-	pollInterval, err := durationFromEnv("MULTICA_DAEMON_POLL_INTERVAL", DefaultPollInterval)
+	pollInterval, err := durationFromEnv("MYTEAM_DAEMON_POLL_INTERVAL", DefaultPollInterval)
 	if err != nil {
 		return Config{}, err
 	}
@@ -119,7 +119,7 @@ func LoadConfig(overrides Overrides) (Config, error) {
 		pollInterval = overrides.PollInterval
 	}
 
-	heartbeatInterval, err := durationFromEnv("MULTICA_DAEMON_HEARTBEAT_INTERVAL", DefaultHeartbeatInterval)
+	heartbeatInterval, err := durationFromEnv("MYTEAM_DAEMON_HEARTBEAT_INTERVAL", DefaultHeartbeatInterval)
 	if err != nil {
 		return Config{}, err
 	}
@@ -127,7 +127,7 @@ func LoadConfig(overrides Overrides) (Config, error) {
 		heartbeatInterval = overrides.HeartbeatInterval
 	}
 
-	agentTimeout, err := durationFromEnv("MULTICA_AGENT_TIMEOUT", DefaultAgentTimeout)
+	agentTimeout, err := durationFromEnv("MYTEAM_AGENT_TIMEOUT", DefaultAgentTimeout)
 	if err != nil {
 		return Config{}, err
 	}
@@ -135,7 +135,7 @@ func LoadConfig(overrides Overrides) (Config, error) {
 		agentTimeout = overrides.AgentTimeout
 	}
 
-	maxConcurrentTasks, err := intFromEnv("MULTICA_DAEMON_MAX_CONCURRENT_TASKS", DefaultMaxConcurrentTasks)
+	maxConcurrentTasks, err := intFromEnv("MYTEAM_DAEMON_MAX_CONCURRENT_TASKS", DefaultMaxConcurrentTasks)
 	if err != nil {
 		return Config{}, err
 	}
@@ -147,7 +147,7 @@ func LoadConfig(overrides Overrides) (Config, error) {
 	profile := overrides.Profile
 
 	// String overrides
-	daemonID := envOrDefault("MULTICA_DAEMON_ID", host)
+	daemonID := envOrDefault("MYTEAM_DAEMON_ID", host)
 	if overrides.DaemonID != "" {
 		daemonID = overrides.DaemonID
 	}
@@ -157,30 +157,30 @@ func LoadConfig(overrides Overrides) (Config, error) {
 		daemonID = daemonID + "-" + profile
 	}
 
-	deviceName := envOrDefault("MULTICA_DAEMON_DEVICE_NAME", host)
+	deviceName := envOrDefault("MYTEAM_DAEMON_DEVICE_NAME", host)
 	if overrides.DeviceName != "" {
 		deviceName = overrides.DeviceName
 	}
 
-	runtimeName := envOrDefault("MULTICA_AGENT_RUNTIME_NAME", DefaultRuntimeName)
+	runtimeName := envOrDefault("MYTEAM_AGENT_RUNTIME_NAME", DefaultRuntimeName)
 	if overrides.RuntimeName != "" {
 		runtimeName = overrides.RuntimeName
 	}
 
-	// Workspaces root: override > env > default (~/multica_workspaces or ~/multica_workspaces_<profile>)
-	workspacesRoot := strings.TrimSpace(os.Getenv("MULTICA_WORKSPACES_ROOT"))
+	// Workspaces root: override > env > default (~/myteam_workspaces or ~/myteam_workspaces_<profile>)
+	workspacesRoot := strings.TrimSpace(os.Getenv("MYTEAM_WORKSPACES_ROOT"))
 	if overrides.WorkspacesRoot != "" {
 		workspacesRoot = overrides.WorkspacesRoot
 	}
 	if workspacesRoot == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
-			return Config{}, fmt.Errorf("resolve home directory: %w (set MULTICA_WORKSPACES_ROOT to override)", err)
+			return Config{}, fmt.Errorf("resolve home directory: %w (set MYTEAM_WORKSPACES_ROOT to override)", err)
 		}
 		if profile != "" {
-			workspacesRoot = filepath.Join(home, "multica_workspaces_"+profile)
+			workspacesRoot = filepath.Join(home, "myteam_workspaces_"+profile)
 		} else {
-			workspacesRoot = filepath.Join(home, "multica_workspaces")
+			workspacesRoot = filepath.Join(home, "myteam_workspaces")
 		}
 	}
 	workspacesRoot, err = filepath.Abs(workspacesRoot)
@@ -195,11 +195,11 @@ func LoadConfig(overrides Overrides) (Config, error) {
 	}
 
 	// Keep env after task: env > default (false)
-	keepEnv := os.Getenv("MULTICA_KEEP_ENV_AFTER_TASK") == "true" || os.Getenv("MULTICA_KEEP_ENV_AFTER_TASK") == "1"
+	keepEnv := os.Getenv("MYTEAM_KEEP_ENV_AFTER_TASK") == "true" || os.Getenv("MYTEAM_KEEP_ENV_AFTER_TASK") == "1"
 
 	// Claude execution mode: env > default ("single"). Unknown values fall
 	// through to "single" so a typo never silently enables persistent mode.
-	claudeMode := strings.ToLower(strings.TrimSpace(os.Getenv("MULTICA_CLAUDE_MODE")))
+	claudeMode := strings.ToLower(strings.TrimSpace(os.Getenv("MYTEAM_CLAUDE_MODE")))
 	if claudeMode != ClaudeModePersistent {
 		claudeMode = ClaudeModeSingle
 	}
@@ -226,7 +226,7 @@ func LoadConfig(overrides Overrides) (Config, error) {
 func NormalizeServerBaseURL(raw string) (string, error) {
 	u, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil {
-		return "", fmt.Errorf("invalid MULTICA_SERVER_URL: %w", err)
+		return "", fmt.Errorf("invalid MYTEAM_SERVER_URL: %w", err)
 	}
 	switch u.Scheme {
 	case "ws":
@@ -235,7 +235,7 @@ func NormalizeServerBaseURL(raw string) (string, error) {
 		u.Scheme = "https"
 	case "http", "https":
 	default:
-		return "", fmt.Errorf("MULTICA_SERVER_URL must use ws, wss, http, or https")
+		return "", fmt.Errorf("MYTEAM_SERVER_URL must use ws, wss, http, or https")
 	}
 	if u.Path == "/ws" {
 		u.Path = ""

@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"time"
 
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 )
 
 // GET /api/listen?agent_id=X&channel_id=X&after_id=X&timeout=30

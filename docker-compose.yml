@@ -1,12 +1,12 @@
-name: multica
+name: myteam
 
 services:
   postgres:
     image: pgvector/pgvector:pg17
     environment:
-      POSTGRES_DB: multica
-      POSTGRES_USER: ${POSTGRES_USER:-multica}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-multica}
+      POSTGRES_DB: myteam
+      POSTGRES_USER: ${POSTGRES_USER:-myteam}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-myteam}
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:

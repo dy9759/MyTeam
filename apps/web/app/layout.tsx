@@ -61,7 +61,7 @@ export default async function RootLayout({
   children: React.ReactNode;
 }) {
   const cookieStore = await cookies();
-  const locale = cookieStore.get("multica-locale")?.value;
+  const locale = cookieStore.get("myteam-locale")?.value;
   const lang = locale === "zh" ? "zh" : "en";
 
   return (

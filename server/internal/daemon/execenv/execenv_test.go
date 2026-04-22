@@ -167,7 +167,7 @@ func TestPrepareWithRepoContext(t *testing.T) {
 	}
 	s := string(content)
 	for _, want := range []string{
-		"multica repo checkout",
+		"myteam repo checkout",
 		"https://github.com/org/backend",
 		"Go backend",
 		"https://github.com/org/frontend",
@@ -378,8 +378,8 @@ func TestInjectRuntimeConfigClaude(t *testing.T) {
 	s := string(content)
 	for _, want := range []string{
 		"My Team Agent Runtime",
-		"multica issue get",
-		"multica issue comment list",
+		"myteam issue get",
+		"myteam issue comment list",
 		"Go Conventions",
 		"PR Review",
 		"discovered automatically",
@@ -433,8 +433,8 @@ func TestInjectRuntimeConfigNoSkills(t *testing.T) {
 	}
 
 	s := string(content)
-	if !strings.Contains(s, "multica issue get") {
-		t.Error("should reference multica CLI even without skills")
+	if !strings.Contains(s, "myteam issue get") {
+		t.Error("should reference myteam CLI even without skills")
 	}
 	if strings.Contains(s, "## Skills") {
 		t.Error("should not have Skills section when there are no skills")
@@ -573,7 +573,7 @@ func TestPrepareWithRepoContextOpencode(t *testing.T) {
 	}
 	s := string(content)
 	for _, want := range []string{
-		"multica repo checkout",
+		"myteam repo checkout",
 		"https://github.com/org/backend",
 		"Go backend",
 	} {
