@@ -41,6 +41,7 @@ function FileUploadButton({
           btnSize,
           className,
         )}
+        aria-label="上传文件"
       >
         <Paperclip className={iconSize} />
       </button>

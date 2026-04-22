@@ -195,6 +195,7 @@ function SessionSidebar({
                   }}
                   className="opacity-0 group-hover:opacity-100 shrink-0 p-1 rounded hover:bg-background text-muted-foreground hover:text-foreground transition-opacity"
                   title="归档"
+                  aria-label="归档"
                 >
                   <Archive className="h-3 w-3" />
                 </button>
@@ -239,6 +240,7 @@ function SessionSidebar({
                   }}
                   className="opacity-0 group-hover:opacity-100 shrink-0 p-1 rounded hover:bg-background text-muted-foreground hover:text-foreground transition-opacity"
                   title="归档"
+                  aria-label="归档"
                 >
                   <Archive className="h-3 w-3" />
                 </button>
@@ -424,6 +426,7 @@ function InboxPanel({
               <button
                 onClick={() => handleArchive(item.id)}
                 className="hidden group-hover:block shrink-0 text-muted-foreground hover:text-foreground p-0.5"
+                aria-label="归档通知"
               >
                 <Archive className="h-3 w-3" />
               </button>
@@ -757,6 +760,26 @@ export default function SessionPage() {
     [selectedId, selectedType],
   );
 
+  // Inline thread reply (from the expanded chip under a root message).
+  // Reuses createThread for idempotency, then posts via the thread
+  // endpoint. After success we refresh the channel list so the new
+  // reply shows up immediately under the expanded root instead of
+  // waiting on the 3s poll.
+  const handleInlineThreadReply = useCallback(
+    async (rootMessageId: string, content: string) => {
+      if (!selectedId || selectedType !== "channel") return;
+      try {
+        const thread = await api.createThread(selectedId, { root_message_id: rootMessageId });
+        await api.sendThreadMessage(thread.id, content);
+        const res = await api.getChannelMessages(selectedId);
+        setChannelMessages(res.messages);
+      } catch {
+        toast.error("回复讨论串失败");
+      }
+    },
+    [selectedId, selectedType],
+  );
+
   // Search + Create state
   const [sidebarSearch, setSidebarSearch] = useState("");
   const [showCreateChannel, setShowCreateChannel] = useState(false);
@@ -782,6 +805,22 @@ export default function SessionPage() {
 
   // Derive current messages and header info
   const messages = selectedType === "dm" ? dmMessages : channelMessages;
+
+  // Multi-select highlight: parent rows whose right-rail panel is
+  // currently open stay visually distinct from regular hover. Both
+  // the thread panel and the file viewer can be open at once, so
+  // we fold both into one Set.
+  const highlightedMessageIds = useMemo(() => {
+    const s = new Set<string>();
+    // Thread id equals the root message id per backend convention
+    // (message.go:173 — resolveOrCreateThread returns parent uuid).
+    if (rightPanel?.kind === "thread") s.add(rightPanel.threadId);
+    if (activeFile?.file_id) {
+      const msg = messages.find((m) => m.file_id === activeFile.file_id);
+      if (msg) s.add(msg.id);
+    }
+    return s;
+  }, [rightPanel, activeFile, messages]);
 
   // Sender-side read receipt: when the recipient marks a channel
   // message as read, the server publishes message:read; flip the
@@ -1030,6 +1069,7 @@ export default function SessionPage() {
                   onClick={() => setShowInbox(!showInbox)}
                   className="relative p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
                   title="通知"
+                  aria-label="通知"
                 >
                   {inboxUnread > 0 ? (
                     <BellDot className="h-4 w-4" />
@@ -1052,6 +1092,8 @@ export default function SessionPage() {
                   messages={messages}
                   currentUserId={currentUserId}
                   onOpenThread={selectedType === "channel" ? openThreadForMessage : undefined}
+                  onReplyInThread={selectedType === "channel" ? handleInlineThreadReply : undefined}
+                  highlightedIds={highlightedMessageIds}
                   selectionEnabled={selectionEnabled}
                   meetings={selectedType === "channel" ? channelMeetings : []}
                   onOpenMeeting={selectedType === "channel" ? handleOpenMeeting : undefined}

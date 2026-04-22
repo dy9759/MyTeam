@@ -132,7 +132,7 @@ export function PlanEditor({ steps, onUpdate, readOnly }: PlanEditorProps) {
                         {step.required_skills.map((skill) => (
                           <Badge key={skill} variant="secondary" className="gap-1">
                             {skill}
-                            <button onClick={() => removeSkill(index, skill)} className="hover:text-destructive">
+                            <button onClick={() => removeSkill(index, skill)} className="hover:text-destructive" aria-label={`移除技能 ${skill}`}>
                               <span className="text-xs">&times;</span>
                             </button>
                           </Badge>
@@ -219,15 +219,18 @@ export function PlanEditor({ steps, onUpdate, readOnly }: PlanEditorProps) {
               {!readOnly && (
                 <div className="flex flex-col gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
                   <button onClick={() => moveStep(index, "up")} disabled={index === 0}
-                    className="p-1 hover:bg-accent rounded disabled:opacity-30">
+                    className="p-1 hover:bg-accent rounded disabled:opacity-30"
+                    aria-label="上移步骤">
                     <ChevronUp className="size-3.5" />
                   </button>
                   <button onClick={() => moveStep(index, "down")} disabled={index === steps.length - 1}
-                    className="p-1 hover:bg-accent rounded disabled:opacity-30">
+                    className="p-1 hover:bg-accent rounded disabled:opacity-30"
+                    aria-label="下移步骤">
                     <ChevronDown className="size-3.5" />
                   </button>
                   <button onClick={() => removeStep(index)}
-                    className="p-1 hover:bg-accent rounded text-muted-foreground hover:text-destructive">
+                    className="p-1 hover:bg-accent rounded text-muted-foreground hover:text-destructive"
+                    aria-label="删除步骤">
                     <Trash2 className="size-3.5" />
                   </button>
                 </div>

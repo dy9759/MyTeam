@@ -212,6 +212,7 @@ export function FileViewerPanel({ target, onClose }: FileViewerPanelProps) {
                 }}
                 className="p-1 rounded-[4px] hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
                 title="编辑"
+                aria-label="编辑"
               >
                 <Pencil className="h-4 w-4" />
               </button>
@@ -222,6 +223,7 @@ export function FileViewerPanel({ target, onClose }: FileViewerPanelProps) {
                   onClick={handleSave}
                   className="p-1 rounded-[4px] hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
                   title="保存"
+                  aria-label="保存"
                 >
                   <Save className="h-4 w-4" />
                 </button>
@@ -233,6 +235,7 @@ export function FileViewerPanel({ target, onClose }: FileViewerPanelProps) {
                   }}
                   className="p-1 rounded-[4px] hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
                   title="预览"
+                  aria-label="预览"
                 >
                   <Eye className="h-4 w-4" />
                 </button>
@@ -244,6 +247,7 @@ export function FileViewerPanel({ target, onClose }: FileViewerPanelProps) {
             onClick={handleReload}
             className="p-1 rounded-[4px] hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
             title="重新加载"
+            aria-label="重新加载"
           >
             <RefreshCw className="h-4 w-4" />
           </button>
@@ -253,6 +257,7 @@ export function FileViewerPanel({ target, onClose }: FileViewerPanelProps) {
             disabled={!version?.download_url}
             className="p-1 rounded-[4px] hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40"
             title="在新标签页打开"
+            aria-label="在新标签页打开"
           >
             <ExternalLink className="h-4 w-4" />
           </button>
@@ -261,6 +266,7 @@ export function FileViewerPanel({ target, onClose }: FileViewerPanelProps) {
             onClick={onClose}
             className="p-1 rounded-[4px] hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
             title="关闭"
+            aria-label="关闭"
           >
             <X className="h-4 w-4" />
           </button>

@@ -75,6 +75,7 @@ export function AccountTab() {
                 className="group relative h-16 w-16 shrink-0 rounded-full bg-muted overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading}
+                aria-label="上传头像"
               >
                 {user?.avatar_url ? (
                   <img

@@ -151,7 +151,7 @@ export function CreateProjectDialog({ onClose, onCreated }: CreateProjectDialogP
                 {selectedSources.map((s) => (
                   <Badge key={s.id} variant="secondary" className="gap-1">
                     #{s.name}
-                    <button onClick={() => toggleSource(s.id, s.name)} className="hover:text-destructive">
+                    <button onClick={() => toggleSource(s.id, s.name)} className="hover:text-destructive" aria-label={`移除 #${s.name}`}>
                       <XIcon className="size-3" />
                     </button>
                   </Badge>

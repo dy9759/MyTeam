@@ -194,6 +194,7 @@ export function CreateIssueModal({ onClose, data }: { onClose: () => void; data?
                   <button
                     onClick={() => setIsExpanded(!isExpanded)}
                     className="rounded-sm p-1.5 opacity-70 hover:opacity-100 hover:bg-accent/60 transition-all cursor-pointer"
+                    aria-label={isExpanded ? "收起" : "展开"}
                   >
                     {isExpanded ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
                   </button>
@@ -207,6 +208,7 @@ export function CreateIssueModal({ onClose, data }: { onClose: () => void; data?
                   <button
                     onClick={onClose}
                     className="rounded-sm p-1.5 opacity-70 hover:opacity-100 hover:bg-accent/60 transition-all cursor-pointer"
+                    aria-label="Close"
                   >
                     <XIcon className="size-4" />
                   </button>

@@ -38,6 +38,7 @@ function QuickEmojiPicker({ onSelect, align = "start", className }: QuickEmojiPi
           <button
             type="button"
             className={`inline-flex items-center justify-center h-6 w-6 rounded-full text-muted-foreground hover:bg-accent hover:text-foreground transition-colors ${className ?? ""}`}
+            aria-label="添加表情"
           >
             <SmilePlus className="h-3.5 w-3.5" />
           </button>

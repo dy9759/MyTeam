@@ -24,7 +24,7 @@ function CopyBtn({ text }: { text: string }) {
   const [ok, setOk] = useState(false)
   return (
     <button onClick={() => { navigator.clipboard.writeText(text); setOk(true); setTimeout(() => setOk(false), 2000) }}
-      className="p-1 rounded-[4px] hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors" title="复制">
+      className="p-1 rounded-[4px] hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors" title="复制" aria-label="复制">
       {ok ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
     </button>
   )

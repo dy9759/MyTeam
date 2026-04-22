@@ -40,6 +40,7 @@ export function ChannelFilesPanel({ messages, onClose }: ChannelFilesPanelProps)
           onClick={onClose}
           className="p-1 rounded-[4px] hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
           title="关闭"
+          aria-label="关闭"
         >
           <X className="h-4 w-4" />
         </button>

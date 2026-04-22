@@ -308,6 +308,7 @@ function FilesTab() {
               <button
                 className="shrink-0 text-muted-foreground hover:text-foreground"
                 onClick={(e) => { e.stopPropagation(); toggleExpanded(f.id) }}
+                aria-label={expandedFileId === f.id ? "收起文件详情" : "展开文件详情"}
               >
                 {expandedFileId === f.id ? (
                   <ChevronDown className="h-4 w-4" />
