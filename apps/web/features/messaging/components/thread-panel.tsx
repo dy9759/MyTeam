@@ -91,7 +91,7 @@ export function ThreadPanel({ threadId, channelId, onClose }: ThreadPanelProps) 
           加载中...
         </div>
       ) : (
-        <MessageList messages={messages} />
+        <MessageList messages={messages} collapseThreads={false} />
       )}
 
       {/* Input */}

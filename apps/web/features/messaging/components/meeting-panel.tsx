@@ -6,6 +6,7 @@ import {
   Square,
   Loader2,
   Star,
+  StickyNote,
   X,
   AlertTriangle,
   CheckCircle2,
@@ -82,6 +83,11 @@ export function MeetingPanel({
   const [notesDraft, setNotesDraft] = useState("");
   const [savingNotes, setSavingNotes] = useState(false);
   const [highlightDraft, setHighlightDraft] = useState("");
+  // Per-segment note composer: when the user clicks the "📝" on a live
+  // transcript line, an inline textarea opens under that segment. One
+  // at a time — opening a second closes the first.
+  const [activeNoteSegId, setActiveNoteSegId] = useState<string | null>(null);
+  const [segNoteDraft, setSegNoteDraft] = useState("");
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
@@ -385,6 +391,63 @@ export function MeetingPanel({
     }
   };
 
+  // saveSegmentNote appends a structured note entry to meeting.notes:
+  //   [MM:SS] speaker: "segment text"
+  //     → user note
+  // keeps the ordinary notes textarea as the source of truth so nothing
+  // else needs to change on the backend. elapsed is captured at save
+  // time so the timestamp reflects when the user finished typing,
+  // matching the live content they are annotating.
+  const saveSegmentNote = async (seg: {
+    text: string;
+    speaker: string;
+  }) => {
+    if (!meeting) return;
+    const note = segNoteDraft.trim();
+    if (!note) return;
+    const ts = formatDuration(elapsed);
+    const entry = `[${ts}] ${seg.speaker}: "${seg.text.trim()}"\n  → ${note}\n\n`;
+    const nextNotes = (notesDraft ?? "") + entry;
+    setNotesDraft(nextNotes);
+    setSegNoteDraft("");
+    setActiveNoteSegId(null);
+    setSavingNotes(true);
+    try {
+      const updated = await api.updateChannelMeetingNotes(meeting.id, nextNotes);
+      setMeeting(updated);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "保存笔记失败");
+    } finally {
+      setSavingNotes(false);
+    }
+  };
+
+  // markLiveSegment captures a final transcript segment as a highlight
+  // without the user having to re-type it. Stamps the elapsed-seconds
+  // cursor at click time so the timeline entry lands at the moment the
+  // user decided the line was important. De-dupes on exact text to keep
+  // accidental double-clicks from stacking.
+  const markLiveSegment = async (seg: { text: string }) => {
+    if (!meeting) return;
+    const text = seg.text.trim();
+    if (!text) return;
+    const existing = meeting.highlights ?? [];
+    if (existing.some((h) => h.text === text)) return;
+    const next: ChannelMeeting["highlights"] = [
+      ...existing,
+      { t: elapsed, text },
+    ];
+    try {
+      const updated = await api.updateChannelMeetingHighlights(
+        meeting.id,
+        next,
+      );
+      setMeeting(updated);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "标记失败");
+    }
+  };
+
   const removeHighlight = async (idx: number) => {
     if (!meeting) return;
     const next = (meeting.highlights ?? []).filter((_, i) => i !== idx);
@@ -510,16 +573,101 @@ export function MeetingPanel({
                 )}
                 {liveSegments.length > 0 && (
                   <ul className="space-y-1 max-h-60 overflow-y-auto rounded bg-muted/20 p-2">
-                    {liveSegments.map((seg) => (
-                      <li key={seg.id} className="text-[11px] leading-snug">
-                        <span className="text-primary font-mono mr-1">
-                          {seg.speaker}:
-                        </span>
-                        <span className={seg.interim ? "text-muted-foreground" : ""}>
-                          {seg.text}
-                        </span>
-                      </li>
-                    ))}
+                    {liveSegments.map((seg) => {
+                      const marked =
+                        !seg.interim &&
+                        (meeting?.highlights ?? []).some(
+                          (h) => h.text === seg.text.trim(),
+                        );
+                      const noteOpen = activeNoteSegId === seg.id;
+                      return (
+                        <li
+                          key={seg.id}
+                          className="group/seg text-[11px] leading-snug"
+                        >
+                          <div className="flex items-start gap-1.5">
+                            <span className="flex-1">
+                              <span className="text-primary font-mono mr-1">
+                                {seg.speaker}:
+                              </span>
+                              <span className={seg.interim ? "text-muted-foreground" : ""}>
+                                {seg.text}
+                              </span>
+                            </span>
+                            {!seg.interim && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveNoteSegId(
+                                      noteOpen ? null : seg.id,
+                                    );
+                                    setSegNoteDraft("");
+                                  }}
+                                  aria-label={noteOpen ? "取消笔记" : "添加笔记"}
+                                  title={noteOpen ? "取消笔记" : "添加笔记"}
+                                  className={`shrink-0 mt-0.5 transition-opacity ${
+                                    noteOpen
+                                      ? "text-primary opacity-100"
+                                      : "text-muted-foreground opacity-0 group-hover/seg:opacity-100 hover:text-primary"
+                                  }`}
+                                >
+                                  <StickyNote className="h-3 w-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => markLiveSegment(seg)}
+                                  disabled={marked}
+                                  aria-label={marked ? "已标记重点" : "标记为重点"}
+                                  title={marked ? "已标记重点" : "标记为重点"}
+                                  className={`shrink-0 mt-0.5 transition-opacity ${
+                                    marked
+                                      ? "text-primary opacity-100"
+                                      : "text-muted-foreground opacity-0 group-hover/seg:opacity-100 hover:text-primary"
+                                  }`}
+                                >
+                                  <Star
+                                    className="h-3 w-3"
+                                    fill={marked ? "currentColor" : "none"}
+                                  />
+                                </button>
+                              </>
+                            )}
+                          </div>
+                          {noteOpen && (
+                            <div className="mt-1 ml-2 flex items-start gap-1.5">
+                              <textarea
+                                value={segNoteDraft}
+                                onChange={(e) => setSegNoteDraft(e.target.value)}
+                                placeholder="针对这一句的笔记…"
+                                rows={2}
+                                autoFocus
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                                    e.preventDefault();
+                                    void saveSegmentNote(seg);
+                                  }
+                                  if (e.key === "Escape") {
+                                    e.preventDefault();
+                                    setActiveNoteSegId(null);
+                                    setSegNoteDraft("");
+                                  }
+                                }}
+                                className="flex-1 rounded-md border border-border bg-background px-2 py-1 text-[11px]"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => void saveSegmentNote(seg)}
+                                disabled={!segNoteDraft.trim() || savingNotes}
+                                className="rounded-md border border-border bg-primary text-primary-foreground px-2 py-1 text-[11px] disabled:opacity-50"
+                              >
+                                保存
+                              </button>
+                            </div>
+                          )}
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
                 {!speechSupported && (

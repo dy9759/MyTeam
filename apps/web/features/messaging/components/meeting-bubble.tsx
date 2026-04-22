@@ -2,6 +2,7 @@
 
 import { Mic, Loader2, CheckCircle2, AlertTriangle } from "lucide-react";
 import type { ChannelMeeting } from "@/shared/types";
+import { useWorkspaceStore } from "@/features/workspace";
 
 interface MeetingBubbleProps {
   meeting: ChannelMeeting;
@@ -22,52 +23,88 @@ function fmtTime(iso?: string) {
 }
 
 export function MeetingBubble({ meeting, onOpen }: MeetingBubbleProps) {
-  const { status, topic, started_at, ended_at, audio_duration, failure_reason } = meeting;
+  const { status, topic, started_at, ended_at, audio_duration, failure_reason, started_by } = meeting;
   const clickable = status === "completed";
   const summaryText = extractSummaryText(meeting.summary);
 
+  // Resolve host display from workspace members so the row matches the
+  // normal message bubble (avatar + name + time). Falls back to the
+  // first two chars of the user id when the member is not yet loaded.
+  const members = useWorkspaceStore((s) => s.members);
+  const host = members.find((m) => m.user_id === started_by);
+  const hostName = host?.name ?? started_by?.slice(0, 12) ?? "";
+  const hostInitials = (host?.name ?? started_by ?? "").slice(0, 2).toUpperCase();
+
   return (
-    <div className="my-2 flex justify-center px-3">
-      <button
-        type="button"
-        disabled={!clickable}
-        onClick={() => onOpen(meeting.id)}
-        className={`group w-full max-w-xl rounded-lg border border-border bg-card shadow-sm text-left transition-colors ${
-          clickable ? "hover:border-primary/60 cursor-pointer" : "cursor-default opacity-95"
-        }`}
-      >
-        <div className="px-4 py-3 flex items-start gap-3">
-          <StatusIcon status={status} />
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="text-[13px] font-medium text-foreground truncate">
-                {topic || "会议"}
-              </span>
-              <StatusBadge status={status} />
-            </div>
-            <div className="mt-0.5 text-[11px] text-muted-foreground truncate">
+    <div
+      role={clickable ? "button" : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      onClick={clickable ? () => onOpen(meeting.id) : undefined}
+      onKeyDown={
+        clickable
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onOpen(meeting.id);
+              }
+            }
+          : undefined
+      }
+      className={`group relative px-3 py-2 rounded-[6px] transition-colors ${
+        clickable ? "hover:bg-accent/50 cursor-pointer" : "cursor-default"
+      }`}
+    >
+      <div className="flex items-start gap-3">
+        {/* Avatar — same shape as MessageList rows */}
+        <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center text-[12px] font-medium text-secondary-foreground shrink-0 mt-0.5">
+          {hostInitials || "?"}
+        </div>
+        <div className="flex-1 min-w-0">
+          {/* Header: sender name + timestamp */}
+          <div className="flex items-center gap-2 mb-0.5">
+            <span className="text-[13px] font-medium text-foreground">
+              {hostName}
+            </span>
+            <span className="text-[11px] text-muted-foreground">
               {fmtTime(started_at)}
-              {ended_at && ` — ${fmtTime(ended_at)}`}
-              {audio_duration != null && audio_duration > 0 && ` · ${fmtDuration(audio_duration)}`}
+            </span>
+          </div>
+          {/* Meeting card body */}
+          <div className="mt-0.5 rounded-md border border-border bg-card/60 px-3 py-2">
+            <div className="flex items-start gap-2">
+              <StatusIcon status={status} />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-[13px] font-medium text-foreground truncate">
+                    {topic || "会议"}
+                  </span>
+                  <StatusBadge status={status} />
+                </div>
+                <div className="mt-0.5 text-[11px] text-muted-foreground truncate">
+                  {fmtTime(started_at)}
+                  {ended_at && ` — ${fmtTime(ended_at)}`}
+                  {audio_duration != null && audio_duration > 0 && ` · ${fmtDuration(audio_duration)}`}
+                </div>
+                {status === "failed" && failure_reason && (
+                  <div className="mt-1 text-[12px] text-destructive break-words">
+                    {failure_reason}
+                  </div>
+                )}
+                {status === "completed" && summaryText && (
+                  <div className="mt-1 text-[12px] text-muted-foreground line-clamp-2 break-words">
+                    {summaryText}
+                  </div>
+                )}
+                {clickable && (
+                  <div className="mt-1 text-[11px] text-primary opacity-0 group-hover:opacity-100 transition-opacity">
+                    点击查看转写 / 总结 / 笔记
+                  </div>
+                )}
+              </div>
             </div>
-            {status === "failed" && failure_reason && (
-              <div className="mt-1 text-[12px] text-destructive break-words">
-                {failure_reason}
-              </div>
-            )}
-            {status === "completed" && summaryText && (
-              <div className="mt-1 text-[12px] text-muted-foreground line-clamp-2 break-words">
-                {summaryText}
-              </div>
-            )}
-            {clickable && (
-              <div className="mt-1 text-[11px] text-primary opacity-0 group-hover:opacity-100 transition-opacity">
-                点击查看转写 / 总结 / 笔记
-              </div>
-            )}
           </div>
         </div>
-      </button>
+      </div>
     </div>
   );
 }
@@ -125,7 +162,7 @@ function StatusBadge({ status }: { status: ChannelMeeting["status"] }) {
 // summary is an opaque JSON blob (Doubao payload). Best-effort pull out
 // the most common shapes so the bubble can hint at content without
 // needing to open the full panel.
-function extractSummaryText(summary?: Record<string, unknown>): string {
+export function extractSummaryText(summary?: Record<string, unknown>): string {
   if (!summary) return "";
   const candidates: Array<unknown> = [
     (summary as { summary?: unknown }).summary,

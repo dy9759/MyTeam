@@ -12,9 +12,9 @@ import (
 )
 
 const createAttachment = `-- name: CreateAttachment :one
-INSERT INTO attachment (workspace_id, issue_id, comment_id, uploader_type, uploader_id, filename, url, content_type, size_bytes)
-VALUES ($1, $8, $9, $2, $3, $4, $5, $6, $7)
-RETURNING id, workspace_id, issue_id, comment_id, uploader_type, uploader_id, filename, url, content_type, size_bytes, created_at, version, parent_file_id
+INSERT INTO attachment (workspace_id, issue_id, comment_id, uploader_type, uploader_id, filename, url, content_type, size_bytes, object_key)
+VALUES ($1, $8, $9, $2, $3, $4, $5, $6, $7, $10)
+RETURNING id, workspace_id, issue_id, comment_id, uploader_type, uploader_id, filename, url, content_type, size_bytes, created_at, version, parent_file_id, object_key
 `
 
 type CreateAttachmentParams struct {
@@ -27,6 +27,7 @@ type CreateAttachmentParams struct {
 	SizeBytes    int64       `json:"size_bytes"`
 	IssueID      pgtype.UUID `json:"issue_id"`
 	CommentID    pgtype.UUID `json:"comment_id"`
+	ObjectKey    pgtype.Text `json:"object_key"`
 }
 
 func (q *Queries) CreateAttachment(ctx context.Context, arg CreateAttachmentParams) (Attachment, error) {
@@ -40,6 +41,7 @@ func (q *Queries) CreateAttachment(ctx context.Context, arg CreateAttachmentPara
 		arg.SizeBytes,
 		arg.IssueID,
 		arg.CommentID,
+		arg.ObjectKey,
 	)
 	var i Attachment
 	err := row.Scan(
@@ -56,14 +58,15 @@ func (q *Queries) CreateAttachment(ctx context.Context, arg CreateAttachmentPara
 		&i.CreatedAt,
 		&i.Version,
 		&i.ParentFileID,
+		&i.ObjectKey,
 	)
 	return i, err
 }
 
 const createFileVersion = `-- name: CreateFileVersion :one
-INSERT INTO attachment (workspace_id, issue_id, comment_id, filename, content_type, size_bytes, url, uploader_type, uploader_id, version, parent_file_id)
-VALUES ($1, $10, $11, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING id, workspace_id, issue_id, comment_id, uploader_type, uploader_id, filename, url, content_type, size_bytes, created_at, version, parent_file_id
+INSERT INTO attachment (workspace_id, issue_id, comment_id, filename, content_type, size_bytes, url, uploader_type, uploader_id, version, parent_file_id, object_key)
+VALUES ($1, $10, $11, $2, $3, $4, $5, $6, $7, $8, $9, $12)
+RETURNING id, workspace_id, issue_id, comment_id, uploader_type, uploader_id, filename, url, content_type, size_bytes, created_at, version, parent_file_id, object_key
 `
 
 type CreateFileVersionParams struct {
@@ -78,6 +81,7 @@ type CreateFileVersionParams struct {
 	ParentFileID pgtype.UUID `json:"parent_file_id"`
 	IssueID      pgtype.UUID `json:"issue_id"`
 	CommentID    pgtype.UUID `json:"comment_id"`
+	ObjectKey    pgtype.Text `json:"object_key"`
 }
 
 func (q *Queries) CreateFileVersion(ctx context.Context, arg CreateFileVersionParams) (Attachment, error) {
@@ -93,6 +97,7 @@ func (q *Queries) CreateFileVersion(ctx context.Context, arg CreateFileVersionPa
 		arg.ParentFileID,
 		arg.IssueID,
 		arg.CommentID,
+		arg.ObjectKey,
 	)
 	var i Attachment
 	err := row.Scan(
@@ -109,6 +114,7 @@ func (q *Queries) CreateFileVersion(ctx context.Context, arg CreateFileVersionPa
 		&i.CreatedAt,
 		&i.Version,
 		&i.ParentFileID,
+		&i.ObjectKey,
 	)
 	return i, err
 }
@@ -128,7 +134,7 @@ func (q *Queries) DeleteAttachment(ctx context.Context, arg DeleteAttachmentPara
 }
 
 const getAttachment = `-- name: GetAttachment :one
-SELECT id, workspace_id, issue_id, comment_id, uploader_type, uploader_id, filename, url, content_type, size_bytes, created_at, version, parent_file_id FROM attachment
+SELECT id, workspace_id, issue_id, comment_id, uploader_type, uploader_id, filename, url, content_type, size_bytes, created_at, version, parent_file_id, object_key FROM attachment
 WHERE id = $1 AND workspace_id = $2
 `
 
@@ -154,12 +160,13 @@ func (q *Queries) GetAttachment(ctx context.Context, arg GetAttachmentParams) (A
 		&i.CreatedAt,
 		&i.Version,
 		&i.ParentFileID,
+		&i.ObjectKey,
 	)
 	return i, err
 }
 
 const getFileVersions = `-- name: GetFileVersions :many
-SELECT id, workspace_id, issue_id, comment_id, uploader_type, uploader_id, filename, url, content_type, size_bytes, created_at, version, parent_file_id FROM attachment WHERE parent_file_id = $1 OR id = $1 ORDER BY version ASC
+SELECT id, workspace_id, issue_id, comment_id, uploader_type, uploader_id, filename, url, content_type, size_bytes, created_at, version, parent_file_id, object_key FROM attachment WHERE parent_file_id = $1 OR id = $1 ORDER BY version ASC
 `
 
 func (q *Queries) GetFileVersions(ctx context.Context, parentFileID pgtype.UUID) ([]Attachment, error) {
@@ -185,6 +192,7 @@ func (q *Queries) GetFileVersions(ctx context.Context, parentFileID pgtype.UUID)
 			&i.CreatedAt,
 			&i.Version,
 			&i.ParentFileID,
+			&i.ObjectKey,
 		); err != nil {
 			return nil, err
 		}
@@ -197,7 +205,7 @@ func (q *Queries) GetFileVersions(ctx context.Context, parentFileID pgtype.UUID)
 }
 
 const getLatestFileVersion = `-- name: GetLatestFileVersion :one
-SELECT id, workspace_id, issue_id, comment_id, uploader_type, uploader_id, filename, url, content_type, size_bytes, created_at, version, parent_file_id FROM attachment WHERE (id = $1 OR parent_file_id = $1) ORDER BY version DESC LIMIT 1
+SELECT id, workspace_id, issue_id, comment_id, uploader_type, uploader_id, filename, url, content_type, size_bytes, created_at, version, parent_file_id, object_key FROM attachment WHERE (id = $1 OR parent_file_id = $1) ORDER BY version DESC LIMIT 1
 `
 
 func (q *Queries) GetLatestFileVersion(ctx context.Context, id pgtype.UUID) (Attachment, error) {
@@ -217,6 +225,7 @@ func (q *Queries) GetLatestFileVersion(ctx context.Context, id pgtype.UUID) (Att
 		&i.CreatedAt,
 		&i.Version,
 		&i.ParentFileID,
+		&i.ObjectKey,
 	)
 	return i, err
 }
@@ -292,7 +301,7 @@ func (q *Queries) ListAttachmentURLsByIssueOrComments(ctx context.Context, issue
 }
 
 const listAttachmentsByComment = `-- name: ListAttachmentsByComment :many
-SELECT id, workspace_id, issue_id, comment_id, uploader_type, uploader_id, filename, url, content_type, size_bytes, created_at, version, parent_file_id FROM attachment
+SELECT id, workspace_id, issue_id, comment_id, uploader_type, uploader_id, filename, url, content_type, size_bytes, created_at, version, parent_file_id, object_key FROM attachment
 WHERE comment_id = $1 AND workspace_id = $2
 ORDER BY created_at ASC
 `
@@ -325,6 +334,7 @@ func (q *Queries) ListAttachmentsByComment(ctx context.Context, arg ListAttachme
 			&i.CreatedAt,
 			&i.Version,
 			&i.ParentFileID,
+			&i.ObjectKey,
 		); err != nil {
 			return nil, err
 		}
@@ -337,7 +347,7 @@ func (q *Queries) ListAttachmentsByComment(ctx context.Context, arg ListAttachme
 }
 
 const listAttachmentsByCommentIDs = `-- name: ListAttachmentsByCommentIDs :many
-SELECT id, workspace_id, issue_id, comment_id, uploader_type, uploader_id, filename, url, content_type, size_bytes, created_at, version, parent_file_id FROM attachment
+SELECT id, workspace_id, issue_id, comment_id, uploader_type, uploader_id, filename, url, content_type, size_bytes, created_at, version, parent_file_id, object_key FROM attachment
 WHERE comment_id = ANY($1::uuid[])
 ORDER BY created_at ASC
 `
@@ -365,6 +375,7 @@ func (q *Queries) ListAttachmentsByCommentIDs(ctx context.Context, dollar_1 []pg
 			&i.CreatedAt,
 			&i.Version,
 			&i.ParentFileID,
+			&i.ObjectKey,
 		); err != nil {
 			return nil, err
 		}
@@ -377,7 +388,7 @@ func (q *Queries) ListAttachmentsByCommentIDs(ctx context.Context, dollar_1 []pg
 }
 
 const listAttachmentsByIssue = `-- name: ListAttachmentsByIssue :many
-SELECT id, workspace_id, issue_id, comment_id, uploader_type, uploader_id, filename, url, content_type, size_bytes, created_at, version, parent_file_id FROM attachment
+SELECT id, workspace_id, issue_id, comment_id, uploader_type, uploader_id, filename, url, content_type, size_bytes, created_at, version, parent_file_id, object_key FROM attachment
 WHERE issue_id = $1 AND workspace_id = $2
 ORDER BY created_at ASC
 `
@@ -410,6 +421,7 @@ func (q *Queries) ListAttachmentsByIssue(ctx context.Context, arg ListAttachment
 			&i.CreatedAt,
 			&i.Version,
 			&i.ParentFileID,
+			&i.ObjectKey,
 		); err != nil {
 			return nil, err
 		}

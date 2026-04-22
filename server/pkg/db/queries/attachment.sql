@@ -1,6 +1,6 @@
 -- name: CreateAttachment :one
-INSERT INTO attachment (workspace_id, issue_id, comment_id, uploader_type, uploader_id, filename, url, content_type, size_bytes)
-VALUES ($1, sqlc.narg(issue_id), sqlc.narg(comment_id), $2, $3, $4, $5, $6, $7)
+INSERT INTO attachment (workspace_id, issue_id, comment_id, uploader_type, uploader_id, filename, url, content_type, size_bytes, object_key)
+VALUES ($1, sqlc.narg(issue_id), sqlc.narg(comment_id), $2, $3, $4, $5, $6, $7, sqlc.narg(object_key))
 RETURNING *;
 
 -- name: ListAttachmentsByIssue :many
@@ -45,8 +45,8 @@ DELETE FROM attachment WHERE id = $1 AND workspace_id = $2;
 SELECT * FROM attachment WHERE parent_file_id = $1 OR id = $1 ORDER BY version ASC;
 
 -- name: CreateFileVersion :one
-INSERT INTO attachment (workspace_id, issue_id, comment_id, filename, content_type, size_bytes, url, uploader_type, uploader_id, version, parent_file_id)
-VALUES ($1, sqlc.narg(issue_id), sqlc.narg(comment_id), $2, $3, $4, $5, $6, $7, $8, $9)
+INSERT INTO attachment (workspace_id, issue_id, comment_id, filename, content_type, size_bytes, url, uploader_type, uploader_id, version, parent_file_id, object_key)
+VALUES ($1, sqlc.narg(issue_id), sqlc.narg(comment_id), $2, $3, $4, $5, $6, $7, $8, $9, sqlc.narg(object_key))
 RETURNING *;
 
 -- name: GetLatestFileVersion :one

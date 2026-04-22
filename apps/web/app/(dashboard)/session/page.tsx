@@ -611,8 +611,22 @@ export default function SessionPage() {
           // silent poll failure
         }
       }
+      async function loadChannelThreads() {
+        try {
+          const ts = await api.listThreads(selectedId!);
+          setChannelThreads(
+            ts.map((t) => ({ id: t.id, root_message_id: t.root_message_id })),
+          );
+        } catch {
+          // non-fatal; chip count will fall back to naive keying
+        }
+      }
       loadChannelMessages();
-      pollRef.current = setInterval(loadChannelMessages, 3000);
+      loadChannelThreads();
+      pollRef.current = setInterval(() => {
+        loadChannelMessages();
+        loadChannelThreads();
+      }, 3000);
     }
 
     return () => {
@@ -680,6 +694,7 @@ export default function SessionPage() {
 
   const [rightPanel, setRightPanel] = useState<RightPanel>(null);
   const [channelMeetings, setChannelMeetings] = useState<ChannelMeeting[]>([]);
+  const [channelThreads, setChannelThreads] = useState<Array<{ id: string; root_message_id?: string | null }>>([]);
   const activeFile = useFileViewerStore((s) => s.active);
   const closeFileViewer = useFileViewerStore((s) => s.close);
 
@@ -812,15 +827,20 @@ export default function SessionPage() {
   // we fold both into one Set.
   const highlightedMessageIds = useMemo(() => {
     const s = new Set<string>();
-    // Thread id equals the root message id per backend convention
-    // (message.go:173 — resolveOrCreateThread returns parent uuid).
-    if (rightPanel?.kind === "thread") s.add(rightPanel.threadId);
+    // New threads carry their own UUID (distinct from root_message_id);
+    // legacy resolveOrCreateThread used the root id directly. Resolve
+    // via the loaded thread rows so the highlight lands on the parent
+    // message in both cases.
+    if (rightPanel?.kind === "thread") {
+      const t = channelThreads.find((x) => x.id === rightPanel.threadId);
+      s.add(t?.root_message_id ?? rightPanel.threadId);
+    }
     if (activeFile?.file_id) {
       const msg = messages.find((m) => m.file_id === activeFile.file_id);
       if (msg) s.add(msg.id);
     }
     return s;
-  }, [rightPanel, activeFile, messages]);
+  }, [rightPanel, activeFile, messages, channelThreads]);
 
   // Sender-side read receipt: when the recipient marks a channel
   // message as read, the server publishes message:read; flip the
@@ -1093,6 +1113,7 @@ export default function SessionPage() {
                   currentUserId={currentUserId}
                   onOpenThread={selectedType === "channel" ? openThreadForMessage : undefined}
                   onReplyInThread={selectedType === "channel" ? handleInlineThreadReply : undefined}
+                  threads={selectedType === "channel" ? channelThreads : undefined}
                   highlightedIds={highlightedMessageIds}
                   selectionEnabled={selectionEnabled}
                   meetings={selectedType === "channel" ? channelMeetings : []}

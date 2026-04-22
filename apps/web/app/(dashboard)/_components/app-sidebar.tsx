@@ -9,13 +9,11 @@ import {
   User,
   Plus,
   Check,
-  SquarePen,
   MessageSquare,
   FolderGit2,
   FileText,
 } from "lucide-react";
 import { WorkspaceAvatar } from "@/features/workspace";
-import { useIssueDraftStore } from "@/features/issues/stores/draft-store";
 import {
   Sidebar,
   SidebarContent,
@@ -51,12 +49,6 @@ const navItems = [
   { href: "/settings", label: "设置", icon: Settings },
 ];
 
-function DraftDot() {
-  const hasDraft = useIssueDraftStore((s) => !!(s.draft.title || s.draft.description));
-  if (!hasDraft) return null;
-  return <span className="absolute top-0 right-0 size-1.5 rounded-full bg-brand" />;
-}
-
 export function AppSidebar() {
   const pathname = usePathname();
   const router = useRouter();
@@ -76,8 +68,8 @@ export function AppSidebar() {
       <Sidebar variant="inset" collapsible="icon" className="bg-card border-r border-border">
         {/* Workspace Switcher */}
         <SidebarHeader className="py-3">
-          <div className="flex items-center gap-4">
-            <SidebarMenu className="min-w-0 flex-1">
+          <div className="flex items-center gap-4 group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:justify-center">
+            <SidebarMenu className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
               <SidebarMenuItem>
                 <DropdownMenu>
                   <DropdownMenuTrigger
@@ -146,16 +138,6 @@ export function AppSidebar() {
                 </DropdownMenu>
               </SidebarMenuItem>
             </SidebarMenu>
-            <Tooltip>
-              <TooltipTrigger
-                className="relative flex h-7 w-7 items-center justify-center rounded-lg bg-accent text-secondary-foreground hover:bg-muted hover:text-foreground"
-                onClick={() => useModalStore.getState().open("create-issue")}
-              >
-                <SquarePen className="size-3.5" />
-                <DraftDot />
-              </TooltipTrigger>
-              <TooltipContent side="bottom">新建任务</TooltipContent>
-            </Tooltip>
             <SidebarTrigger
               className="h-7 w-7 rounded-lg bg-accent text-secondary-foreground hover:bg-muted hover:text-foreground"
               title="折叠 / 展开"
