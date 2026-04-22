@@ -187,6 +187,11 @@ func (h *Handler) UploadFile(w http.ResponseWriter, r *http.Request) {
 			Url:          link,
 			ContentType:  contentType,
 			SizeBytes:    header.Size,
+			// Persist the S3/TOS object key we just generated so downstream
+			// DownloadFile can key off it directly instead of re-parsing the
+			// CDN URL. Prevents a hostile attachment.url from abusing the
+			// KeyFromURL last-slash fallback as a cross-bucket exfil vector.
+			ObjectKey: textOf(key),
 		}
 
 		// Optional issue_id / comment_id from form fields
@@ -355,7 +360,15 @@ func (h *Handler) DownloadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	key := h.Storage.KeyFromURL(att.Url)
+	// Prefer the stored object_key; fall back to URL parsing only for legacy
+	// rows backfilled before migration 077 (or any rows where the column is
+	// still NULL). Once every row has a value this fallback can be removed.
+	var key string
+	if att.ObjectKey.Valid {
+		key = att.ObjectKey.String
+	} else {
+		key = h.Storage.KeyFromURL(att.Url)
+	}
 	body, contentType, contentLength, err := h.Storage.Download(r.Context(), key)
 	if err != nil {
 		slog.Error("download failed", "file_id", fileID, "error", err)

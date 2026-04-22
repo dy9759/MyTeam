@@ -180,6 +180,7 @@ type Attachment struct {
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 	Version      int32              `json:"version"`
 	ParentFileID pgtype.UUID        `json:"parent_file_id"`
+	ObjectKey    pgtype.Text        `json:"object_key"`
 }
 
 type BrowserContext struct {
