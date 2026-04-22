@@ -170,11 +170,23 @@ func (s *S3Storage) DeleteKeys(ctx context.Context, keys []string) {
 }
 
 func (s *S3Storage) Upload(ctx context.Context, key string, data []byte, contentType string, filename string) (string, error) {
+	return s.putObject(ctx, key, bytes.NewReader(data), contentType, filename)
+}
+
+// UploadReader streams body directly to S3 via PutObject without buffering
+// the full payload in memory. body should be an io.ReadSeeker (e.g. a
+// multipart.File) so the SDK can retry by seeking back to 0; otherwise
+// the SDK may buffer for retry support.
+func (s *S3Storage) UploadReader(ctx context.Context, key string, body io.Reader, contentType string, filename string) (string, error) {
+	return s.putObject(ctx, key, body, contentType, filename)
+}
+
+func (s *S3Storage) putObject(ctx context.Context, key string, body io.Reader, contentType string, filename string) (string, error) {
 	safe := SanitizeFilename(filename)
 	input := &s3.PutObjectInput{
 		Bucket:             aws.String(s.bucket),
 		Key:                aws.String(key),
-		Body:               bytes.NewReader(data),
+		Body:               body,
 		ContentType:        aws.String(contentType),
 		ContentDisposition: aws.String(fmt.Sprintf(`inline; filename="%s"`, safe)),
 		CacheControl:       aws.String("max-age=432000,public"),

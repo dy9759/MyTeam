@@ -157,12 +157,6 @@ func (h *Handler) UploadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data, err := io.ReadAll(file)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "failed to read file")
-		return
-	}
-
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
 		slog.Error("failed to generate file key", "error", err)
@@ -171,7 +165,10 @@ func (h *Handler) UploadFile(w http.ResponseWriter, r *http.Request) {
 	}
 	key := hex.EncodeToString(b) + path.Ext(header.Filename)
 
-	link, err := h.Storage.Upload(r.Context(), key, data, contentType, header.Filename)
+	// Stream the multipart file directly to S3. multipart.File implements
+	// io.ReadSeeker so the SDK can retry without us buffering the full
+	// payload (up to maxUploadSize) in memory per concurrent upload.
+	link, err := h.Storage.UploadReader(r.Context(), key, file, contentType, header.Filename)
 	if err != nil {
 		slog.Error("file upload failed", "error", err)
 		writeError(w, http.StatusInternalServerError, "upload failed")
@@ -189,7 +186,7 @@ func (h *Handler) UploadFile(w http.ResponseWriter, r *http.Request) {
 			Filename:     header.Filename,
 			Url:          link,
 			ContentType:  contentType,
-			SizeBytes:    int64(len(data)),
+			SizeBytes:    header.Size,
 		}
 
 		// Optional issue_id / comment_id from form fields
