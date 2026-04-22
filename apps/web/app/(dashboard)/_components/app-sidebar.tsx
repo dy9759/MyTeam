@@ -27,6 +27,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
+  SidebarTrigger,
 } from "@/components/ui/sidebar";
 import {
   DropdownMenu,
@@ -155,6 +156,10 @@ export function AppSidebar() {
               </TooltipTrigger>
               <TooltipContent side="bottom">新建任务</TooltipContent>
             </Tooltip>
+            <SidebarTrigger
+              className="h-7 w-7 rounded-lg bg-accent text-secondary-foreground hover:bg-muted hover:text-foreground"
+              title="折叠 / 展开"
+            />
           </div>
         </SidebarHeader>
 
