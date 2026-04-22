@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"strings"
@@ -124,6 +125,27 @@ func (s *S3Storage) KeyFromURL(rawURL string) string {
 		return rawURL[i+1:]
 	}
 	return rawURL
+}
+
+// Download streams an object from S3/TOS. Callers must Close the body.
+// The content-type is returned so the proxy endpoint can forward it.
+func (s *S3Storage) Download(ctx context.Context, key string) (body io.ReadCloser, contentType string, contentLength int64, err error) {
+	out, err := s.client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return nil, "", 0, fmt.Errorf("s3 GetObject: %w", err)
+	}
+	ct := ""
+	if out.ContentType != nil {
+		ct = *out.ContentType
+	}
+	var cl int64
+	if out.ContentLength != nil {
+		cl = *out.ContentLength
+	}
+	return out.Body, ct, cl, nil
 }
 
 // Delete removes an object from S3. Errors are logged but not fatal.
