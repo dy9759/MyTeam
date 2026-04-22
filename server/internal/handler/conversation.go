@@ -49,7 +49,7 @@ func (h *Handler) ArchiveDMConversation(w http.ResponseWriter, r *http.Request) 
 
 	var archivedAt pgtype.Timestamptz
 	if req.Archived {
-		archivedAt = pgtype.Timestamptz{Time: time.Now(), Valid: true}
+		archivedAt = timestamptzOf(time.Now())
 	}
 
 	err := h.Queries.UpsertDMArchiveState(r.Context(), db.UpsertDMArchiveStateParams{

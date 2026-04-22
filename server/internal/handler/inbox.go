@@ -375,7 +375,7 @@ func (h *Handler) ResolveInboxItem(w http.ResponseWriter, r *http.Request) {
 	if err := h.Queries.ResolveInboxItem(r.Context(), db.ResolveInboxItemParams{
 		ID:           itemUUID,
 		RecipientID:  userUUID,
-		Resolution:   pgtype.Text{String: req.Resolution, Valid: true},
+		Resolution:   textOf(req.Resolution),
 		ResolutionBy: userUUID,
 	}); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to resolve inbox item")

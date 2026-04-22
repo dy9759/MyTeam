@@ -115,7 +115,7 @@ func (h *Handler) CreateTaskHandler(w http.ResponseWriter, r *http.Request) {
 		WorkspaceID:        plan.WorkspaceID,
 		Title:              req.Title,
 		Description:        strToText(req.Description),
-		StepOrder:          pgtype.Int4{Int32: int32(req.StepOrder), Valid: true},
+		StepOrder:          int4Of(int32(req.StepOrder)),
 		DependsOn:          dependsOn,
 		FallbackAgentIds:   fallbackIDs,
 		RequiredSkills:     requiredSkills,
@@ -130,7 +130,7 @@ func (h *Handler) CreateTaskHandler(w http.ResponseWriter, r *http.Request) {
 		params.PrimaryAssigneeID = pgUUIDFrom(pID)
 	}
 	if req.CollaborationMode != "" {
-		params.CollaborationMode = pgtype.Text{String: req.CollaborationMode, Valid: true}
+		params.CollaborationMode = textOf(req.CollaborationMode)
 	}
 
 	task, err := h.Queries.CreateTask(r.Context(), params)
@@ -234,10 +234,10 @@ func (h *Handler) UpdateTaskHandler(w http.ResponseWriter, r *http.Request) {
 
 	params := db.UpdateTaskFieldsParams{ID: pgUUIDFrom(id)}
 	if req.Title != nil {
-		params.Title = pgtype.Text{String: *req.Title, Valid: true}
+		params.Title = textOf(*req.Title)
 	}
 	if req.Description != nil {
-		params.Description = pgtype.Text{String: *req.Description, Valid: true}
+		params.Description = textOf(*req.Description)
 	}
 	if req.PrimaryAssigneeID != nil {
 		if *req.PrimaryAssigneeID == "" {
@@ -255,7 +255,7 @@ func (h *Handler) UpdateTaskHandler(w http.ResponseWriter, r *http.Request) {
 		params.RequiredSkills = *req.RequiredSkills
 	}
 	if req.AcceptanceCriteria != nil {
-		params.AcceptanceCriteria = pgtype.Text{String: *req.AcceptanceCriteria, Valid: true}
+		params.AcceptanceCriteria = textOf(*req.AcceptanceCriteria)
 	}
 
 	t, err := h.Queries.UpdateTaskFields(r.Context(), params)

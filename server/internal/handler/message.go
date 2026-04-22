@@ -377,7 +377,7 @@ func (h *Handler) PromoteThread(w http.ResponseWriter, r *http.Request) {
 	newCh, err := h.Queries.CreateChannel(r.Context(), db.CreateChannelParams{
 		WorkspaceID:   parseUUID(workspaceID),
 		Name:          req.ChannelName,
-		Description:   pgtype.Text{String: "Promoted from thread", Valid: true},
+		Description:   textOf("Promoted from thread"),
 		CreatedBy:     parseUUID(userID),
 		CreatedByType: "member",
 	})

@@ -349,10 +349,10 @@ func (h *Handler) CreateProjectFromChat(w http.ResponseWriter, r *http.Request) 
 	thread, err := h.Queries.CreateThread(ctx, db.CreateThreadParams{
 		ChannelID:     ch.ID,
 		WorkspaceID:   parseUUID(workspaceID),
-		Title:         pgtype.Text{String: planThreadTitle, Valid: true},
+		Title:         textOf(planThreadTitle),
 		CreatedBy:     parseUUID(userID),
-		CreatedByType: pgtype.Text{String: "member", Valid: true},
-		Status:        pgtype.Text{String: "active", Valid: true},
+		CreatedByType: textOf("member"),
+		Status:        textOf("active"),
 	})
 	if err != nil {
 		slog.Warn("create plan thread failed", "error", err, "plan_id", uuidToString(plan.ID))
@@ -511,7 +511,7 @@ func (h *Handler) materializePlanDrafts(
 			WorkspaceID:        workspaceID,
 			Title:              firstNonEmpty(t.Title, "Untitled task"),
 			Description:        strToText(t.Description),
-			StepOrder:          pgtype.Int4{Int32: int32(t.StepOrder), Valid: true},
+			StepOrder:          int4Of(int32(t.StepOrder)),
 			RequiredSkills:     append([]string{}, t.RequiredSkills...),
 			CollaborationMode:  strToText(t.CollaborationMode),
 			AcceptanceCriteria: strToText(t.AcceptanceCriteria),
@@ -592,7 +592,7 @@ func (h *Handler) materializePlanDrafts(
 		params := db.CreateParticipantSlotParams{
 			TaskID:          taskID,
 			SlotType:        sl.SlotType,
-			SlotOrder:       pgtype.Int4{Int32: int32(sl.SlotOrder), Valid: true},
+			SlotOrder:       int4Of(int32(sl.SlotOrder)),
 			ParticipantType: strToText(sl.ParticipantType),
 			Responsibility:  strToText(sl.Responsibility),
 			Trigger:         strToText(sl.Trigger),

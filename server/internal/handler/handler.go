@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -135,6 +136,13 @@ func strToText(s string) pgtype.Text                { return util.StrToText(s) }
 func timestampToString(t pgtype.Timestamptz) string { return util.TimestampToString(t) }
 func timestampToPtr(t pgtype.Timestamptz) *string   { return util.TimestampToPtr(t) }
 func uuidToPtr(u pgtype.UUID) *string               { return util.UUIDToPtr(u) }
+
+// Always-valid pgtype constructors. Use when the caller has already decided
+// the value should be stored (i.e. unconditional Valid: true, not Valid: s != "").
+// For empty-string-as-NULL semantics, use strToText instead.
+func textOf(s string) pgtype.Text                 { return pgtype.Text{String: s, Valid: true} }
+func int4Of(n int32) pgtype.Int4                  { return pgtype.Int4{Int32: n, Valid: true} }
+func timestamptzOf(t time.Time) pgtype.Timestamptz { return pgtype.Timestamptz{Time: t, Valid: true} }
 
 // publish sends a domain event through the event bus.
 func (h *Handler) publish(eventType, workspaceID, actorType, actorID string, payload any) {

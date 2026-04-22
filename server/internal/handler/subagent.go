@@ -9,7 +9,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/protocol"
 )
@@ -257,16 +256,16 @@ func (h *Handler) UpdateSubagent(w http.ResponseWriter, r *http.Request) {
 
 	params := db.UpdateSubagentParams{ID: current.ID}
 	if req.Name != nil {
-		params.Name = pgtype.Text{String: *req.Name, Valid: true}
+		params.Name = textOf(*req.Name)
 	}
 	if req.Description != nil {
-		params.Description = pgtype.Text{String: *req.Description, Valid: true}
+		params.Description = textOf(*req.Description)
 	}
 	if req.Instructions != nil {
-		params.Instructions = pgtype.Text{String: *req.Instructions, Valid: true}
+		params.Instructions = textOf(*req.Instructions)
 	}
 	if req.Category != nil {
-		params.Category = pgtype.Text{String: *req.Category, Valid: true}
+		params.Category = textOf(*req.Category)
 	}
 
 	updated, err := h.Queries.UpdateSubagent(r.Context(), params)

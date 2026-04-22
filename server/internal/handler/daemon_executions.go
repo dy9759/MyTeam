@@ -276,16 +276,16 @@ func (h *Handler) CompleteExecution(w http.ResponseWriter, r *http.Request) {
 		Result: resultJSON,
 	}
 	if req.CostInputTokens != nil {
-		params.CostInputTokens = pgtype.Int4{Int32: int32(*req.CostInputTokens), Valid: true}
+		params.CostInputTokens = int4Of(int32(*req.CostInputTokens))
 	}
 	if req.CostOutputTokens != nil {
-		params.CostOutputTokens = pgtype.Int4{Int32: int32(*req.CostOutputTokens), Valid: true}
+		params.CostOutputTokens = int4Of(int32(*req.CostOutputTokens))
 	}
 	if req.CostUSD != nil {
 		params.CostUsd = float64ToPgNumeric(*req.CostUSD)
 	}
 	if req.CostProvider != "" {
-		params.CostProvider = pgtype.Text{String: req.CostProvider, Valid: true}
+		params.CostProvider = textOf(req.CostProvider)
 	}
 
 	rowsAffected, err := h.Queries.CompleteExecution(r.Context(), params)

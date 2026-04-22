@@ -325,7 +325,7 @@ func (h *Handler) GetAgentInbox(w http.ResponseWriter, r *http.Request) {
 	var after pgtype.Timestamptz
 	if v := r.URL.Query().Get("after"); v != "" {
 		if t, err := time.Parse(time.RFC3339Nano, v); err == nil {
-			after = pgtype.Timestamptz{Time: t, Valid: true}
+			after = timestamptzOf(t)
 		}
 	}
 

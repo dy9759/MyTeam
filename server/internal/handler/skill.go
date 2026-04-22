@@ -187,11 +187,7 @@ func (h *Handler) ListSkills(w http.ResponseWriter, r *http.Request) {
 // query param is explicitly present and non-empty, so SQL `narg()`
 // handling treats absent filters as NULL (match all).
 func textFromQuery(r *http.Request, key string) pgtype.Text {
-	v := strings.TrimSpace(r.URL.Query().Get(key))
-	if v == "" {
-		return pgtype.Text{}
-	}
-	return pgtype.Text{String: v, Valid: true}
+	return strToText(strings.TrimSpace(r.URL.Query().Get(key)))
 }
 
 func (h *Handler) GetSkill(w http.ResponseWriter, r *http.Request) {
@@ -339,13 +335,13 @@ func (h *Handler) UpdateSkill(w http.ResponseWriter, r *http.Request) {
 		ID: parseUUID(id),
 	}
 	if req.Name != nil {
-		params.Name = pgtype.Text{String: *req.Name, Valid: true}
+		params.Name = textOf(*req.Name)
 	}
 	if req.Description != nil {
-		params.Description = pgtype.Text{String: *req.Description, Valid: true}
+		params.Description = textOf(*req.Description)
 	}
 	if req.Content != nil {
-		params.Content = pgtype.Text{String: *req.Content, Valid: true}
+		params.Content = textOf(*req.Content)
 	}
 	if req.Config != nil {
 		config, _ := json.Marshal(req.Config)

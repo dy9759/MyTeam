@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/logger"
 	"github.com/multica-ai/multica/server/internal/service"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
@@ -287,13 +286,13 @@ func (h *Handler) UpdateWorkspace(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "name is required")
 			return
 		}
-		params.Name = pgtype.Text{String: name, Valid: true}
+		params.Name = textOf(name)
 	}
 	if req.Description != nil {
-		params.Description = pgtype.Text{String: *req.Description, Valid: true}
+		params.Description = textOf(*req.Description)
 	}
 	if req.Context != nil {
-		params.Context = pgtype.Text{String: *req.Context, Valid: true}
+		params.Context = textOf(*req.Context)
 	}
 	if req.Settings != nil {
 		s, _ := json.Marshal(req.Settings)
@@ -306,7 +305,7 @@ func (h *Handler) UpdateWorkspace(w http.ResponseWriter, r *http.Request) {
 	if req.IssuePrefix != nil {
 		prefix := strings.ToUpper(strings.TrimSpace(*req.IssuePrefix))
 		if prefix != "" {
-			params.IssuePrefix = pgtype.Text{String: prefix, Valid: true}
+			params.IssuePrefix = textOf(prefix)
 		}
 	}
 

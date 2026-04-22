@@ -87,7 +87,7 @@ func (h *Handler) CreateTaskSlot(w http.ResponseWriter, r *http.Request) {
 	params := db.CreateParticipantSlotParams{
 		TaskID:    pgUUIDFrom(taskID),
 		SlotType:  req.SlotType,
-		SlotOrder: pgtype.Int4{Int32: int32(req.SlotOrder), Valid: true},
+		SlotOrder: int4Of(int32(req.SlotOrder)),
 	}
 	if req.ParticipantID != "" {
 		pID, err := uuid.Parse(req.ParticipantID)
@@ -98,13 +98,13 @@ func (h *Handler) CreateTaskSlot(w http.ResponseWriter, r *http.Request) {
 		params.ParticipantID = pgUUIDFrom(pID)
 	}
 	if req.ParticipantType != "" {
-		params.ParticipantType = pgtype.Text{String: req.ParticipantType, Valid: true}
+		params.ParticipantType = textOf(req.ParticipantType)
 	}
 	if req.Responsibility != "" {
-		params.Responsibility = pgtype.Text{String: req.Responsibility, Valid: true}
+		params.Responsibility = textOf(req.Responsibility)
 	}
 	if req.Trigger != "" {
-		params.Trigger = pgtype.Text{String: req.Trigger, Valid: true}
+		params.Trigger = textOf(req.Trigger)
 	}
 	if req.Blocking != nil {
 		params.Blocking = pgtype.Bool{Bool: *req.Blocking, Valid: true}
@@ -113,10 +113,10 @@ func (h *Handler) CreateTaskSlot(w http.ResponseWriter, r *http.Request) {
 		params.Required = pgtype.Bool{Bool: *req.Required, Valid: true}
 	}
 	if req.ExpectedOutput != "" {
-		params.ExpectedOutput = pgtype.Text{String: req.ExpectedOutput, Valid: true}
+		params.ExpectedOutput = textOf(req.ExpectedOutput)
 	}
 	if req.TimeoutSeconds > 0 {
-		params.TimeoutSeconds = pgtype.Int4{Int32: int32(req.TimeoutSeconds), Valid: true}
+		params.TimeoutSeconds = int4Of(int32(req.TimeoutSeconds))
 	}
 
 	s, err := h.Queries.CreateParticipantSlot(r.Context(), params)

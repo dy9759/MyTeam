@@ -256,7 +256,7 @@ func (h *Handler) SendCode(w http.ResponseWriter, r *http.Request) {
 	_, err = h.Queries.CreateVerificationCode(r.Context(), db.CreateVerificationCodeParams{
 		Email:     email,
 		Code:      code,
-		ExpiresAt: pgtype.Timestamptz{Time: time.Now().Add(10 * time.Minute), Valid: true},
+		ExpiresAt: timestamptzOf(time.Now().Add(10 * time.Minute)),
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to store verification code")
@@ -411,7 +411,7 @@ func (h *Handler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 		Name: name,
 	}
 	if req.AvatarURL != nil {
-		params.AvatarUrl = pgtype.Text{String: strings.TrimSpace(*req.AvatarURL), Valid: true}
+		params.AvatarUrl = textOf(strings.TrimSpace(*req.AvatarURL))
 	}
 
 	updatedUser, err := h.Queries.UpdateUser(r.Context(), params)

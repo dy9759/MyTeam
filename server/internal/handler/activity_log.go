@@ -111,7 +111,7 @@ func (h *Handler) ListActivityLog(w http.ResponseWriter, r *http.Request) {
 		params.TaskFilter = parseUUID(tid)
 	}
 	if etype != "" {
-		params.EventTypeFilter = pgtype.Text{String: etype, Valid: true}
+		params.EventTypeFilter = textOf(etype)
 	}
 
 	rows, err := h.Queries.ListActivityForMember(r.Context(), params)
