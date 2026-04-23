@@ -473,15 +473,19 @@ export default function SessionPage() {
   const fetchDmMessages = useMessagingStore((s) => s.loadMessages);
   const sendDmMessage = useMessagingStore((s) => s.sendMessage);
 
-  // Personal agent — always shown in DM list as online + interactable, even
-  // before the user has exchanged any messages with it. Derived from the
-  // workspace agents store so realtime `agent:status_changed` events update
-  // the sidebar (see use-realtime-sync's agent → refreshAgents handler).
+  // Caller-owned agents — cloud personal_agent + every local_agent the user
+  // bound to a daemon runtime. All of them get a synthetic DM entry in the
+  // sidebar so the user can talk to them before the first message exists.
+  // Derived from the workspace agents store so realtime
+  // `agent:status_changed` events update the sidebar (see use-realtime-sync's
+  // agent → refreshAgents handler).
   const currentUserId = useAuthStore((s) => s.user?.id);
-  const personalAgent = useWorkspaceStore((s) =>
-    s.agents.find(
-      (a) => a.agent_type === "personal_agent" && a.owner_id === currentUserId,
-    ) ?? null,
+  const myAgents = useWorkspaceStore((s) =>
+    s.agents.filter(
+      (a) =>
+        (a.agent_type === "personal_agent" || a.agent_type === "local_agent") &&
+        a.owner_id === currentUserId,
+    ),
   );
 
   const channels = useChannelStore((s) => s.channels);
@@ -517,21 +521,26 @@ export default function SessionPage() {
     fetchArchivedDMs();
   }, [fetchConversations, fetchChannels, fetchArchivedDMs]);
 
-  // DM list shown in the sidebar = real conversations + the personal agent
-  // (if it isn't already present from prior messages).
+  // DM list shown in the sidebar = real conversations + a synthetic entry
+  // for every caller-owned agent (cloud personal_agent + each local_agent)
+  // that hasn't yet appeared via an exchanged message.
   const sidebarConversations = useMemo<Conversation[]>(() => {
-    if (!personalAgent) return conversations;
-    if (conversations.some((c) => c.peer_id === personalAgent.id)) {
-      return conversations;
-    }
-    const synthetic: Conversation = {
-      peer_id: personalAgent.id,
-      peer_type: "agent",
-      peer_name: personalAgent.display_name || personalAgent.name || "Local Agent",
-      unread_count: 0,
-    };
-    return [synthetic, ...conversations];
-  }, [conversations, personalAgent]);
+    if (myAgents.length === 0) return conversations;
+    const present = new Set(
+      conversations
+        .filter((c) => c.peer_type === "agent")
+        .map((c) => c.peer_id),
+    );
+    const synthetics: Conversation[] = myAgents
+      .filter((agent) => !present.has(agent.id))
+      .map((agent) => ({
+        peer_id: agent.id,
+        peer_type: "agent",
+        peer_name: agent.display_name || agent.name || "Agent",
+        unread_count: 0,
+      }));
+    return [...synthetics, ...conversations];
+  }, [conversations, myAgents]);
 
   const selectedConversation = useMemo(
     () =>
@@ -909,9 +918,11 @@ export default function SessionPage() {
       : selectedType === "dm"
         ? peerIsLocal
           ? `本地 · ${peerRuntime?.provider || "runtime"} · ${peerRuntime?.status || "unknown"}`
-          : peerAgent?.agent_type === "personal_agent" && !peerAgent.runtime_id
-            ? "本地 Agent 未绑定 Runtime"
-            : selectedConversation?.peer_type ?? ""
+          : peerAgent?.agent_type === "local_agent"
+            ? "本地 Runtime 已离线"
+            : peerAgent?.agent_type === "personal_agent"
+              ? "云端 Agent"
+              : selectedConversation?.peer_type ?? ""
         : "";
 
   return (
