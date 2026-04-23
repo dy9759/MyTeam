@@ -101,7 +101,9 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 	// path so a system / personal / project agent's cloud_llm_config controls
 	// the same SDK installation regardless of who triggered it.
 	cloudRunner := agent_runner.NewRunner()
-	h.AutoReplyService = service.NewAutoReplyService(queries, hub, cloudRunner)
+	conversationRuns := service.NewConversationAgentRunService(queries, pool, hub)
+	h.ConversationRuns = conversationRuns
+	h.AutoReplyService = service.NewAutoReplyService(queries, hub, cloudRunner, conversationRuns)
 	h.PlanGenerator = service.NewPlanGeneratorService(queries, cloudRunner)
 	h.IdentityGenerator = service.NewIdentityGeneratorService(queries, cloudRunner)
 	// Scheduler / Slots / Artifacts / Reviews / Quota are constructed inside
@@ -221,6 +223,15 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 		r.Post("/executions/{id}/complete", h.CompleteExecution)
 		r.Post("/executions/{id}/fail", h.FailExecution)
 		r.Post("/executions/{id}/messages", h.StreamExecutionMessage)
+
+		// Conversation-local AgentHub-style runtime queue. This is used when a
+		// user sends a DM to a personal agent that is bound to a local runtime.
+		r.Post("/runtimes/{runtimeId}/conversation-runs/claim", h.ClaimConversationAgentRun)
+		r.Post("/conversation-runs/{id}/start", h.StartConversationAgentRun)
+		r.Post("/conversation-runs/{id}/events", h.ReportConversationAgentRunEvents)
+		r.Post("/conversation-runs/{id}/complete", h.CompleteConversationAgentRun)
+		r.Post("/conversation-runs/{id}/fail", h.FailConversationAgentRun)
+		r.Get("/conversation-runs/{id}/status", h.GetConversationAgentRunStatus)
 	})
 
 	// Protected API routes

@@ -721,6 +721,26 @@ func (d *Daemon) pollLoop(ctx context.Context) error {
 			}
 
 			rid := runtimeIDs[(pollOffset+i)%n]
+
+			conversationRun, err := d.client.ClaimConversationRun(ctx, rid)
+			if err != nil {
+				<-sem // Release the slot.
+				d.logger.Warn("claim conversation run failed", "runtime_id", rid, "error", err)
+				continue
+			}
+			if conversationRun != nil {
+				d.logger.Info("conversation run received", "run", shortID(conversationRun.ID), "agent", conversationRun.AgentID)
+				wg.Add(1)
+				go func(r ConversationRun) {
+					defer wg.Done()
+					defer func() { <-sem }()
+					d.handleConversationRun(ctx, r)
+				}(*conversationRun)
+				claimed = true
+				pollOffset = (pollOffset + i + 1) % n
+				break
+			}
+
 			task, err := d.client.ClaimTask(ctx, rid)
 			if err != nil {
 				<-sem // Release the slot.

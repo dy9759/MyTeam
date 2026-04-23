@@ -6,6 +6,7 @@ import { useMessagingStore } from "@/features/messaging/store";
 import { useChannelStore } from "@/features/channels/store";
 import { useInboxStore } from "@/features/inbox";
 import { useWorkspaceStore } from "@/features/workspace";
+import { useRuntimeStore } from "@/features/runtimes";
 import { useAuthStore } from "@/features/auth";
 import { MessageList } from "@/features/messaging/components/message-list";
 import { MessageInput } from "@/features/messaging/components/message-input";
@@ -526,7 +527,7 @@ export default function SessionPage() {
     const synthetic: Conversation = {
       peer_id: personalAgent.id,
       peer_type: "agent",
-      peer_name: personalAgent.display_name || personalAgent.name,
+      peer_name: personalAgent.display_name || personalAgent.name || "Local Agent",
       unread_count: 0,
     };
     return [synthetic, ...conversations];
@@ -543,6 +544,15 @@ export default function SessionPage() {
   // Peer agent (when the current conversation is a DM with an agent).
   // Drives the status pill in the header: online / idle / offline / typing.
   const agentsList = useWorkspaceStore((s) => s.agents);
+  const workspace = useWorkspaceStore((s) => s.workspace);
+  const runtimes = useRuntimeStore((s) => s.runtimes);
+  const fetchRuntimes = useRuntimeStore((s) => s.fetchRuntimes);
+
+  useEffect(() => {
+    if (!workspace?.id) return;
+    void fetchRuntimes();
+  }, [fetchRuntimes, workspace?.id]);
+
   const peerAgent = useMemo(() => {
     if (selectedType !== "dm" || selectedConversation?.peer_type !== "agent") return null;
     return agentsList.find((a) => a.id === selectedId) ?? null;
@@ -879,6 +889,12 @@ export default function SessionPage() {
       for (const id of toMark) readSentRef.current.delete(id);
     });
   }, [messages, selectedId, currentUserId]);
+  const peerRuntime = useMemo(() => {
+    if (!peerAgent?.runtime_id) return undefined;
+    return runtimes.find((runtime) => runtime.id === peerAgent.runtime_id);
+  }, [peerAgent?.runtime_id, runtimes]);
+  const peerIsLocal = peerRuntime?.mode === "local";
+
   const headerName =
     selectedType === "dm"
       ? selectedConversation?.peer_name ||
@@ -891,7 +907,11 @@ export default function SessionPage() {
     selectedType === "channel" && channelMembers.length > 0
       ? `${channelMembers.length} 位成员`
       : selectedType === "dm"
-        ? selectedConversation?.peer_type ?? ""
+        ? peerIsLocal
+          ? `本地 · ${peerRuntime?.provider || "runtime"} · ${peerRuntime?.status || "unknown"}`
+          : peerAgent?.agent_type === "personal_agent" && !peerAgent.runtime_id
+            ? "本地 Agent 未绑定 Runtime"
+            : selectedConversation?.peer_type ?? ""
         : "";
 
   return (
@@ -964,7 +984,7 @@ export default function SessionPage() {
                 )}
                 {selectedType === "dm" && peerAgent && (
                   <AgentStatusPill
-                    status={peerAgent.status}
+                    status={peerRuntime?.status ?? peerAgent.status}
                     isTyping={peerIsTyping}
                   />
                 )}

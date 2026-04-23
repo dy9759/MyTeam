@@ -131,6 +131,78 @@ func (c *Client) GetTaskStatus(ctx context.Context, taskID string) (string, erro
 	return resp.Status, nil
 }
 
+// ConversationRun represents a DM-triggered local agent run claimed by the
+// daemon. It mirrors the AgentHub runtime execution lifecycle while writing
+// results into MyTeam conversation messages.
+type ConversationRun struct {
+	ID          string         `json:"id"`
+	WorkspaceID string         `json:"workspace_id"`
+	AgentID     string         `json:"agent_id"`
+	RuntimeID   string         `json:"runtime_id"`
+	PeerUserID  string         `json:"peer_user_id"`
+	Provider    string         `json:"provider"`
+	Prompt      string         `json:"prompt"`
+	WorkDir     string         `json:"work_dir,omitempty"`
+	Metadata    map[string]any `json:"metadata,omitempty"`
+}
+
+type ConversationRunEventData struct {
+	Seq      int64          `json:"seq"`
+	Type     string         `json:"type"`
+	Tool     string         `json:"tool,omitempty"`
+	Content  string         `json:"content,omitempty"`
+	Input    map[string]any `json:"input,omitempty"`
+	Output   string         `json:"output,omitempty"`
+	Error    string         `json:"error,omitempty"`
+	Metadata map[string]any `json:"metadata,omitempty"`
+}
+
+type ConversationRunCompleteRequest struct {
+	Output    string `json:"output"`
+	SessionID string `json:"session_id,omitempty"`
+	WorkDir   string `json:"work_dir,omitempty"`
+}
+
+func (c *Client) ClaimConversationRun(ctx context.Context, runtimeID string) (*ConversationRun, error) {
+	var resp struct {
+		Run *ConversationRun `json:"run"`
+	}
+	if err := c.postJSON(ctx, fmt.Sprintf("/api/daemon/runtimes/%s/conversation-runs/claim", runtimeID), map[string]any{}, &resp); err != nil {
+		return nil, err
+	}
+	return resp.Run, nil
+}
+
+func (c *Client) StartConversationRun(ctx context.Context, runID string) error {
+	return c.postJSON(ctx, fmt.Sprintf("/api/daemon/conversation-runs/%s/start", runID), map[string]any{}, nil)
+}
+
+func (c *Client) ReportConversationRunEvents(ctx context.Context, runID string, events []ConversationRunEventData) error {
+	return c.postJSON(ctx, fmt.Sprintf("/api/daemon/conversation-runs/%s/events", runID), map[string]any{
+		"events": events,
+	}, nil)
+}
+
+func (c *Client) CompleteConversationRun(ctx context.Context, runID string, result ConversationRunCompleteRequest) error {
+	return c.postJSON(ctx, fmt.Sprintf("/api/daemon/conversation-runs/%s/complete", runID), result, nil)
+}
+
+func (c *Client) FailConversationRun(ctx context.Context, runID, errMsg string) error {
+	return c.postJSON(ctx, fmt.Sprintf("/api/daemon/conversation-runs/%s/fail", runID), map[string]any{
+		"error": errMsg,
+	}, nil)
+}
+
+func (c *Client) GetConversationRunStatus(ctx context.Context, runID string) (string, error) {
+	var resp struct {
+		Status string `json:"status"`
+	}
+	if err := c.getJSON(ctx, fmt.Sprintf("/api/daemon/conversation-runs/%s/status", runID), &resp); err != nil {
+		return "", err
+	}
+	return resp.Status, nil
+}
+
 func (c *Client) ReportUsage(ctx context.Context, runtimeID string, entries []map[string]any) error {
 	return c.postJSON(ctx, fmt.Sprintf("/api/daemon/runtimes/%s/usage", runtimeID), map[string]any{
 		"entries": entries,

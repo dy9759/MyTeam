@@ -8,9 +8,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/MyAIOSHub/MyTeam/server/internal/auth"
 	"github.com/MyAIOSHub/MyTeam/server/internal/events"
 	"github.com/MyAIOSHub/MyTeam/server/internal/middleware"
@@ -21,6 +18,9 @@ import (
 	"github.com/MyAIOSHub/MyTeam/server/internal/storage"
 	"github.com/MyAIOSHub/MyTeam/server/internal/util"
 	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type txStarter interface {
@@ -49,6 +49,7 @@ type Handler struct {
 	CFSigner          *auth.CloudFrontSigner
 	Guards            auth.Guards
 	AutoReplyService  *service.AutoReplyService
+	ConversationRuns  *service.ConversationAgentRunService
 	PlanGenerator     *service.PlanGeneratorService
 	Scheduler         *service.SchedulerService
 	Slots             *service.SlotService
@@ -140,8 +141,8 @@ func uuidToPtr(u pgtype.UUID) *string               { return util.UUIDToPtr(u) }
 // Always-valid pgtype constructors. Use when the caller has already decided
 // the value should be stored (i.e. unconditional Valid: true, not Valid: s != "").
 // For empty-string-as-NULL semantics, use strToText instead.
-func textOf(s string) pgtype.Text                 { return pgtype.Text{String: s, Valid: true} }
-func int4Of(n int32) pgtype.Int4                  { return pgtype.Int4{Int32: n, Valid: true} }
+func textOf(s string) pgtype.Text                  { return pgtype.Text{String: s, Valid: true} }
+func int4Of(n int32) pgtype.Int4                   { return pgtype.Int4{Int32: n, Valid: true} }
 func timestamptzOf(t time.Time) pgtype.Timestamptz { return pgtype.Timestamptz{Time: t, Valid: true} }
 
 // publish sends a domain event through the event bus.

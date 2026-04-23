@@ -1,7 +1,8 @@
 "use client"
-import { Suspense, useState } from "react"
+import { Suspense, useEffect, useMemo, useState } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { useWorkspaceStore } from "@/features/workspace"
+import { useRuntimeStore } from "@/features/runtimes"
 import { useAuthStore } from "@/features/auth"
 import { api } from "@/shared/api"
 import { toast } from "sonner"
@@ -257,28 +258,95 @@ function AgentListTab() {
 /* Tab 3: 添加 Agent                                                   */
 /* ================================================================== */
 
-function CreateForm({ onDone }: { onDone: () => void }) {
-  const [name, setName] = useState("")
-  const [desc, setDesc] = useState("")
+function LocalAgentSetup({ onDone }: { onDone: () => void }) {
+  const [name, setName] = useState("Local Agent")
+  const [selectedRuntimeId, setSelectedRuntimeId] = useState("")
   const [busy, setBusy] = useState(false)
+  const runtimes = useRuntimeStore(s => s.runtimes)
+  const fetching = useRuntimeStore(s => s.fetching)
+  const fetchRuntimes = useRuntimeStore(s => s.fetchRuntimes)
+  const workspace = useWorkspaceStore(s => s.workspace)
+
+  const localRuntimes = useMemo(
+    () => (Array.isArray(runtimes) ? runtimes.filter(r => r.mode === "local") : []),
+    [runtimes],
+  )
+
+  useEffect(() => {
+    if (!workspace?.id) return
+    void fetchRuntimes()
+    void api.getPersonalAgent().then(agent => {
+      setName(agent.display_name || agent.name || "Local Agent")
+      if (agent.runtime_id) setSelectedRuntimeId(agent.runtime_id)
+    }).catch(() => {
+      // Personal agent is created lazily by the API; keep the setup panel usable
+      // even when a first-time workspace hits a transient loading failure.
+    })
+  }, [fetchRuntimes, workspace?.id])
+
   const handle = async () => {
-    if (!name.trim()) return; setBusy(true)
+    if (!selectedRuntimeId) {
+      toast.error("请选择一个本地 Runtime")
+      return
+    }
+    setBusy(true)
     try {
-      await api.createAgent({ name: name.trim(), description: desc.trim() || undefined, runtime_id: "", visibility: "private" })
-      toast.success(`Agent "${name}" 创建成功`); setName(""); setDesc(""); onDone()
-    } catch (e) { toast.error(e instanceof Error ? e.message : "创建失败") }
-    finally { setBusy(false) }
+      const personalAgent = await api.getPersonalAgent()
+      await api.updateAgent(personalAgent.id, {
+        name: name.trim() || "Local Agent",
+        description: "Local agent connected through MyTeam daemon",
+        runtime_id: selectedRuntimeId,
+        visibility: "private",
+      })
+      toast.success("本地 Agent 已保存")
+      await fetchRuntimes()
+      onDone()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "保存失败")
+    } finally {
+      setBusy(false)
+    }
   }
+
   return (
     <div className="space-y-3 pt-3">
-      <input value={name} onChange={e => setName(e.target.value)} placeholder="Agent 名称"
-        className="w-full px-3 py-2 bg-secondary border border-border rounded-[6px] text-[13px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring" />
-      <input value={desc} onChange={e => setDesc(e.target.value)} placeholder="描述（可选）"
-        className="w-full px-3 py-2 bg-secondary border border-border rounded-[6px] text-[13px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring" />
-      <button onClick={handle} disabled={busy || !name.trim()}
-        className="px-4 py-2 bg-primary text-primary-foreground rounded-[6px] text-[13px] font-medium disabled:opacity-40 hover:opacity-90 transition-opacity">
-        {busy ? "创建中..." : "创建 Agent"}
-      </button>
+      <div className="rounded-[6px] border border-border bg-secondary/40 px-3 py-2 text-[12px] text-muted-foreground leading-relaxed">
+        本地 Agent 会出现在「会话」里的 Local Agent 私聊中。这里不会创建新的普通 Agent，
+        而是把你的 personal agent 绑定到 daemon 注册的本地 Runtime。
+      </div>
+      <div className="space-y-1.5">
+        <label className="text-[12px] font-medium text-foreground">Agent 名称</label>
+        <input value={name} onChange={e => setName(e.target.value)} placeholder="Local Agent"
+          className="w-full px-3 py-2 bg-secondary border border-border rounded-[6px] text-[13px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring" />
+      </div>
+      <div className="space-y-1.5">
+        <label className="text-[12px] font-medium text-foreground">本地 Runtime</label>
+        <select value={selectedRuntimeId} onChange={e => setSelectedRuntimeId(e.target.value)}
+          className="w-full px-3 py-2 bg-secondary border border-border rounded-[6px] text-[13px] text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+          <option value="">选择 daemon 注册的本地 Runtime</option>
+          {localRuntimes.map(runtime => (
+            <option key={runtime.id} value={runtime.id}>
+              {runtime.provider || "agent"} · {runtime.status || "unknown"} · {runtime.name}
+            </option>
+          ))}
+        </select>
+      </div>
+      {localRuntimes.length === 0 && (
+        <div className="rounded-[6px] border border-dashed border-border px-3 py-2 text-[12px] text-muted-foreground">
+          暂未检测到本地 Runtime。请先启动 MyTeam daemon，确认本机已安装 claude / codex / opencode，
+          然后点击「刷新 Runtime」。
+        </div>
+      )}
+      <div className="flex flex-wrap gap-2">
+        <button type="button" onClick={() => void fetchRuntimes()} disabled={fetching}
+          className="px-4 py-2 border border-border rounded-[6px] text-[13px] font-medium disabled:opacity-40 hover:bg-secondary transition-colors">
+          {fetching ? "刷新中..." : "刷新 Runtime"}
+        </button>
+        <button onClick={handle} disabled={busy || !selectedRuntimeId}
+          className="px-4 py-2 bg-primary text-primary-foreground rounded-[6px] text-[13px] font-medium disabled:opacity-40 hover:opacity-90 transition-opacity">
+          {busy ? "保存中..." : "保存 / 更新本地 Agent"}
+        </button>
+      </div>
     </div>
   )
 }
@@ -326,13 +394,13 @@ function AddAgentTab() {
       </div>
 
       <div className="space-y-2.5">
-        <Collapse title="网页创建 — 最快方式，立即得到一个云端 Personal Agent" icon={Plus} open={list.length === 0}>
+        <Collapse title="本地 Agent — 绑定或更新会话中的 Local Agent" icon={Plus} open={list.length === 0}>
           <div className="space-y-2 pt-2">
             <p className="text-[12px] text-muted-foreground">
-              系统自动绑定当前工作区里已注册的云端 Runtime。创建后可在「Agent 列表」里补身份卡、附身，
-              也可以作为项目编排的候选执行者。
+              选择 daemon 注册的本地 Runtime 后，会话页里的 personal agent 会成为本地 Agent。
+              后续在会话里向它发消息，将由本机 Claude / Codex / OpenCode 执行。
             </p>
-            <CreateForm onDone={refresh} />
+            <LocalAgentSetup onDone={refresh} />
           </div>
         </Collapse>
 

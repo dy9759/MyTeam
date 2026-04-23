@@ -61,6 +61,7 @@ export type WSEventType =
   | "run:completed"
   | "run:failed"
   | "message:created"
+  | "message:updated"
   | "channel:updated"
   | "thread:created"
   | "typing"

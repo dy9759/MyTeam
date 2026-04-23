@@ -158,6 +158,20 @@ export function createMessagingStore(
         });
         return;
       }
+      if (evt.type === "message:updated") {
+        const payload = evt.payload as Message | { message?: Message } | undefined;
+        const msg = payload && "message" in payload && payload.message
+          ? payload.message
+          : payload as Message | undefined;
+        if (!msg?.id) return;
+        set((state) => ({
+          currentMessages: state.currentMessages.map((existing) =>
+            existing.id === msg.id ? { ...existing, ...msg } : existing,
+          ),
+        }));
+        return;
+      }
+
       if (evt.type !== "message:created") return;
       const msg = evt.payload as Message;
       const { currentChannelId, currentPeerId } = get();

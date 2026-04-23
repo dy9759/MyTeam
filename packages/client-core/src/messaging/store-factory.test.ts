@@ -112,6 +112,38 @@ describe("createMessagingStore", () => {
     expect(useStore.getState().currentMessages).toHaveLength(1);
   });
 
+  it("handleEvent merges streamed message updates", () => {
+    const useStore = createMessagingStore({ apiClient: api, onError });
+    useStore.setState({
+      currentMessages: [
+        makeMessage({
+          id: "m1",
+          content: "hello",
+          metadata: { streaming: true },
+        }),
+      ],
+    });
+
+    useStore.getState().handleEvent({
+      type: "message:updated",
+      payload: {
+        message: makeMessage({
+          id: "m1",
+          content: "hello world",
+          metadata: { streaming: false, source: "local_agent" },
+          updated_at: "2026-04-15T00:00:01Z",
+        }),
+      },
+    });
+
+    expect(useStore.getState().currentMessages[0]).toMatchObject({
+      id: "m1",
+      content: "hello world",
+      metadata: { streaming: false, source: "local_agent" },
+      updated_at: "2026-04-15T00:00:01Z",
+    });
+  });
+
   it("load failures call onError and set loading=false", async () => {
     api.listMessages.mockRejectedValueOnce(new Error("boom"));
     const useStore = createMessagingStore({ apiClient: api, onError });

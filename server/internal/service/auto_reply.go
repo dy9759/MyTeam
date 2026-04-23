@@ -9,23 +9,28 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/MyAIOSHub/MyTeam/server/internal/realtime"
 	"github.com/MyAIOSHub/MyTeam/server/internal/util"
 	"github.com/MyAIOSHub/MyTeam/server/pkg/agent_runner"
 	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 // AutoReplyService handles @mention-triggered auto-replies from agents.
 type AutoReplyService struct {
-	Queries *db.Queries
-	Hub     *realtime.Hub
-	Runner  agent_runner.AgentRunner
+	Queries          *db.Queries
+	Hub              *realtime.Hub
+	Runner           agent_runner.AgentRunner
+	ConversationRuns *ConversationAgentRunService
 }
 
 // NewAutoReplyService creates a new AutoReplyService.
-func NewAutoReplyService(q *db.Queries, hub *realtime.Hub, runner agent_runner.AgentRunner) *AutoReplyService {
-	return &AutoReplyService{Queries: q, Hub: hub, Runner: runner}
+func NewAutoReplyService(q *db.Queries, hub *realtime.Hub, runner agent_runner.AgentRunner, conversationRuns ...*ConversationAgentRunService) *AutoReplyService {
+	svc := &AutoReplyService{Queries: q, Hub: hub, Runner: runner}
+	if len(conversationRuns) > 0 {
+		svc.ConversationRuns = conversationRuns[0]
+	}
+	return svc
 }
 
 // CheckAndReply checks if any mentioned agents have auto-reply enabled and
@@ -384,13 +389,40 @@ func messageToMap(m db.Message) map[string]any {
 		"id":           util.UUIDToString(m.ID),
 		"workspace_id": util.UUIDToString(m.WorkspaceID),
 		"channel_id":   util.UUIDToString(m.ChannelID),
+		"recipient_id": util.UUIDToString(m.RecipientID),
 		"sender_id":    util.UUIDToString(m.SenderID),
 		"sender_type":  m.SenderType,
 		"content":      m.Content,
 		"content_type": m.ContentType,
+		"type":         m.Type,
+		"status":       m.Status,
 		"metadata":     json.RawMessage(m.Metadata),
 		"created_at":   m.CreatedAt.Time,
+		"updated_at":   m.UpdatedAt.Time,
 	}
+}
+
+func (s *AutoReplyService) buildDMPrompt(ctx context.Context, workspaceID string, senderID string, agent db.Agent, trigger db.Message) string {
+	// Build prompt with recent DM history so the agent has multi-turn memory.
+	// History is ordered chronologically; the trigger is the last row so no
+	// duplicate append is needed.
+	history, _ := s.Queries.ListDMMessages(ctx, db.ListDMMessagesParams{
+		WorkspaceID: util.ParseUUID(workspaceID),
+		SelfID:      agent.ID,
+		SelfType:    "agent",
+		PeerID:      util.ParseUUID(senderID),
+		PeerType:    util.StrToText("member"),
+		LimitCount:  40,
+		OffsetCount: 0,
+	})
+	nameCache := s.buildSenderNameCache(ctx, util.ParseUUID(workspaceID), history, trigger)
+	var sb strings.Builder
+	for _, m := range history {
+		sb.WriteString(fmt.Sprintf("[%s]: %s\n", resolveSenderName(nameCache, m.SenderID, m.SenderType), m.Content))
+	}
+	return fmt.Sprintf("Conversation history:\n%sReply as %s to the latest message:",
+		sb.String(), agent.Name,
+	)
 }
 
 // ReplyToDM handles auto-reply for direct messages sent to an agent.
@@ -401,6 +433,44 @@ func (s *AutoReplyService) ReplyToDM(ctx context.Context, agentID string, worksp
 	if err != nil {
 		slog.Debug("dm-reply: agent not found", "id", agentID, "error", err)
 		return
+	}
+
+	if agent.RuntimeID.Valid {
+		runtime, runtimeErr := s.Queries.GetAgentRuntime(ctx, agent.RuntimeID)
+		if runtimeErr == nil && runtime.Mode.Valid && runtime.Mode.String == "local" {
+			if runtime.Status == "offline" {
+				s.postDMSystemNotification(ctx, agent, util.ParseUUID(senderID), util.ParseUUID(workspaceID),
+					"Local runtime is offline. Please start MyTeam daemon and try again.")
+				return
+			}
+			if s.ConversationRuns == nil {
+				slog.Warn("dm-reply: local runtime selected but conversation run service is missing", "agent", agent.Name)
+				s.postDMSystemNotification(ctx, agent, util.ParseUUID(senderID), util.ParseUUID(workspaceID),
+					"Local agent queue is not configured on the server.")
+				return
+			}
+			prompt := s.buildDMPrompt(ctx, workspaceID, senderID, agent, trigger)
+			if _, err := s.ConversationRuns.EnqueueDMRun(ctx, ConversationAgentRunInput{
+				WorkspaceID:      workspaceID,
+				TriggerMessageID: util.UUIDToString(trigger.ID),
+				AgentID:          util.UUIDToString(agent.ID),
+				RuntimeID:        util.UUIDToString(runtime.ID),
+				PeerUserID:       senderID,
+				Provider:         runtime.Provider,
+				Prompt:           prompt,
+				Metadata: map[string]any{
+					"runtime_id": util.UUIDToString(runtime.ID),
+					"runtime":    runtime.Name,
+				},
+			}); err != nil {
+				slog.Warn("dm-reply: failed to enqueue local run", "agent", agent.Name, "error", err)
+				s.postDMSystemNotification(ctx, agent, util.ParseUUID(senderID), util.ParseUUID(workspaceID),
+					"Local agent run failed to queue: "+redactKey(err.Error()))
+				return
+			}
+			slog.Info("dm-reply queued for local runtime", "agent", agent.Name, "runtime", runtime.Name, "provider", runtime.Provider)
+			return
+		}
 	}
 
 	// If agent is offline, notify its owner and stop.
@@ -439,28 +509,7 @@ func (s *AutoReplyService) ReplyToDM(ctx context.Context, agentID string, worksp
 		return
 	}
 
-	// Build prompt with recent DM history so the agent has multi-turn
-	// memory. Without this the model sees a single "User message: X"
-	// and cheerfully claims "we haven't talked before" when the user
-	// follows up. history is ordered chronologically; the trigger is
-	// the last row so no duplicate append is needed.
-	history, _ := s.Queries.ListDMMessages(ctx, db.ListDMMessagesParams{
-		WorkspaceID: util.ParseUUID(workspaceID),
-		SelfID:      agent.ID,
-		SelfType:    "agent",
-		PeerID:      util.ParseUUID(senderID),
-		PeerType:    util.StrToText("member"),
-		LimitCount:  40,
-		OffsetCount: 0,
-	})
-	nameCache := s.buildSenderNameCache(ctx, util.ParseUUID(workspaceID), history, trigger)
-	var sb strings.Builder
-	for _, m := range history {
-		sb.WriteString(fmt.Sprintf("[%s]: %s\n", resolveSenderName(nameCache, m.SenderID, m.SenderType), m.Content))
-	}
-	prompt := fmt.Sprintf("Conversation history:\n%sReply as %s to the latest message:",
-		sb.String(), agent.Name,
-	)
+	prompt := s.buildDMPrompt(ctx, workspaceID, senderID, agent, trigger)
 
 	runnerCfg := agent_runner.Config{
 		Kernel:       cfg.Kernel,
