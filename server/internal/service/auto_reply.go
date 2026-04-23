@@ -34,11 +34,15 @@ func NewAutoReplyService(q *db.Queries, hub *realtime.Hub, runner agent_runner.A
 }
 
 // CheckAndReply checks if any mentioned agents have auto-reply enabled and
-// fires off goroutines to generate replies.
+// fires off goroutines to generate replies. Callers (e.g. MediationService)
+// hand in a request-scoped ctx that gets cancelled when the handler returns;
+// we detach here so the async LLM call isn't killed before it responds.
 func (s *AutoReplyService) CheckAndReply(ctx context.Context, mentions []string, workspaceID string, channelID string, triggerMessage db.Message) {
 	for _, mention := range mentions {
 		go func(name string) {
-			if err := s.replyAsMentionedAgent(ctx, name, workspaceID, channelID, triggerMessage); err != nil {
+			bgCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			defer cancel()
+			if err := s.replyAsMentionedAgent(bgCtx, name, workspaceID, channelID, triggerMessage); err != nil {
 				slog.Warn("auto-reply failed", "agent", name, "error", err)
 			}
 		}(mention)
