@@ -191,16 +191,16 @@ func ensureWorkspaceMember(ctx context.Context, q *db.Queries, ws mcptool.Contex
 
 // loadProjectForWorkspace combines the membership check with a project
 // lookup that enforces workspace alignment.
-func loadProjectForWorkspace(ctx context.Context, q *db.Queries, ws mcptool.Context, projectID uuid.UUID) (db.Project, error) {
+func loadProjectForWorkspace(ctx context.Context, q *db.Queries, ws mcptool.Context, projectID uuid.UUID) (db.GetProjectRow, error) {
 	if err := ensureWorkspaceMember(ctx, q, ws); err != nil {
-		return db.Project{}, err
+		return db.GetProjectRow{}, err
 	}
 	project, err := q.GetProject(ctx, pgUUID(projectID))
 	if err != nil {
-		return db.Project{}, err
+		return db.GetProjectRow{}, err
 	}
 	if !sameUUID(project.WorkspaceID, ws.WorkspaceID) {
-		return db.Project{}, errMCPPermissionDenied
+		return db.GetProjectRow{}, errMCPPermissionDenied
 	}
 	return project, nil
 }

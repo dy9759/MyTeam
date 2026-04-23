@@ -58,6 +58,10 @@ const STATUS_CONFIG: Record<
     label: "已取消",
     className: "bg-muted text-muted-foreground",
   },
+  skipped: {
+    label: "已跳过",
+    className: "bg-muted text-muted-foreground",
+  },
 };
 
 function formatDuration(startedAt?: string | null, completedAt?: string | null): string | null {

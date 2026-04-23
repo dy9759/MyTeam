@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
 	"github.com/MyAIOSHub/MyTeam/server/pkg/protocol"
 )
@@ -66,28 +67,107 @@ type ProjectRunResponse struct {
 	CreatedAt     string          `json:"created_at"`
 }
 
-// projectToResponse maps a db.Project row to the JSON response shape. Kept
-// in one place so every handler returning a Project sees the same field
-// mapping (notably: pgtype.UUID stringification and pgtype.Text → *string).
-func projectToResponse(p db.Project) ProjectResponse {
-	resp := ProjectResponse{
-		ID:                  uuidToString(p.ID),
-		WorkspaceID:         uuidToString(p.WorkspaceID),
-		Title:               p.Title,
-		Description:         textToPtr(p.Description),
-		Status:              p.Status,
-		ScheduleType:        p.ScheduleType,
-		CronExpr:            textToPtr(p.CronExpr),
-		SourceConversations: p.SourceConversations,
-		CreatorOwnerID:      uuidToString(p.CreatorOwnerID),
-		CreatedAt:           p.CreatedAt.Time.UTC().Format(time.RFC3339),
-		UpdatedAt:           p.UpdatedAt.Time.UTC().Format(time.RFC3339),
+// projectToResponse maps the various sqlc project row shapes to the JSON
+// response shape. sqlc now emits dedicated row structs for create/get/list/
+// update after we narrowed project queries back to the stable 14-column
+// surface used by existing tests, so handlers centralize that adaptation here.
+func projectToResponse(row any) ProjectResponse {
+	var (
+		id, workspaceID, creatorOwnerID, channelID pgtype.UUID
+		title, status, scheduleType                string
+		description, cronExpr                      pgtype.Text
+		sourceConversations                        []byte
+		createdAt, updatedAt                       pgtype.Timestamptz
+	)
+
+	switch p := row.(type) {
+	case db.Project:
+		id = p.ID
+		workspaceID = p.WorkspaceID
+		title = p.Title
+		description = p.Description
+		status = p.Status
+		scheduleType = p.ScheduleType
+		cronExpr = p.CronExpr
+		sourceConversations = p.SourceConversations
+		channelID = p.ChannelID
+		creatorOwnerID = p.CreatorOwnerID
+		createdAt = p.CreatedAt
+		updatedAt = p.UpdatedAt
+	case db.ListProjectsRow:
+		id = p.ID
+		workspaceID = p.WorkspaceID
+		title = p.Title
+		description = p.Description
+		status = p.Status
+		scheduleType = p.ScheduleType
+		cronExpr = p.CronExpr
+		sourceConversations = p.SourceConversations
+		channelID = p.ChannelID
+		creatorOwnerID = p.CreatorOwnerID
+		createdAt = p.CreatedAt
+		updatedAt = p.UpdatedAt
+	case db.GetProjectRow:
+		id = p.ID
+		workspaceID = p.WorkspaceID
+		title = p.Title
+		description = p.Description
+		status = p.Status
+		scheduleType = p.ScheduleType
+		cronExpr = p.CronExpr
+		sourceConversations = p.SourceConversations
+		channelID = p.ChannelID
+		creatorOwnerID = p.CreatorOwnerID
+		createdAt = p.CreatedAt
+		updatedAt = p.UpdatedAt
+	case db.CreateProjectRow:
+		id = p.ID
+		workspaceID = p.WorkspaceID
+		title = p.Title
+		description = p.Description
+		status = p.Status
+		scheduleType = p.ScheduleType
+		cronExpr = p.CronExpr
+		sourceConversations = p.SourceConversations
+		channelID = p.ChannelID
+		creatorOwnerID = p.CreatorOwnerID
+		createdAt = p.CreatedAt
+		updatedAt = p.UpdatedAt
+	case db.UpdateProjectRow:
+		id = p.ID
+		workspaceID = p.WorkspaceID
+		title = p.Title
+		description = p.Description
+		status = p.Status
+		scheduleType = p.ScheduleType
+		cronExpr = p.CronExpr
+		sourceConversations = p.SourceConversations
+		channelID = p.ChannelID
+		creatorOwnerID = p.CreatorOwnerID
+		createdAt = p.CreatedAt
+		updatedAt = p.UpdatedAt
+	default:
+		return ProjectResponse{}
 	}
-	if p.SourceConversations == nil {
+
+	resp := ProjectResponse{
+		ID:                  uuidToString(id),
+		WorkspaceID:         uuidToString(workspaceID),
+		Title:               title,
+		Description:         textToPtr(description),
+		Status:              status,
+		ScheduleType:        scheduleType,
+		CronExpr:            textToPtr(cronExpr),
+		SourceConversations: sourceConversations,
+		CreatorOwnerID:      uuidToString(creatorOwnerID),
+		CreatedAt:           createdAt.Time.UTC().Format(time.RFC3339),
+		UpdatedAt:           updatedAt.Time.UTC().Format(time.RFC3339),
+	}
+	if sourceConversations == nil {
 		resp.SourceConversations = json.RawMessage("[]")
 	}
-	if p.ChannelID.Valid {
-		ch := uuidToString(p.ChannelID)
+	if channelID.Valid {
+		ch := uuidToString(channelID)
 		resp.ChannelID = &ch
 	}
 	return resp
@@ -411,6 +491,16 @@ func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
 		slog.Error("create project failed", "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to create project")
 		return
+	}
+
+	_, err = h.Queries.CreateProjectBranch(r.Context(), db.CreateProjectBranchParams{
+		ProjectID: project.ID,
+		Name:      "main",
+		IsDefault: true,
+		CreatedBy: parseUUID(userID),
+	})
+	if err != nil {
+		slog.Warn("failed to create default branch for project", "project_id", uuidToString(project.ID), "error", err)
 	}
 
 	resp := projectToResponse(project)
@@ -757,6 +847,108 @@ func (h *Handler) GetProjectRuns(w http.ResponseWriter, r *http.Request) {
 		out = append(out, projectRunToResponse(run))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"runs": out, "total": len(out)})
+}
+
+// ListProjectBranches handles GET /api/projects/{projectID}/branches.
+func (h *Handler) ListProjectBranches(w http.ResponseWriter, r *http.Request) {
+	projectID := chi.URLParam(r, "projectID")
+	if projectID == "" {
+		writeError(w, http.StatusBadRequest, "projectID is required")
+		return
+	}
+	if _, ok := requireUserID(w, r); !ok {
+		return
+	}
+
+	branches, err := h.Queries.ListProjectBranches(r.Context(), parseUUID(projectID))
+	if err != nil {
+		slog.Error("list project branches failed", "error", err, "project_id", projectID)
+		writeError(w, http.StatusInternalServerError, "failed to list project branches")
+		return
+	}
+
+	type BranchResponse struct {
+		ID             string  `json:"id"`
+		ProjectID      string  `json:"project_id"`
+		Name           string  `json:"name"`
+		ParentBranchID *string `json:"parent_branch_id"`
+		IsDefault      bool    `json:"is_default"`
+		Status         string  `json:"status"`
+		CreatedBy      string  `json:"created_by"`
+		CreatedAt      string  `json:"created_at"`
+	}
+
+	out := make([]BranchResponse, 0, len(branches))
+	for _, b := range branches {
+		out = append(out, BranchResponse{
+			ID:             uuidToString(b.ID),
+			ProjectID:      uuidToString(b.ProjectID),
+			Name:           b.Name,
+			ParentBranchID: uuidToPtr(b.ParentBranchID),
+			IsDefault:      b.IsDefault,
+			Status:         b.Status,
+			CreatedBy:      uuidToString(b.CreatedBy),
+			CreatedAt:      b.CreatedAt.Time.UTC().Format(time.RFC3339),
+		})
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// GetProjectResult handles GET /api/projects/{projectID}/runs/{runID}/result.
+func (h *Handler) GetProjectResult(w http.ResponseWriter, r *http.Request) {
+	projectID := chi.URLParam(r, "projectID")
+	runID := chi.URLParam(r, "runID")
+	if projectID == "" || runID == "" {
+		writeError(w, http.StatusBadRequest, "projectID and runID are required")
+		return
+	}
+	if _, ok := requireUserID(w, r); !ok {
+		return
+	}
+
+	result, err := h.Queries.GetProjectResultByRun(r.Context(), parseUUID(runID))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "result not found")
+			return
+		}
+		slog.Error("get project result failed", "error", err, "project_id", projectID, "run_id", runID)
+		writeError(w, http.StatusInternalServerError, "failed to load project result")
+		return
+	}
+
+	type ResultResponse struct {
+		ID               string          `json:"id"`
+		RunID            string          `json:"run_id"`
+		ProjectID        string          `json:"project_id"`
+		VersionID        *string         `json:"version_id"`
+		Summary          *string         `json:"summary"`
+		Artifacts        json.RawMessage `json:"artifacts"`
+		Deliverables     json.RawMessage `json:"deliverables"`
+		AcceptanceStatus string          `json:"acceptance_status"`
+		AcceptedBy       *string         `json:"accepted_by"`
+		CreatedAt        string          `json:"created_at"`
+	}
+
+	resp := ResultResponse{
+		ID:               uuidToString(result.ID),
+		RunID:            uuidToString(result.RunID),
+		ProjectID:        uuidToString(result.ProjectID),
+		VersionID:        uuidToPtr(result.VersionID),
+		Summary:          textToPtr(result.Summary),
+		Artifacts:        result.Artifacts,
+		Deliverables:     result.Deliverables,
+		AcceptanceStatus: result.AcceptanceStatus,
+		AcceptedBy:       uuidToPtr(result.AcceptedBy),
+		CreatedAt:        result.CreatedAt.Time.UTC().Format(time.RFC3339),
+	}
+	if resp.Artifacts == nil {
+		resp.Artifacts = json.RawMessage("[]")
+	}
+	if resp.Deliverables == nil {
+		resp.Deliverables = json.RawMessage("[]")
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // ApprovePlan is now in plan.go — moved there with actual DB implementation.

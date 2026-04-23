@@ -16,8 +16,33 @@ export interface Project {
   active_run?: ProjectRun;
 }
 
-export type ProjectStatus = 'not_started' | 'running' | 'paused' | 'completed' | 'failed' | 'archived';
-export type ProjectScheduleType = 'one_time' | 'scheduled' | 'recurring';
+export type ProjectStatus =
+  | "not_started"
+  | "draft"
+  | "scheduled"
+  | "running"
+  | "paused"
+  | "completed"
+  | "failed"
+  | "stopped"
+  | "archived";
+export type ProjectScheduleType =
+  | "one_time"
+  | "scheduled"
+  | "scheduled_once"
+  | "recurring";
+
+export interface PlanSummary {
+  id: string;
+  title: string;
+  approval_status: string;
+}
+
+export interface RunSummary {
+  id: string;
+  status: string;
+  start_at?: string;
+}
 
 export interface SourceConversation {
   conversation_id: string;
@@ -31,10 +56,18 @@ export interface ProjectVersion {
   parent_version_id?: string;
   version_number: number;
   branch_name?: string;
+  branch_id?: string;
   fork_reason?: string;
   plan_snapshot?: any;
   workflow_snapshot?: any;
-  version_status: 'active' | 'archived';
+  version_status:
+    | "active"
+    | "ready"
+    | "running"
+    | "completed"
+    | "failed"
+    | "cancelled"
+    | "archived";
   created_by?: string;
   created_at: string;
 }
@@ -49,11 +82,92 @@ export interface ProjectRun {
   step_logs: any[];
   output_refs: any[];
   failure_reason?: string;
-  retry_count: number;
+  retry_count?: number;
   created_at: string;
 }
 
-export type RunStatus = 'pending' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
+export type RunStatus =
+  | "pending"
+  | "queued"
+  | "running"
+  | "blocked"
+  | "paused"
+  | "success"
+  | "partial_success"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+export interface ProjectBranch {
+  id: string;
+  project_id: string;
+  name: string;
+  parent_branch_id?: string;
+  is_default: boolean;
+  status: "active" | "merged" | "archived";
+  created_by: string;
+  created_at: string;
+}
+
+export interface ProjectResult {
+  id: string;
+  run_id: string;
+  project_id: string;
+  version_id?: string;
+  summary?: string;
+  artifacts: unknown[];
+  deliverables: unknown[];
+  acceptance_status: "pending" | "accepted" | "rejected";
+  accepted_by?: string;
+  created_at: string;
+}
+
+export interface ProjectPR {
+  id: string;
+  project_id: string;
+  source_branch_id: string;
+  target_branch_id: string;
+  source_version_id: string;
+  title: string;
+  description?: string;
+  status: "open" | "merged" | "closed" | "needs_review";
+  has_conflicts: boolean;
+  merged_version_id?: string;
+  created_by: string;
+  merged_by?: string;
+  merged_at?: string;
+  created_at: string;
+}
+
+export interface ProjectContext {
+  id: string;
+  project_id: string;
+  source_type: "channel" | "dm" | "thread";
+  source_name?: string;
+  message_count: number;
+  imported_at: string;
+}
+
+export interface TaskBrief {
+  goal?: string;
+  background?: string;
+  referenced_files?: { file_id: string; file_name: string; description?: string }[];
+  constraints?: string[];
+  participant_scope?: string;
+  deliverables?: { name: string; description: string; type: string }[];
+  acceptance_criteria?: string[];
+  timeline?: string;
+}
+
+export interface ProjectShare {
+  id: string;
+  project_id: string;
+  owner_id: string;
+  role: "viewer" | "editor";
+  can_merge_pr: boolean;
+  granted_by: string;
+  granted_at: string;
+}
 
 export interface CreateProjectFromChatRequest {
   title: string;
@@ -98,7 +212,7 @@ export type { Plan };
 export type TaskStatus =
   | "draft" | "ready" | "queued" | "assigned" | "running"
   | "needs_human" | "under_review" | "needs_attention"
-  | "completed" | "failed" | "cancelled";
+  | "completed" | "failed" | "cancelled" | "skipped";
 
 export type CollaborationMode =
   | "agent_exec_human_review"

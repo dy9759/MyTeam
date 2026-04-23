@@ -625,7 +625,7 @@ type Plan struct {
 	ApprovedAt     pgtype.Timestamptz `json:"approved_at"`
 	ProjectID      pgtype.UUID        `json:"project_id"`
 	VersionID      pgtype.UUID        `json:"version_id"`
-	TaskBrief      pgtype.Text        `json:"task_brief"`
+	TaskBrief      []byte             `json:"task_brief"`
 	AssignedAgents []byte             `json:"assigned_agents"`
 	RiskPoints     pgtype.Text        `json:"risk_points"`
 	ThreadID       pgtype.UUID        `json:"thread_id"`
@@ -634,20 +634,84 @@ type Plan struct {
 }
 
 type Project struct {
-	ID                  pgtype.UUID        `json:"id"`
-	WorkspaceID         pgtype.UUID        `json:"workspace_id"`
-	Title               string             `json:"title"`
-	Description         pgtype.Text        `json:"description"`
-	Status              string             `json:"status"`
-	CreatedBy           pgtype.UUID        `json:"created_by"`
-	PlanID              pgtype.UUID        `json:"plan_id"`
-	CreatedAt           pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
-	ScheduleType        string             `json:"schedule_type"`
-	CronExpr            pgtype.Text        `json:"cron_expr"`
-	SourceConversations []byte             `json:"source_conversations"`
-	ChannelID           pgtype.UUID        `json:"channel_id"`
-	CreatorOwnerID      pgtype.UUID        `json:"creator_owner_id"`
+	ID                          pgtype.UUID        `json:"id"`
+	WorkspaceID                 pgtype.UUID        `json:"workspace_id"`
+	Title                       string             `json:"title"`
+	Description                 pgtype.Text        `json:"description"`
+	Status                      string             `json:"status"`
+	CreatedBy                   pgtype.UUID        `json:"created_by"`
+	PlanID                      pgtype.UUID        `json:"plan_id"`
+	CreatedAt                   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt                   pgtype.Timestamptz `json:"updated_at"`
+	ScheduleType                string             `json:"schedule_type"`
+	CronExpr                    pgtype.Text        `json:"cron_expr"`
+	SourceConversations         []byte             `json:"source_conversations"`
+	ChannelID                   pgtype.UUID        `json:"channel_id"`
+	CreatorOwnerID              pgtype.UUID        `json:"creator_owner_id"`
+	DefaultBranchID             pgtype.UUID        `json:"default_branch_id"`
+	MaxRuns                     pgtype.Int4        `json:"max_runs"`
+	EndTime                     pgtype.Timestamptz `json:"end_time"`
+	ConsecutiveFailureThreshold pgtype.Int4        `json:"consecutive_failure_threshold"`
+	ScheduledAt                 pgtype.Timestamptz `json:"scheduled_at"`
+	PlanVisibility              string             `json:"plan_visibility"`
+}
+
+type ProjectBranch struct {
+	ID             pgtype.UUID        `json:"id"`
+	ProjectID      pgtype.UUID        `json:"project_id"`
+	Name           string             `json:"name"`
+	ParentBranchID pgtype.UUID        `json:"parent_branch_id"`
+	IsDefault      bool               `json:"is_default"`
+	Status         string             `json:"status"`
+	CreatedBy      pgtype.UUID        `json:"created_by"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
+type ProjectContext struct {
+	ID                pgtype.UUID        `json:"id"`
+	ProjectID         pgtype.UUID        `json:"project_id"`
+	VersionID         pgtype.UUID        `json:"version_id"`
+	SourceType        string             `json:"source_type"`
+	SourceID          pgtype.UUID        `json:"source_id"`
+	SourceName        pgtype.Text        `json:"source_name"`
+	MessageRangeStart pgtype.Timestamptz `json:"message_range_start"`
+	MessageRangeEnd   pgtype.Timestamptz `json:"message_range_end"`
+	SnapshotMd        string             `json:"snapshot_md"`
+	MessageCount      int32              `json:"message_count"`
+	ImportedBy        pgtype.UUID        `json:"imported_by"`
+	ImportedAt        pgtype.Timestamptz `json:"imported_at"`
+}
+
+type ProjectPr struct {
+	ID              pgtype.UUID        `json:"id"`
+	ProjectID       pgtype.UUID        `json:"project_id"`
+	SourceBranchID  pgtype.UUID        `json:"source_branch_id"`
+	TargetBranchID  pgtype.UUID        `json:"target_branch_id"`
+	SourceVersionID pgtype.UUID        `json:"source_version_id"`
+	Title           string             `json:"title"`
+	Description     pgtype.Text        `json:"description"`
+	Status          string             `json:"status"`
+	HasConflicts    bool               `json:"has_conflicts"`
+	MergedVersionID pgtype.UUID        `json:"merged_version_id"`
+	CreatedBy       pgtype.UUID        `json:"created_by"`
+	MergedBy        pgtype.UUID        `json:"merged_by"`
+	MergedAt        pgtype.Timestamptz `json:"merged_at"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+}
+
+type ProjectResult struct {
+	ID               pgtype.UUID        `json:"id"`
+	RunID            pgtype.UUID        `json:"run_id"`
+	ProjectID        pgtype.UUID        `json:"project_id"`
+	VersionID        pgtype.UUID        `json:"version_id"`
+	Summary          pgtype.Text        `json:"summary"`
+	Artifacts        []byte             `json:"artifacts"`
+	Deliverables     []byte             `json:"deliverables"`
+	AcceptanceStatus string             `json:"acceptance_status"`
+	AcceptedBy       pgtype.UUID        `json:"accepted_by"`
+	AcceptedAt       pgtype.Timestamptz `json:"accepted_at"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
 }
 
 type ProjectRun struct {
@@ -664,6 +728,16 @@ type ProjectRun struct {
 	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
 }
 
+type ProjectShare struct {
+	ID         pgtype.UUID        `json:"id"`
+	ProjectID  pgtype.UUID        `json:"project_id"`
+	OwnerID    pgtype.UUID        `json:"owner_id"`
+	Role       string             `json:"role"`
+	CanMergePr bool               `json:"can_merge_pr"`
+	GrantedBy  pgtype.UUID        `json:"granted_by"`
+	GrantedAt  pgtype.Timestamptz `json:"granted_at"`
+}
+
 type ProjectVersion struct {
 	ID              pgtype.UUID        `json:"id"`
 	ProjectID       pgtype.UUID        `json:"project_id"`
@@ -678,6 +752,7 @@ type ProjectVersion struct {
 	ForkReason      pgtype.Text        `json:"fork_reason"`
 	VersionStatus   string             `json:"version_status"`
 	ContextImports  []byte             `json:"context_imports"`
+	BranchID        pgtype.UUID        `json:"branch_id"`
 }
 
 type RemoteSession struct {

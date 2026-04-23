@@ -425,21 +425,21 @@ func (f *fakeMCPDB) Exec(context.Context, string, ...any) (pgconn.CommandTag, er
 
 func (f *fakeMCPDB) QueryRow(_ context.Context, sql string, args ...any) pgx.Row {
 	switch {
-	case strings.Contains(sql, "FROM member") && strings.Contains(sql, "WHERE user_id = $1 AND workspace_id = $2"):
+	case strings.Contains(sql, "FROM member") && strings.Contains(sql, "WHERE user_id = $1") && strings.Contains(sql, "workspace_id = $2"):
 		if len(args) == 2 && pgUUIDEqual(args[0], f.member.UserID) && pgUUIDEqual(args[1], f.member.WorkspaceID) {
 			return fakeRow(memberValues(f.member))
 		}
-	case strings.Contains(sql, "FROM agent") && strings.Contains(sql, "WHERE id = $1 AND workspace_id = $2"):
+	case strings.Contains(sql, "FROM agent") && strings.Contains(sql, "WHERE id = $1") && strings.Contains(sql, "workspace_id = $2"):
 		if len(args) == 2 && pgUUIDEqual(args[0], f.agent.ID) && pgUUIDEqual(args[1], f.agent.WorkspaceID) {
 			return fakeRow(agentValues(f.agent))
 		}
-	case strings.Contains(sql, "FROM project WHERE id = $1"):
+	case strings.Contains(sql, "FROM project") && strings.Contains(sql, "WHERE id = $1"):
 		for _, project := range f.projects {
 			if len(args) == 1 && pgUUIDEqual(args[0], project.ID) {
 				return fakeRow(projectValues(project))
 			}
 		}
-	case strings.Contains(sql, "FROM plan WHERE project_id = $1"):
+	case strings.Contains(sql, "FROM plan") && strings.Contains(sql, "WHERE project_id = $1"):
 		for _, plan := range f.plans {
 			if len(args) == 1 && pgUUIDEqual(args[0], plan.ProjectID) {
 				return fakeRow(planValues(plan))
@@ -451,7 +451,7 @@ func (f *fakeMCPDB) QueryRow(_ context.Context, sql string, args ...any) pgx.Row
 
 func (f *fakeMCPDB) Query(_ context.Context, sql string, args ...any) (pgx.Rows, error) {
 	switch {
-	case strings.Contains(sql, "FROM project WHERE workspace_id = $1"):
+	case strings.Contains(sql, "FROM project") && strings.Contains(sql, "WHERE workspace_id = $1"):
 		rows := [][]any{}
 		for _, project := range f.projects {
 			if len(args) == 1 && pgUUIDEqual(args[0], project.WorkspaceID) {
@@ -483,7 +483,7 @@ func (f *fakeMCPDB) Query(_ context.Context, sql string, args ...any) (pgx.Rows,
 			}
 		}
 		return &fakeRows{rows: rows}, nil
-	case strings.Contains(sql, "FROM file_index WHERE project_id = $1"):
+	case strings.Contains(sql, "FROM file_index") && strings.Contains(sql, "WHERE project_id = $1"):
 		rows := [][]any{}
 		for _, file := range f.files {
 			if len(args) == 1 && pgUUIDEqual(args[0], file.ProjectID) {

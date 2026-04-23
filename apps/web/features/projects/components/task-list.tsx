@@ -22,6 +22,7 @@ const STATUS_VARIANT: Record<
   completed: "default",
   failed: "destructive",
   cancelled: "outline",
+  skipped: "outline",
 };
 
 export function TaskList({ planID }: { planID: string }) {

@@ -11,10 +11,57 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countConsecutiveFailedRuns = `-- name: CountConsecutiveFailedRuns :one
+SELECT COUNT(*) FROM (
+  SELECT status FROM project_run
+  WHERE project_id = $1
+  ORDER BY created_at DESC
+  LIMIT $2
+) sub
+WHERE sub.status = 'failed'
+`
+
+type CountConsecutiveFailedRunsParams struct {
+	ProjectID  pgtype.UUID `json:"project_id"`
+	LimitCount int32       `json:"limit_count"`
+}
+
+func (q *Queries) CountConsecutiveFailedRuns(ctx context.Context, arg CountConsecutiveFailedRunsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countConsecutiveFailedRuns, arg.ProjectID, arg.LimitCount)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countProjectRuns = `-- name: CountProjectRuns :one
+SELECT COUNT(*) FROM project_run WHERE project_id = $1
+`
+
+func (q *Queries) CountProjectRuns(ctx context.Context, projectID pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countProjectRuns, projectID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createProject = `-- name: CreateProject :one
 INSERT INTO project (workspace_id, title, description, status, schedule_type, cron_expr, source_conversations, channel_id, creator_owner_id)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING id, workspace_id, title, description, status, created_by, plan_id, created_at, updated_at, schedule_type, cron_expr, source_conversations, channel_id, creator_owner_id
+RETURNING
+    id,
+    workspace_id,
+    title,
+    description,
+    status,
+    created_by,
+    plan_id,
+    created_at,
+    updated_at,
+    schedule_type,
+    cron_expr,
+    source_conversations,
+    channel_id,
+    creator_owner_id
 `
 
 type CreateProjectParams struct {
@@ -29,7 +76,24 @@ type CreateProjectParams struct {
 	CreatorOwnerID      pgtype.UUID `json:"creator_owner_id"`
 }
 
-func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (Project, error) {
+type CreateProjectRow struct {
+	ID                  pgtype.UUID        `json:"id"`
+	WorkspaceID         pgtype.UUID        `json:"workspace_id"`
+	Title               string             `json:"title"`
+	Description         pgtype.Text        `json:"description"`
+	Status              string             `json:"status"`
+	CreatedBy           pgtype.UUID        `json:"created_by"`
+	PlanID              pgtype.UUID        `json:"plan_id"`
+	CreatedAt           pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
+	ScheduleType        string             `json:"schedule_type"`
+	CronExpr            pgtype.Text        `json:"cron_expr"`
+	SourceConversations []byte             `json:"source_conversations"`
+	ChannelID           pgtype.UUID        `json:"channel_id"`
+	CreatorOwnerID      pgtype.UUID        `json:"creator_owner_id"`
+}
+
+func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (CreateProjectRow, error) {
 	row := q.db.QueryRow(ctx, createProject,
 		arg.WorkspaceID,
 		arg.Title,
@@ -41,7 +105,7 @@ func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (P
 		arg.ChannelID,
 		arg.CreatorOwnerID,
 	)
-	var i Project
+	var i CreateProjectRow
 	err := row.Scan(
 		&i.ID,
 		&i.WorkspaceID,
@@ -71,12 +135,45 @@ func (q *Queries) DeleteProject(ctx context.Context, id pgtype.UUID) error {
 }
 
 const getProject = `-- name: GetProject :one
-SELECT id, workspace_id, title, description, status, created_by, plan_id, created_at, updated_at, schedule_type, cron_expr, source_conversations, channel_id, creator_owner_id FROM project WHERE id = $1
+SELECT
+    id,
+    workspace_id,
+    title,
+    description,
+    status,
+    created_by,
+    plan_id,
+    created_at,
+    updated_at,
+    schedule_type,
+    cron_expr,
+    source_conversations,
+    channel_id,
+    creator_owner_id
+FROM project
+WHERE id = $1
 `
 
-func (q *Queries) GetProject(ctx context.Context, id pgtype.UUID) (Project, error) {
+type GetProjectRow struct {
+	ID                  pgtype.UUID        `json:"id"`
+	WorkspaceID         pgtype.UUID        `json:"workspace_id"`
+	Title               string             `json:"title"`
+	Description         pgtype.Text        `json:"description"`
+	Status              string             `json:"status"`
+	CreatedBy           pgtype.UUID        `json:"created_by"`
+	PlanID              pgtype.UUID        `json:"plan_id"`
+	CreatedAt           pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
+	ScheduleType        string             `json:"schedule_type"`
+	CronExpr            pgtype.Text        `json:"cron_expr"`
+	SourceConversations []byte             `json:"source_conversations"`
+	ChannelID           pgtype.UUID        `json:"channel_id"`
+	CreatorOwnerID      pgtype.UUID        `json:"creator_owner_id"`
+}
+
+func (q *Queries) GetProject(ctx context.Context, id pgtype.UUID) (GetProjectRow, error) {
 	row := q.db.QueryRow(ctx, getProject, id)
-	var i Project
+	var i GetProjectRow
 	err := row.Scan(
 		&i.ID,
 		&i.WorkspaceID,
@@ -97,18 +194,52 @@ func (q *Queries) GetProject(ctx context.Context, id pgtype.UUID) (Project, erro
 }
 
 const listProjects = `-- name: ListProjects :many
-SELECT id, workspace_id, title, description, status, created_by, plan_id, created_at, updated_at, schedule_type, cron_expr, source_conversations, channel_id, creator_owner_id FROM project WHERE workspace_id = $1 ORDER BY created_at DESC
+SELECT
+    id,
+    workspace_id,
+    title,
+    description,
+    status,
+    created_by,
+    plan_id,
+    created_at,
+    updated_at,
+    schedule_type,
+    cron_expr,
+    source_conversations,
+    channel_id,
+    creator_owner_id
+FROM project
+WHERE workspace_id = $1
+ORDER BY created_at DESC
 `
 
-func (q *Queries) ListProjects(ctx context.Context, workspaceID pgtype.UUID) ([]Project, error) {
+type ListProjectsRow struct {
+	ID                  pgtype.UUID        `json:"id"`
+	WorkspaceID         pgtype.UUID        `json:"workspace_id"`
+	Title               string             `json:"title"`
+	Description         pgtype.Text        `json:"description"`
+	Status              string             `json:"status"`
+	CreatedBy           pgtype.UUID        `json:"created_by"`
+	PlanID              pgtype.UUID        `json:"plan_id"`
+	CreatedAt           pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
+	ScheduleType        string             `json:"schedule_type"`
+	CronExpr            pgtype.Text        `json:"cron_expr"`
+	SourceConversations []byte             `json:"source_conversations"`
+	ChannelID           pgtype.UUID        `json:"channel_id"`
+	CreatorOwnerID      pgtype.UUID        `json:"creator_owner_id"`
+}
+
+func (q *Queries) ListProjects(ctx context.Context, workspaceID pgtype.UUID) ([]ListProjectsRow, error) {
 	rows, err := q.db.Query(ctx, listProjects, workspaceID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Project{}
+	items := []ListProjectsRow{}
 	for rows.Next() {
-		var i Project
+		var i ListProjectsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.WorkspaceID,
@@ -135,6 +266,102 @@ func (q *Queries) ListProjects(ctx context.Context, workspaceID pgtype.UUID) ([]
 	return items, nil
 }
 
+const listRunningRecurringProjects = `-- name: ListRunningRecurringProjects :many
+SELECT id, workspace_id, title, description, status, created_by, plan_id, created_at, updated_at, schedule_type, cron_expr, source_conversations, channel_id, creator_owner_id, default_branch_id, max_runs, end_time, consecutive_failure_threshold, scheduled_at, plan_visibility FROM project
+WHERE status = 'running'
+  AND schedule_type = 'recurring'
+ORDER BY created_at ASC
+`
+
+func (q *Queries) ListRunningRecurringProjects(ctx context.Context) ([]Project, error) {
+	rows, err := q.db.Query(ctx, listRunningRecurringProjects)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Project{}
+	for rows.Next() {
+		var i Project
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.Title,
+			&i.Description,
+			&i.Status,
+			&i.CreatedBy,
+			&i.PlanID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ScheduleType,
+			&i.CronExpr,
+			&i.SourceConversations,
+			&i.ChannelID,
+			&i.CreatorOwnerID,
+			&i.DefaultBranchID,
+			&i.MaxRuns,
+			&i.EndTime,
+			&i.ConsecutiveFailureThreshold,
+			&i.ScheduledAt,
+			&i.PlanVisibility,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listScheduledProjects = `-- name: ListScheduledProjects :many
+SELECT id, workspace_id, title, description, status, created_by, plan_id, created_at, updated_at, schedule_type, cron_expr, source_conversations, channel_id, creator_owner_id, default_branch_id, max_runs, end_time, consecutive_failure_threshold, scheduled_at, plan_visibility FROM project
+WHERE status = 'scheduled'
+  AND schedule_type IN ('scheduled_once', 'recurring')
+ORDER BY created_at ASC
+`
+
+func (q *Queries) ListScheduledProjects(ctx context.Context) ([]Project, error) {
+	rows, err := q.db.Query(ctx, listScheduledProjects)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Project{}
+	for rows.Next() {
+		var i Project
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.Title,
+			&i.Description,
+			&i.Status,
+			&i.CreatedBy,
+			&i.PlanID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ScheduleType,
+			&i.CronExpr,
+			&i.SourceConversations,
+			&i.ChannelID,
+			&i.CreatorOwnerID,
+			&i.DefaultBranchID,
+			&i.MaxRuns,
+			&i.EndTime,
+			&i.ConsecutiveFailureThreshold,
+			&i.ScheduledAt,
+			&i.PlanVisibility,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateProject = `-- name: UpdateProject :one
 UPDATE project SET
     title = COALESCE($1, title),
@@ -144,7 +371,21 @@ UPDATE project SET
     cron_expr = $5,
     updated_at = NOW()
 WHERE id = $6
-RETURNING id, workspace_id, title, description, status, created_by, plan_id, created_at, updated_at, schedule_type, cron_expr, source_conversations, channel_id, creator_owner_id
+RETURNING
+    id,
+    workspace_id,
+    title,
+    description,
+    status,
+    created_by,
+    plan_id,
+    created_at,
+    updated_at,
+    schedule_type,
+    cron_expr,
+    source_conversations,
+    channel_id,
+    creator_owner_id
 `
 
 type UpdateProjectParams struct {
@@ -156,7 +397,24 @@ type UpdateProjectParams struct {
 	ID           pgtype.UUID `json:"id"`
 }
 
-func (q *Queries) UpdateProject(ctx context.Context, arg UpdateProjectParams) (Project, error) {
+type UpdateProjectRow struct {
+	ID                  pgtype.UUID        `json:"id"`
+	WorkspaceID         pgtype.UUID        `json:"workspace_id"`
+	Title               string             `json:"title"`
+	Description         pgtype.Text        `json:"description"`
+	Status              string             `json:"status"`
+	CreatedBy           pgtype.UUID        `json:"created_by"`
+	PlanID              pgtype.UUID        `json:"plan_id"`
+	CreatedAt           pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
+	ScheduleType        string             `json:"schedule_type"`
+	CronExpr            pgtype.Text        `json:"cron_expr"`
+	SourceConversations []byte             `json:"source_conversations"`
+	ChannelID           pgtype.UUID        `json:"channel_id"`
+	CreatorOwnerID      pgtype.UUID        `json:"creator_owner_id"`
+}
+
+func (q *Queries) UpdateProject(ctx context.Context, arg UpdateProjectParams) (UpdateProjectRow, error) {
 	row := q.db.QueryRow(ctx, updateProject,
 		arg.Title,
 		arg.Description,
@@ -165,7 +423,7 @@ func (q *Queries) UpdateProject(ctx context.Context, arg UpdateProjectParams) (P
 		arg.CronExpr,
 		arg.ID,
 	)
-	var i Project
+	var i UpdateProjectRow
 	err := row.Scan(
 		&i.ID,
 		&i.WorkspaceID,

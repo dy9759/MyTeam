@@ -12,25 +12,32 @@ import ProjectDetailInline from "./[id]/page";
 
 const STATUS_BADGE: Record<ProjectStatus, string> = {
   not_started: "bg-accent text-muted-foreground border-border",
+  draft: "bg-accent text-muted-foreground border-border",
+  scheduled: "bg-[rgba(94,106,210,0.15)] text-[#8b9cf7] border-[rgba(94,106,210,0.25)]",
   running: "bg-[rgba(94,106,210,0.15)] text-[#8b9cf7] border-[rgba(94,106,210,0.25)]",
   paused: "bg-[rgba(255,180,50,0.15)] text-[#f0b440] border-[rgba(255,180,50,0.25)]",
   completed: "bg-[rgba(39,166,68,0.15)] text-[#4ade80] border-[rgba(39,166,68,0.25)]",
   failed: "bg-[rgba(239,68,68,0.15)] text-[#f87171] border-[rgba(239,68,68,0.25)]",
+  stopped: "bg-accent text-muted-foreground/60 border-border",
   archived: "bg-accent text-muted-foreground/60 border-border",
 };
 
 const STATUS_LABEL: Record<ProjectStatus, string> = {
   not_started: "未开始",
+  draft: "草稿",
+  scheduled: "已调度",
   running: "运行中",
   paused: "已暂停",
   completed: "已完成",
   failed: "失败",
+  stopped: "已停止",
   archived: "已归档",
 };
 
 const SCHEDULE_LABEL: Record<ProjectScheduleType, string> = {
   one_time: "一次性",
   scheduled: "定时",
+  scheduled_once: "定时",
   recurring: "周期性",
 };
 

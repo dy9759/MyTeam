@@ -47,7 +47,8 @@ export type WorkflowStepStatus =
   | 'timeout'
   | 'completed'
   | 'failed'
-  | 'cancelled';
+  | 'cancelled'
+  | 'skipped';
 
 export interface WorkflowStep {
   id: string;
@@ -76,6 +77,18 @@ export interface WorkflowStep {
   output_refs?: any[];
   actual_agent_id?: string;
   current_retry?: number;
+
+  // Sub-task fields
+  title?: string;
+  goal?: string;
+  priority?: string;
+  candidate_agent_ids?: string[];
+  owner_reviewer_id?: string;
+  skippable?: boolean;
+  on_failure?: 'block' | 'retry_once' | 'retry_n' | 'reassign_then_retry' | 'skip' | 'pause_and_notify_owner';
+  done_definition?: string;
+  error_code?: string;
+  error_summary?: string;
 }
 
 export interface Workflow {

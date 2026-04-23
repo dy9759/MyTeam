@@ -325,7 +325,7 @@ export function CreateProjectDialog({ onClose, onCreated }: CreateProjectDialogP
             <div>
               <div className="text-sm text-muted-foreground">调度类型</div>
               <div className="text-sm">
-                {scheduleType === "one_time" ? "一次性" : scheduleType === "scheduled" ? "定时" : "周期性"}
+                {scheduleType === "one_time" ? "一次性" : scheduleType === "scheduled_once" ? "定时" : "周期性"}
                 {cronExpr && ` (${cronExpr})`}
               </div>
             </div>

@@ -50,6 +50,11 @@ import type {
   CreateThreadContextItemRequest,
   Message,
   Project,
+  ProjectBranch,
+  ProjectContext,
+  ProjectPR,
+  ProjectResult,
+  ProjectShare,
   ProjectVersion,
   ProjectRun,
   CreateProjectFromChatRequest,
@@ -1161,6 +1166,85 @@ export class ApiClient implements ApiTransport {
       init,
     );
     return Array.isArray(resp) ? resp : resp.runs ?? [];
+  }
+
+  async listProjectBranches(projectId: string): Promise<ProjectBranch[]> {
+    return this.fetch(`/api/projects/${projectId}/branches`);
+  }
+
+  async getProjectResult(projectId: string, runId: string): Promise<ProjectResult> {
+    return this.fetch(`/api/projects/${projectId}/runs/${runId}/result`);
+  }
+
+  async importProjectContext(
+    projectId: string,
+    data: {
+      source_type: string;
+      source_id: string;
+      date_from?: string;
+      date_to?: string;
+    },
+  ): Promise<ProjectContext> {
+    return this.fetch(`/api/projects/${projectId}/import-context`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async listProjectContexts(projectId: string): Promise<ProjectContext[]> {
+    return this.fetch(`/api/projects/${projectId}/contexts`);
+  }
+
+  async listProjectPRs(projectId: string): Promise<ProjectPR[]> {
+    return this.fetch(`/api/projects/${projectId}/prs`);
+  }
+
+  async createProjectPR(
+    projectId: string,
+    data: {
+      source_branch_id: string;
+      target_branch_id: string;
+      source_version_id: string;
+      title: string;
+      description?: string;
+    },
+  ): Promise<ProjectPR> {
+    return this.fetch(`/api/projects/${projectId}/prs`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async mergeProjectPR(projectId: string, prId: string): Promise<void> {
+    await this.fetch(`/api/projects/${projectId}/prs/${prId}/merge`, {
+      method: "POST",
+    });
+  }
+
+  async closeProjectPR(projectId: string, prId: string): Promise<void> {
+    await this.fetch(`/api/projects/${projectId}/prs/${prId}/close`, {
+      method: "POST",
+    });
+  }
+
+  async shareProject(
+    projectId: string,
+    data: { owner_id: string; role: string; can_merge_pr?: boolean },
+  ): Promise<ProjectShare> {
+    return this.fetch(`/api/projects/${projectId}/share`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async listProjectShares(projectId: string): Promise<ProjectShare[]> {
+    return this.fetch(`/api/projects/${projectId}/shares`);
+  }
+
+  async removeProjectShare(projectId: string, ownerId: string): Promise<void> {
+    await this.fetch(`/api/projects/${projectId}/share/${ownerId}`, {
+      method: "DELETE",
+    });
   }
 
   async approvePlan(planId: string): Promise<void> {
