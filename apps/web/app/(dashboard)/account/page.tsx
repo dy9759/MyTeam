@@ -5,6 +5,7 @@ import { useWorkspaceStore } from "@/features/workspace"
 import { useRuntimeStore } from "@/features/runtimes"
 import { useAuthStore } from "@/features/auth"
 import { api } from "@/shared/api"
+import type { Agent } from "@/shared/types"
 import { toast } from "sonner"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import {
@@ -259,30 +260,55 @@ function AgentListTab() {
 /* ================================================================== */
 
 function LocalAgentSetup({ onDone }: { onDone: () => void }) {
-  const [name, setName] = useState("Local Agent")
+  const [name, setName] = useState("")
   const [selectedRuntimeId, setSelectedRuntimeId] = useState("")
   const [busy, setBusy] = useState(false)
+  const [localAgents, setLocalAgents] = useState<Agent[]>([])
+  const [removingId, setRemovingId] = useState<string | null>(null)
   const runtimes = useRuntimeStore(s => s.runtimes)
   const fetching = useRuntimeStore(s => s.fetching)
   const fetchRuntimes = useRuntimeStore(s => s.fetchRuntimes)
   const workspace = useWorkspaceStore(s => s.workspace)
+
+  const refreshLocalAgents = async () => {
+    try {
+      const list = await api.listLocalAgents()
+      setLocalAgents(Array.isArray(list) ? list : [])
+    } catch {
+      setLocalAgents([])
+    }
+  }
 
   const localRuntimes = useMemo(
     () => (Array.isArray(runtimes) ? runtimes.filter(r => r.mode === "local") : []),
     [runtimes],
   )
 
+  const boundRuntimeIds = useMemo(
+    () => new Set(localAgents.map(a => a.runtime_id).filter(Boolean)),
+    [localAgents],
+  )
+
+  const availableRuntimes = useMemo(
+    () => localRuntimes.filter(r => !boundRuntimeIds.has(r.id)),
+    [localRuntimes, boundRuntimeIds],
+  )
+
   useEffect(() => {
     if (!workspace?.id) return
     void fetchRuntimes()
-    void api.getPersonalAgent().then(agent => {
-      setName(agent.display_name || agent.name || "Local Agent")
-      if (agent.runtime_id) setSelectedRuntimeId(agent.runtime_id)
-    }).catch(() => {
-      // Personal agent is created lazily by the API; keep the setup panel usable
-      // even when a first-time workspace hits a transient loading failure.
-    })
+    void refreshLocalAgents()
   }, [fetchRuntimes, workspace?.id])
+
+  useEffect(() => {
+    const first = availableRuntimes[0]
+    if (!selectedRuntimeId && first) {
+      setSelectedRuntimeId(first.id)
+    }
+    if (selectedRuntimeId && !availableRuntimes.some(r => r.id === selectedRuntimeId)) {
+      setSelectedRuntimeId(first?.id ?? "")
+    }
+  }, [availableRuntimes, selectedRuntimeId])
 
   const handle = async () => {
     if (!selectedRuntimeId) {
@@ -291,32 +317,70 @@ function LocalAgentSetup({ onDone }: { onDone: () => void }) {
     }
     setBusy(true)
     try {
-      const personalAgent = await api.getPersonalAgent()
-      await api.updateAgent(personalAgent.id, {
-        name: name.trim() || "Local Agent",
-        description: "Local agent connected through MyTeam daemon",
+      await api.createLocalAgent({
         runtime_id: selectedRuntimeId,
-        visibility: "private",
+        name: name.trim() || undefined,
       })
-      toast.success("本地 Agent 已保存")
-      await fetchRuntimes()
+      toast.success("本地 Agent 已添加")
+      setName("")
+      await Promise.all([fetchRuntimes(), refreshLocalAgents()])
       onDone()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "保存失败")
+      toast.error(e instanceof Error ? e.message : "添加失败")
     } finally {
       setBusy(false)
+    }
+  }
+
+  const handleRemove = async (agent: Agent) => {
+    if (!confirm(`移除本地 Agent「${agent.name}」？`)) return
+    setRemovingId(agent.id)
+    try {
+      await api.archiveLocalAgent(agent.id)
+      toast.success("本地 Agent 已移除")
+      await Promise.all([fetchRuntimes(), refreshLocalAgents()])
+      onDone()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "移除失败")
+    } finally {
+      setRemovingId(null)
     }
   }
 
   return (
     <div className="space-y-3 pt-3">
       <div className="rounded-[6px] border border-border bg-secondary/40 px-3 py-2 text-[12px] text-muted-foreground leading-relaxed">
-        本地 Agent 会出现在「会话」里的 Local Agent 私聊中。这里不会创建新的普通 Agent，
-        而是把你的 personal agent 绑定到 daemon 注册的本地 Runtime。
+        每个本地 Runtime（daemon 注册的 claude / codex / opencode 等）可以创建一个独立的本地 Agent。
+        云端 Personal Agent 保持一个，本地 Agent 数量由你接入的 Runtime 决定。
       </div>
+
+      {localAgents.length > 0 && (
+        <div className="space-y-2">
+          <div className="text-[12px] font-medium text-foreground">已绑定的本地 Agent</div>
+          <ul className="space-y-1.5">
+            {localAgents.map(agent => (
+              <li key={agent.id} className="flex items-center justify-between gap-3 rounded-[6px] border border-border bg-secondary/40 px-3 py-2 text-[12px]">
+                <div className="min-w-0">
+                  <div className="truncate text-foreground">{agent.name}</div>
+                  <div className="truncate text-muted-foreground text-[11px]">{agent.description || "Local runtime agent"}</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleRemove(agent)}
+                  disabled={removingId === agent.id}
+                  className="px-2 py-1 text-[11px] font-medium text-destructive hover:underline disabled:opacity-40"
+                >
+                  {removingId === agent.id ? "移除中..." : "移除"}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <div className="space-y-1.5">
-        <label className="text-[12px] font-medium text-foreground">Agent 名称</label>
-        <input value={name} onChange={e => setName(e.target.value)} placeholder="Local Agent"
+        <label className="text-[12px] font-medium text-foreground">Agent 名称（可选，留空自动生成）</label>
+        <input value={name} onChange={e => setName(e.target.value)} placeholder="留空即自动生成，如：dy9759 · claude"
           className="w-full px-3 py-2 bg-secondary border border-border rounded-[6px] text-[13px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring" />
       </div>
       <div className="space-y-1.5">
@@ -324,7 +388,7 @@ function LocalAgentSetup({ onDone }: { onDone: () => void }) {
         <select value={selectedRuntimeId} onChange={e => setSelectedRuntimeId(e.target.value)}
           className="w-full px-3 py-2 bg-secondary border border-border rounded-[6px] text-[13px] text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
           <option value="">选择 daemon 注册的本地 Runtime</option>
-          {localRuntimes.map(runtime => (
+          {availableRuntimes.map(runtime => (
             <option key={runtime.id} value={runtime.id}>
               {runtime.provider || "agent"} · {runtime.status || "unknown"} · {runtime.name}
             </option>
@@ -337,14 +401,19 @@ function LocalAgentSetup({ onDone }: { onDone: () => void }) {
           然后点击「刷新 Runtime」。
         </div>
       )}
+      {localRuntimes.length > 0 && availableRuntimes.length === 0 && (
+        <div className="rounded-[6px] border border-dashed border-border px-3 py-2 text-[12px] text-muted-foreground">
+          所有在线 Runtime 都已绑定为本地 Agent。如需增加，请先添加新的 Runtime 或移除已有绑定。
+        </div>
+      )}
       <div className="flex flex-wrap gap-2">
-        <button type="button" onClick={() => void fetchRuntimes()} disabled={fetching}
+        <button type="button" onClick={() => { void fetchRuntimes(); void refreshLocalAgents() }} disabled={fetching}
           className="px-4 py-2 border border-border rounded-[6px] text-[13px] font-medium disabled:opacity-40 hover:bg-secondary transition-colors">
           {fetching ? "刷新中..." : "刷新 Runtime"}
         </button>
         <button onClick={handle} disabled={busy || !selectedRuntimeId}
           className="px-4 py-2 bg-primary text-primary-foreground rounded-[6px] text-[13px] font-medium disabled:opacity-40 hover:opacity-90 transition-opacity">
-          {busy ? "保存中..." : "保存 / 更新本地 Agent"}
+          {busy ? "添加中..." : "添加本地 Agent"}
         </button>
       </div>
     </div>

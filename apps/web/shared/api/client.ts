@@ -375,6 +375,21 @@ export class ApiClient implements ApiTransport {
     });
   }
 
+  async listLocalAgents(): Promise<Agent[]> {
+    return this.fetch("/api/agents/local");
+  }
+
+  async createLocalAgent(data: { runtime_id: string; name?: string }): Promise<Agent> {
+    return this.fetch("/api/agents/local", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async archiveLocalAgent(id: string): Promise<void> {
+    return this.fetch(`/api/agents/local/${id}`, { method: "DELETE" });
+  }
+
   async archiveAgent(id: string): Promise<Agent> {
     return this.fetch(`/api/agents/${id}/archive`, { method: "POST" });
   }

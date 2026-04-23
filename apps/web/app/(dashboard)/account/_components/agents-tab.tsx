@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import type { Agent, AgentRuntime, IdentityCard } from "@/shared/types";
 import { splitList, statusMeta } from "./shared";
 
-type AgentFilter = "all" | "personal_agent" | "scoped_system_agent" | "system_agent";
+type AgentFilter = "all" | "personal_agent" | "local_agent" | "scoped_system_agent" | "system_agent";
 
 interface AgentsTabProps {
   agents: Agent[];
@@ -58,6 +58,7 @@ export function AgentsTab({
     return agents.filter((agent) => {
       const type = agent.agent_type ?? "personal_agent";
       if (filter === "personal_agent") return type === "personal_agent";
+      if (filter === "local_agent") return type === "local_agent";
       if (filter === "scoped_system_agent") {
         return type === "system_agent" && agent.scope !== null;
       }
@@ -92,6 +93,7 @@ export function AgentsTab({
                 {[
                   { value: "all", label: "全部" },
                   { value: "personal_agent", label: "Personal" },
+                  { value: "local_agent", label: "Local" },
                   { value: "scoped_system_agent", label: "Scoped" },
                   { value: "system_agent", label: "System" },
                 ].map((item) => (

@@ -1,5 +1,6 @@
-// AgentType — collapsed to two values per Account PRD §6.2
-export type AgentType = "personal_agent" | "system_agent";
+// AgentType — collapsed to two values per Account PRD §6.2 + local_agent
+// added per multi-local-agent rollout (docs/plans/2026-04-23-multiple-local-agents.md).
+export type AgentType = "personal_agent" | "system_agent" | "local_agent";
 
 // AgentStatus — single 7-value enum (PRD §3.4)
 export type AgentStatus =
