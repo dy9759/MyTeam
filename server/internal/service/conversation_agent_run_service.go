@@ -42,6 +42,8 @@ type ConversationAgentRunInput struct {
 	AgentID          string
 	RuntimeID        string
 	PeerUserID       string
+	ChannelID        string
+	ThreadID         string
 	Provider         string
 	Prompt           string
 	Metadata         map[string]any
@@ -54,7 +56,9 @@ type ConversationAgentRun struct {
 	ResponseMessageID string          `json:"response_message_id,omitempty"`
 	AgentID           string          `json:"agent_id"`
 	RuntimeID         string          `json:"runtime_id"`
-	PeerUserID        string          `json:"peer_user_id"`
+	PeerUserID        string          `json:"peer_user_id,omitempty"`
+	ChannelID         string          `json:"channel_id,omitempty"`
+	ThreadID          string          `json:"thread_id,omitempty"`
 	Provider          string          `json:"provider"`
 	Status            string          `json:"status"`
 	Prompt            string          `json:"prompt"`
@@ -86,6 +90,8 @@ const conversationAgentRunColumns = `
 	agent_id,
 	runtime_id,
 	peer_user_id,
+	channel_id,
+	thread_id,
 	provider,
 	status,
 	prompt,
@@ -100,7 +106,8 @@ const conversationAgentRunColumns = `
 func scanConversationAgentRun(row pgx.Row) (*ConversationAgentRun, error) {
 	var (
 		id, workspaceID, triggerMessageID, responseMessageID pgtype.UUID
-		agentID, runtimeID, peerUserID                       pgtype.UUID
+		agentID, runtimeID                                   pgtype.UUID
+		peerUserID, channelID, threadID                      pgtype.UUID
 		provider, status, prompt, output                     string
 		sessionID, workDir, errorMessage                     pgtype.Text
 		metadata                                             []byte
@@ -114,6 +121,8 @@ func scanConversationAgentRun(row pgx.Row) (*ConversationAgentRun, error) {
 		&agentID,
 		&runtimeID,
 		&peerUserID,
+		&channelID,
+		&threadID,
 		&provider,
 		&status,
 		&prompt,
@@ -133,7 +142,6 @@ func scanConversationAgentRun(row pgx.Row) (*ConversationAgentRun, error) {
 		TriggerMessageID: util.UUIDToString(triggerMessageID),
 		AgentID:          util.UUIDToString(agentID),
 		RuntimeID:        util.UUIDToString(runtimeID),
-		PeerUserID:       util.UUIDToString(peerUserID),
 		Provider:         provider,
 		Status:           status,
 		Prompt:           prompt,
@@ -141,6 +149,15 @@ func scanConversationAgentRun(row pgx.Row) (*ConversationAgentRun, error) {
 		Metadata:         json.RawMessage(metadata),
 		CreatedAt:        createdAt.Time,
 		UpdatedAt:        updatedAt.Time,
+	}
+	if peerUserID.Valid {
+		run.PeerUserID = util.UUIDToString(peerUserID)
+	}
+	if channelID.Valid {
+		run.ChannelID = util.UUIDToString(channelID)
+	}
+	if threadID.Valid {
+		run.ThreadID = util.UUIDToString(threadID)
 	}
 	if responseMessageID.Valid {
 		run.ResponseMessageID = util.UUIDToString(responseMessageID)
@@ -161,6 +178,27 @@ func scanConversationAgentRun(row pgx.Row) (*ConversationAgentRun, error) {
 }
 
 func (s *ConversationAgentRunService) EnqueueDMRun(ctx context.Context, in ConversationAgentRunInput) (*ConversationAgentRun, error) {
+	if in.PeerUserID == "" {
+		return nil, errors.New("peer_user_id is required for DM run")
+	}
+	in.ChannelID = ""
+	in.ThreadID = ""
+	return s.enqueueRun(ctx, in, "dm")
+}
+
+// EnqueueChannelMentionRun queues a local-agent run that replies into a
+// channel (and optional thread) rather than a DM. Used by the Mediation
+// → AutoReply channel @mention path when the resolved agent is backed by
+// a local runtime.
+func (s *ConversationAgentRunService) EnqueueChannelMentionRun(ctx context.Context, in ConversationAgentRunInput) (*ConversationAgentRun, error) {
+	if in.ChannelID == "" {
+		return nil, errors.New("channel_id is required for channel-mention run")
+	}
+	in.PeerUserID = ""
+	return s.enqueueRun(ctx, in, "channel_mention")
+}
+
+func (s *ConversationAgentRunService) enqueueRun(ctx context.Context, in ConversationAgentRunInput, source string) (*ConversationAgentRun, error) {
 	if s == nil || s.DB == nil || s.Queries == nil {
 		return nil, errors.New("conversation agent run service is not configured")
 	}
@@ -173,13 +211,24 @@ func (s *ConversationAgentRunService) EnqueueDMRun(ctx context.Context, in Conve
 		provider = "local"
 	}
 	metadata := map[string]any{
-		"source":         "dm",
+		"source":         source,
 		"agenthub_model": "runtime_execution_queue",
 	}
 	for k, v := range in.Metadata {
 		metadata[k] = v
 	}
 	metadataJSON, _ := json.Marshal(metadata)
+
+	var peerArg, channelArg, threadArg any = nil, nil, nil
+	if in.PeerUserID != "" {
+		peerArg = util.ParseUUID(in.PeerUserID)
+	}
+	if in.ChannelID != "" {
+		channelArg = util.ParseUUID(in.ChannelID)
+	}
+	if in.ThreadID != "" {
+		threadArg = util.ParseUUID(in.ThreadID)
+	}
 	row := s.DB.QueryRow(ctx, `
 		INSERT INTO conversation_agent_run (
 			workspace_id,
@@ -187,17 +236,21 @@ func (s *ConversationAgentRunService) EnqueueDMRun(ctx context.Context, in Conve
 			agent_id,
 			runtime_id,
 			peer_user_id,
+			channel_id,
+			thread_id,
 			provider,
 			status,
 			prompt,
 			metadata
-		) VALUES ($1, $2, $3, $4, $5, $6, 'queued', $7, $8::jsonb)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'queued', $9, $10::jsonb)
 		RETURNING `+conversationAgentRunColumns,
 		util.ParseUUID(in.WorkspaceID),
 		util.ParseUUID(in.TriggerMessageID),
 		util.ParseUUID(in.AgentID),
 		util.ParseUUID(in.RuntimeID),
-		util.ParseUUID(in.PeerUserID),
+		peerArg,
+		channelArg,
+		threadArg,
 		provider,
 		prompt,
 		metadataJSON,
@@ -322,17 +375,25 @@ func (s *ConversationAgentRunService) appendTextToResponseMessage(ctx context.Co
 		"source":             "local_agent",
 	})
 	if run.ResponseMessageID == "" {
-		msg, err := s.Queries.CreateMessage(ctx, db.CreateMessageParams{
-			WorkspaceID:   util.ParseUUID(run.WorkspaceID),
-			SenderID:      util.ParseUUID(run.AgentID),
-			SenderType:    "agent",
-			RecipientID:   util.ParseUUID(run.PeerUserID),
-			RecipientType: util.StrToText("member"),
-			Content:       text,
-			ContentType:   "text",
-			Type:          "agent_reply",
-			Metadata:      patchJSON,
-		})
+		createParams := db.CreateMessageParams{
+			WorkspaceID: util.ParseUUID(run.WorkspaceID),
+			SenderID:    util.ParseUUID(run.AgentID),
+			SenderType:  "agent",
+			Content:     text,
+			ContentType: "text",
+			Type:        "agent_reply",
+			Metadata:    patchJSON,
+		}
+		if run.ChannelID != "" {
+			createParams.ChannelID = util.ParseUUID(run.ChannelID)
+			if run.ThreadID != "" {
+				createParams.ThreadID = util.ParseUUID(run.ThreadID)
+			}
+		} else {
+			createParams.RecipientID = util.ParseUUID(run.PeerUserID)
+			createParams.RecipientType = util.StrToText("member")
+		}
+		msg, err := s.Queries.CreateMessage(ctx, createParams)
 		if err != nil {
 			return err
 		}

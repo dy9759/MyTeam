@@ -241,6 +241,48 @@ func (s *AutoReplyService) replyAsMentionedAgent(ctx context.Context, agentName 
 		return nil
 	}
 
+	// Local-runtime branch: if the mentioned agent is backed by a local
+	// runtime (daemon-registered CLI), enqueue the reply instead of calling
+	// the cloud LLM directly. Parity with ReplyToDM's local branch.
+	if agent.RuntimeID.Valid {
+		runtime, runtimeErr := s.Queries.GetAgentRuntime(ctx, agent.RuntimeID)
+		if runtimeErr == nil && runtime.Mode.Valid && runtime.Mode.String == "local" {
+			if runtime.Status == "offline" {
+				s.postSystemNotification(ctx, agent, util.ParseUUID(channelID), trigger.ThreadID, util.ParseUUID(workspaceID),
+					"Local runtime is offline. Please start MyTeam daemon and try again.")
+				return nil
+			}
+			if s.ConversationRuns == nil {
+				slog.Warn("auto-reply: local runtime selected but conversation run service is missing", "agent", agent.Name)
+				s.postSystemNotification(ctx, agent, util.ParseUUID(channelID), trigger.ThreadID, util.ParseUUID(workspaceID),
+					"Local agent queue is not configured on the server.")
+				return nil
+			}
+			prompt := s.buildChannelMentionPrompt(ctx, workspaceID, channelID, agent, trigger)
+			if _, err := s.ConversationRuns.EnqueueChannelMentionRun(ctx, ConversationAgentRunInput{
+				WorkspaceID:      workspaceID,
+				TriggerMessageID: util.UUIDToString(trigger.ID),
+				AgentID:          util.UUIDToString(agent.ID),
+				RuntimeID:        util.UUIDToString(runtime.ID),
+				ChannelID:        channelID,
+				ThreadID:         util.UUIDToString(trigger.ThreadID),
+				Provider:         runtime.Provider,
+				Prompt:           prompt,
+				Metadata: map[string]any{
+					"runtime_id": util.UUIDToString(runtime.ID),
+					"runtime":    runtime.Name,
+				},
+			}); err != nil {
+				slog.Warn("auto-reply: failed to enqueue local run", "agent", agent.Name, "error", err)
+				s.postSystemNotification(ctx, agent, util.ParseUUID(channelID), trigger.ThreadID, util.ParseUUID(workspaceID),
+					"Local agent run failed to queue: "+redactKey(err.Error()))
+				return nil
+			}
+			slog.Info("auto-reply queued for local runtime", "agent", agent.Name, "runtime", runtime.Name, "provider", runtime.Provider)
+			return nil
+		}
+	}
+
 	// Load per-runtime cloud LLM config (post Account Phase 2: stored on the
 	// agent's runtime metadata, not the agent row).
 	cfg, err := loadAgentCloudLLMConfig(ctx, s.Queries, agent)
@@ -404,6 +446,26 @@ func messageToMap(m db.Message) map[string]any {
 		"created_at":   m.CreatedAt.Time,
 		"updated_at":   m.UpdatedAt.Time,
 	}
+}
+
+// buildChannelMentionPrompt composes the recent channel transcript into
+// a single prompt the local runtime can consume. Mirrors buildDMPrompt
+// but pulls history via ListChannelMessages.
+func (s *AutoReplyService) buildChannelMentionPrompt(ctx context.Context, workspaceID string, channelID string, agent db.Agent, trigger db.Message) string {
+	history, _ := s.Queries.ListChannelMessages(ctx, db.ListChannelMessagesParams{
+		ChannelID: util.ParseUUID(channelID),
+		Limit:     40,
+		Offset:    0,
+	})
+	nameCache := s.buildSenderNameCache(ctx, util.ParseUUID(workspaceID), history, trigger)
+	var sb strings.Builder
+	for i := len(history) - 1; i >= 0; i-- {
+		m := history[i]
+		sb.WriteString(fmt.Sprintf("[%s]: %s\n", resolveSenderName(nameCache, m.SenderID, m.SenderType), m.Content))
+	}
+	return fmt.Sprintf("Channel transcript:\n%sReply as %s to the latest message (you were @mentioned):",
+		sb.String(), agent.Name,
+	)
 }
 
 func (s *AutoReplyService) buildDMPrompt(ctx context.Context, workspaceID string, senderID string, agent db.Agent, trigger db.Message) string {
