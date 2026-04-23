@@ -478,14 +478,19 @@ export default function SessionPage() {
   // sidebar so the user can talk to them before the first message exists.
   // Derived from the workspace agents store so realtime
   // `agent:status_changed` events update the sidebar (see use-realtime-sync's
-  // agent → refreshAgents handler).
+  // agent → refreshAgents handler). Must useMemo — a filter inline in the
+  // zustand selector returns a fresh array on every render and trips
+  // React's useSyncExternalStore cache invariant.
   const currentUserId = useAuthStore((s) => s.user?.id);
-  const myAgents = useWorkspaceStore((s) =>
-    s.agents.filter(
-      (a) =>
-        (a.agent_type === "personal_agent" || a.agent_type === "local_agent") &&
-        a.owner_id === currentUserId,
-    ),
+  const workspaceAgents = useWorkspaceStore((s) => s.agents);
+  const myAgents = useMemo(
+    () =>
+      workspaceAgents.filter(
+        (a) =>
+          (a.agent_type === "personal_agent" || a.agent_type === "local_agent") &&
+          a.owner_id === currentUserId,
+      ),
+    [workspaceAgents, currentUserId],
   );
 
   const channels = useChannelStore((s) => s.channels);

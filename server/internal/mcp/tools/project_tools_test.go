@@ -590,9 +590,11 @@ func agentValues(a db.Agent) []any {
 }
 
 func projectValues(p db.Project) []any {
+	// Column set matches the trimmed ListProjects / GetProject queries
+	// (created_by + plan_id were removed; see commit 74b66183).
 	return []any{
-		p.ID, p.WorkspaceID, p.Title, p.Description, p.Status, p.CreatedBy,
-		p.PlanID, p.CreatedAt, p.UpdatedAt, p.ScheduleType, p.CronExpr,
+		p.ID, p.WorkspaceID, p.Title, p.Description, p.Status,
+		p.CreatedAt, p.UpdatedAt, p.ScheduleType, p.CronExpr,
 		p.SourceConversations, p.ChannelID, p.CreatorOwnerID,
 	}
 }
