@@ -7,7 +7,7 @@ import { AccountTab } from "./_components/account-tab";
 import { AppearanceTab } from "./_components/general-tab";
 import { TokensTab } from "./_components/tokens-tab";
 import { WorkspaceTab } from "./_components/workspace-tab";
-import { MembersTab } from "./_components/members-tab";
+import { MembersTab } from "@/features/workspace";
 import { RepositoriesTab } from "./_components/repositories-tab";
 import { SecretsTab } from "./_components/secrets-tab";
 
