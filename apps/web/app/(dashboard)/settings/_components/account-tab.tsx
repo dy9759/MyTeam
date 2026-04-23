@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import { useAuthStore } from "@/features/auth";
 import { api } from "@/shared/api";
 import { useFileUpload } from "@/shared/hooks/use-file-upload";
-import { getSettingsErrorMessage } from "./settings-error";
+import { getSettingsErrorMessage } from "@/shared/settings-error";
 
 export function AccountTab() {
   const user = useAuthStore((s) => s.user);

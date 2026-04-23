@@ -8,7 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
 import { useWorkspaceManagement } from "@/features/workspace";
 import type { WorkspaceRepo } from "@/shared/types";
-import { getSettingsErrorMessage } from "./settings-error";
+import { getSettingsErrorMessage } from "@/shared/settings-error";
 
 export function RepositoriesTab() {
   const { workspace, canManageWorkspace, saveWorkspace } = useWorkspaceManagement();

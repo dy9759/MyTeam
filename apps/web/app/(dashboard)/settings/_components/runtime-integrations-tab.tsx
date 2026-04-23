@@ -11,7 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { useWorkspaceManagement } from "@/features/workspace";
 import { api } from "@/shared/api";
 import type { AgentRuntime } from "@/shared/types";
-import { getSettingsErrorMessage } from "./settings-error";
+import { getSettingsErrorMessage } from "@/shared/settings-error";
 
 interface RuntimeSettings {
   default_provider: string;

@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useWorkspaceManagement } from "@/features/workspace";
-import { getSettingsErrorMessage } from "./settings-error";
+import { getSettingsErrorMessage } from "@/shared/settings-error";
 
 type PolicyField =
   | {

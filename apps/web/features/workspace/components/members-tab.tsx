@@ -37,8 +37,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { useAuthStore } from "@/features/auth";
-import { useWorkspaceManagement } from "@/features/workspace";
-import { getSettingsErrorMessage } from "./settings-error";
+import { useWorkspaceManagement } from "../hooks";
+import { getSettingsErrorMessage } from "@/shared/settings-error";
 
 const roleConfig: Record<MemberRole, { label: string; icon: typeof Crown; description: string }> = {
   owner: { label: "所有者", icon: Crown, description: "完全访问权限，管理所有设置" },
