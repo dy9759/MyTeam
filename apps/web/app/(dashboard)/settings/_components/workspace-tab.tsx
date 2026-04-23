@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { useWorkspaceManagement, useWorkspaceStore } from "@/features/workspace";
-import { getSettingsErrorMessage } from "./settings-error";
+import { getSettingsErrorMessage } from "@/shared/settings-error";
 
 export function WorkspaceTab() {
   const { workspace, canManageWorkspace, isOwner, saveWorkspace } = useWorkspaceManagement();

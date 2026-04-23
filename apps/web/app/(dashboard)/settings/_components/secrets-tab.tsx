@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { api } from "@/shared/api";
 import { useWorkspaceStore } from "@/features/workspace";
 import type { WorkspaceSecretMeta } from "@/shared/types";
-import { getSettingsErrorMessage } from "./settings-error";
+import { getSettingsErrorMessage } from "@/shared/settings-error";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
