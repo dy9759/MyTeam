@@ -187,6 +187,14 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 		realtime.HandleWebSocket(hub, mc, pr, ac, w, r)
 	})
 
+	// Live ASR WebSocket relay — browser streams 16kHz PCM, this
+	// endpoint bridges to Volcengine sauc bigmodel_async with speaker
+	// diarization. Lives at the root (not inside /api/*) because
+	// browser WebSocket constructors can't send an Authorization
+	// header; the handler authenticates via ?token= query param,
+	// mirroring the /ws auth pattern.
+	r.Get("/api/asr/stream", h.StreamLiveASR)
+
 	// Auth (public)
 	r.Post("/auth/send-code", h.SendCode)
 	r.Post("/auth/verify-code", h.VerifyCode)

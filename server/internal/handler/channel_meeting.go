@@ -26,11 +26,14 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	db "github.com/MyAIOSHub/MyTeam/server/pkg/db/generated"
+
+	"github.com/MyAIOSHub/MyTeam/server/internal/service"
 )
 
 type startChannelMeetingRequest struct {
@@ -317,6 +320,30 @@ func (h *Handler) UploadChannelMeetingAudio(w http.ResponseWriter, r *http.Reque
 	if filename == "" {
 		filename = fmt.Sprintf("meeting-%s.webm", id)
 	}
+
+	// Doubao's lark-memo API rejects WebM but accepts Ogg/Opus. Remux
+	// (container swap, no re-encode) before upload so transcription
+	// succeeds without forcing the browser to emit Ogg (Chrome can't).
+	// Fall back to the original bytes if ffmpeg is unavailable or fails
+	// — upload still happens so debug logs have the source artifact.
+	isWebM := strings.HasPrefix(strings.ToLower(contentType), "audio/webm") ||
+		strings.HasSuffix(strings.ToLower(filename), ".webm")
+	if isWebM {
+		if oggData, remuxErr := service.RemuxWebMToOgg(r.Context(), data); remuxErr == nil {
+			slog.Info("meeting: remux webm→ogg",
+				"meeting_id", id,
+				"src_bytes", len(data),
+				"dst_bytes", len(oggData))
+			data = oggData
+			contentType = "audio/ogg"
+			filename = strings.TrimSuffix(filename, ".webm") + ".ogg"
+		} else {
+			slog.Warn("meeting: remux failed, uploading original webm",
+				"meeting_id", id,
+				"err", remuxErr)
+		}
+	}
+
 	key := fmt.Sprintf("meetings/%s/%d-%s",
 		uuidToString(m.ID),
 		time.Now().Unix(),
@@ -346,9 +373,23 @@ func (h *Handler) UploadChannelMeetingAudio(w http.ResponseWriter, r *http.Reque
 		writeError(w, http.StatusInternalServerError, "persist recording failed")
 		return
 	}
+
+	// Doubao fetches the audio over the public internet, so the naked
+	// TOS object URL (403 for private buckets) won't work. Hand it a
+	// presigned GET URL with 45-minute TTL — long enough for the entire
+	// submit + poll pipeline (30-min overall deadline + headroom).
+	fetchURL := url
+	if signed, signErr := h.Storage.PresignGet(r.Context(), key, 45*time.Minute); signErr == nil {
+		fetchURL = signed
+	} else {
+		slog.Warn("meeting: presign audio url failed, using raw",
+			"meeting_id", id,
+			"err", signErr)
+	}
+
 	if h.MeetingTranscriber != nil {
 		h.MeetingTranscriber.TranscribeAsync(
-			m.ID, url, m.Topic, uuidToString(m.WorkspaceID),
+			m.ID, fetchURL, m.Topic, uuidToString(m.WorkspaceID),
 		)
 	}
 	writeJSON(w, http.StatusOK, channelMeetingToResponse(m))

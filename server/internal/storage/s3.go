@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -125,6 +126,21 @@ func (s *S3Storage) KeyFromURL(rawURL string) string {
 		return rawURL[i+1:]
 	}
 	return rawURL
+}
+
+// PresignGet returns a time-limited HTTPS GET URL for the object. Used
+// to hand out temporary read access to external services (e.g. Doubao
+// 妙记) that need to fetch the audio without our AK/SK.
+func (s *S3Storage) PresignGet(ctx context.Context, key string, ttl time.Duration) (string, error) {
+	presigner := s3.NewPresignClient(s.client)
+	req, err := presigner.PresignGetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(key),
+	}, s3.WithPresignExpires(ttl))
+	if err != nil {
+		return "", fmt.Errorf("s3 presign GetObject: %w", err)
+	}
+	return req.URL, nil
 }
 
 // Download streams an object from S3/TOS. Callers must Close the body.

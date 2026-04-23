@@ -13,42 +13,22 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/shared/api";
-import type { ChannelMeeting } from "@/shared/types";
+import type {
+  ChannelMeeting,
+  MeetingProgressPayload,
+  MeetingCompletedPayload,
+  MeetingFailedPayload,
+} from "@/shared/types";
 import { useAuthStore } from "@/features/auth";
+import { useWSEvent } from "@/features/realtime";
+import {
+  LiveAsrClient,
+  type LiveAsrUtterance,
+} from "@/features/messaging/lib/live-asr-client";
 
-// Minimal local types for the Web Speech API — the browser's built-in
-// names aren't exposed in TypeScript's default lib. Only the surface we
-// actually read is typed; anything else stays unknown.
-interface WebSpeechResultAlternative {
-  transcript?: string;
-}
-interface WebSpeechResult {
-  isFinal: boolean;
-  0?: WebSpeechResultAlternative;
-  [index: number]: WebSpeechResultAlternative | undefined;
-}
-interface WebSpeechResultList {
-  length: number;
-  [index: number]: WebSpeechResult | undefined;
-}
-interface WebSpeechEvent {
-  resultIndex: number;
-  results: WebSpeechResultList;
-}
-interface WebSpeechErrorEvent {
-  error: string;
-}
-interface WebSpeechRecognition {
-  lang: string;
-  continuous: boolean;
-  interimResults: boolean;
-  onresult: ((ev: WebSpeechEvent) => void) | null;
-  onerror: ((ev: WebSpeechErrorEvent) => void) | null;
-  onend: (() => void) | null;
-  start: () => void;
-  stop: () => void;
-}
-type WebSpeechCtor = new () => WebSpeechRecognition;
+// Live ASR now runs through the server-side Volcengine sauc relay
+// instead of the browser's Web Speech API — cross-browser, diarized,
+// and not dependent on Google-hosted recognition from mainland China.
 
 /**
  * Channel-scoped meeting panel (migration 076).
@@ -89,26 +69,34 @@ export function MeetingPanel({
   const [activeNoteSegId, setActiveNoteSegId] = useState<string | null>(null);
   const [segNoteDraft, setSegNoteDraft] = useState("");
 
+  // Live transcription progress, populated by `meeting:progress` WS
+  // events. Cleared when the meeting leaves processing status.
+  const [progress, setProgress] = useState<{
+    attempt: number;
+    elapsedMs: number;
+    doubaoStatus?: string;
+  } | null>(null);
+
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTsRef = useRef<number>(0);
 
-  // Live single-speaker transcript powered by the browser's SpeechRecognition
-  // API. Runs alongside the MediaRecorder so the user sees running text
-  // while speaking. Doubao's server-side multi-speaker transcript replaces
-  // this view after processing completes.
-  type LiveSegment = { id: string; speaker: string; text: string; interim: boolean; ts: number };
+  // Live multi-speaker transcript powered by Volcengine sauc bigmodel
+  // streaming ASR. Each utterance carries an optional `speakerId` for
+  // diarized coloring; null means the server didn't assign one yet.
+  type LiveSegment = {
+    id: string;
+    speaker: string;
+    speakerId: number | null;
+    text: string;
+    interim: boolean;
+    ts: number;
+  };
   const [liveSegments, setLiveSegments] = useState<LiveSegment[]>([]);
   const [speechSupported, setSpeechSupported] = useState(true);
-  const recognitionRef = useRef<WebSpeechRecognition | null>(null);
-  // Consecutive-failure backoff: if start() throws or onend fires again
-  // within 1s of last start, increment. At ≥ 3 failures inside a 1s
-  // window, stop restarting + flip speechSupported=false so the UI
-  // fallback message renders.
-  const failureCountRef = useRef(0);
-  const lastStartTsRef = useRef(0);
+  const liveAsrRef = useRef<LiveAsrClient | null>(null);
   const currentUser = useAuthStore((s) => s.user);
   const speakerName = currentUser?.name ?? currentUser?.email ?? "我";
 
@@ -148,6 +136,45 @@ export function MeetingPanel({
     return () => clearInterval(timer);
   }, [meeting?.id, meeting?.status]);
 
+  // Reset progress when meeting changes or leaves processing.
+  useEffect(() => {
+    if (!meeting || meeting.status !== "processing") {
+      setProgress(null);
+    }
+  }, [meeting?.id, meeting?.status]);
+
+  // WS listeners — Doubao pipeline emits per-poll progress, plus
+  // terminal completed/failed. Filter on meeting_id so stray workspace
+  // broadcasts don't leak into another open panel.
+  const currentMeetingId = meeting?.id ?? null;
+  useWSEvent("meeting:progress", (raw) => {
+    const p = raw as MeetingProgressPayload;
+    if (!currentMeetingId || p.meeting_id !== currentMeetingId) return;
+    setProgress({
+      attempt: p.attempt ?? 0,
+      elapsedMs: p.elapsed_ms ?? 0,
+      doubaoStatus: p.doubao_status,
+    });
+  });
+  useWSEvent("meeting:completed", (raw) => {
+    const p = raw as MeetingCompletedPayload;
+    if (!currentMeetingId || p.meeting_id !== currentMeetingId) return;
+    // Cheap refetch so the UI flips instantly without waiting for the
+    // 4s poll cycle.
+    void api
+      .getChannelMeeting(currentMeetingId)
+      .then(setMeeting)
+      .catch(() => {});
+  });
+  useWSEvent("meeting:failed", (raw) => {
+    const p = raw as MeetingFailedPayload;
+    if (!currentMeetingId || p.meeting_id !== currentMeetingId) return;
+    void api
+      .getChannelMeeting(currentMeetingId)
+      .then(setMeeting)
+      .catch(() => {});
+  });
+
   // Sync notes draft when the server echoes a new value (e.g. after
   // summary arrives). Don't clobber if the user is actively editing.
   useEffect(() => {
@@ -158,111 +185,94 @@ export function MeetingPanel({
   }, [meeting?.id, meeting?.updated_at]);
 
   const stopRecognition = useCallback(() => {
-    const rec = recognitionRef.current;
-    if (!rec) return;
-    try {
-      rec.onresult = null;
-      rec.onerror = null;
-      rec.onend = null;
-      rec.stop();
-    } catch {
-      /* ignore */
-    }
-    recognitionRef.current = null;
+    const client = liveAsrRef.current;
+    if (!client) return;
+    liveAsrRef.current = null;
+    void client.stop().catch(() => {
+      /* ignore — connection tear-down errors don't matter once we're done */
+    });
   }, []);
 
-  const startRecognition = useCallback(() => {
-    if (typeof window === "undefined") return;
-    const Ctor =
-      (window as unknown as { SpeechRecognition?: WebSpeechCtor }).SpeechRecognition ??
-      (window as unknown as { webkitSpeechRecognition?: WebSpeechCtor }).webkitSpeechRecognition;
-    if (!Ctor) {
-      setSpeechSupported(false);
-      return;
-    }
-    const rec = new Ctor();
-    rec.lang = "zh-CN";
-    rec.continuous = true;
-    rec.interimResults = true;
-    rec.onresult = (ev: WebSpeechEvent) => {
-      setLiveSegments((prev) => {
-        // Drop any trailing interim segment; we'll re-append a fresh one.
-        const kept = prev.filter((s) => !s.interim);
-        const updates: LiveSegment[] = [];
-        for (let i = ev.resultIndex; i < ev.results.length; i++) {
-          const r = ev.results[i];
-          if (!r) continue;
-          const text = r[0]?.transcript?.trim() ?? "";
-          if (!text) continue;
-          updates.push({
-            id: `${Date.now()}-${i}`,
-            speaker: speakerName,
+  // Build LiveSegment rows from the server's utterance list. Definite
+  // utterances are final, non-definite are interim. Speaker labels are
+  // derived from speaker_id so the same talker gets a consistent tag.
+  const utterancesToSegments = useCallback(
+    (utterances: LiveAsrUtterance[]): LiveSegment[] =>
+      utterances
+        .map((u): LiveSegment | null => {
+          const text = u.text?.trim() ?? "";
+          if (!text) return null;
+          const sid = typeof u.speaker_id === "number" ? u.speaker_id : null;
+          const speaker =
+            sid == null
+              ? speakerName
+              : sid === 0
+                ? speakerName
+                : `说话人 ${sid + 1}`;
+          const idBase = `${sid ?? "u"}-${u.start_time}-${u.end_time}`;
+          return {
+            id: u.definite ? `def-${idBase}` : `int-${idBase}`,
+            speaker,
+            speakerId: sid,
             text,
-            interim: !r.isFinal,
+            interim: !u.definite,
             ts: Date.now(),
-          });
-        }
-        return [...kept, ...updates];
-      });
-    };
-    rec.onerror = (ev: WebSpeechErrorEvent) => {
-      // Fatal codes — user denied mic, service unavailable, or the
-      // audio device is gone. Detach onend + null the ref BEFORE
-      // returning so the reference-equality guard in onend can't
-      // re-enter and tight-loop rec.start().
-      if (
-        ev.error === "not-allowed" ||
-        ev.error === "service-not-allowed" ||
-        ev.error === "audio-capture"
-      ) {
-        rec.onend = null;
-        if (recognitionRef.current === rec) {
-          recognitionRef.current = null;
-        }
-        setSpeechSupported(false);
-      }
-    };
-    rec.onend = () => {
-      // Auto-restart while the MediaRecorder is still active — the Web
-      // Speech API stops itself after silence or long recognition spans
-      // and we want the live feed to keep ticking.
-      if (recognitionRef.current !== rec || !streamRef.current) return;
-      // Consecutive-failure backoff: if onend fires within 1s of the
-      // last start, count it as a failure. ≥ 3 inside a 1s window →
-      // stop and surface the unsupported fallback.
-      const now = Date.now();
-      if (now - lastStartTsRef.current < 1000) {
-        failureCountRef.current += 1;
-      } else {
-        failureCountRef.current = 0;
-      }
-      if (failureCountRef.current >= 3) {
-        rec.onend = null;
-        recognitionRef.current = null;
+          };
+        })
+        .filter((s): s is LiveSegment => s !== null),
+    [speakerName],
+  );
+
+  const startRecognition = useCallback(
+    (meetingId: string, topic: string) => {
+      if (liveAsrRef.current) return; // already running
+      const stream = streamRef.current;
+      if (!stream) {
         setSpeechSupported(false);
         return;
       }
-      try {
-        lastStartTsRef.current = Date.now();
-        rec.start();
-      } catch {
-        failureCountRef.current += 1;
-        if (failureCountRef.current >= 3) {
-          rec.onend = null;
-          recognitionRef.current = null;
+      const client = new LiveAsrClient();
+      liveAsrRef.current = client;
+      client
+        .start({
+          meetingId,
+          topic,
+          language: "zh-CN",
+          enableSpeaker: true,
+          mediaStream: stream,
+          onReady: () => {
+            setSpeechSupported(true);
+          },
+          onUtterances: ({ utterances }) => {
+            setLiveSegments(utterancesToSegments(utterances));
+            // Any utterance is proof the pipeline works — clear any
+            // transient "unavailable" state set by an earlier WS error.
+            setSpeechSupported(true);
+          },
+          onError: (msg) => {
+            console.warn("live asr error:", msg);
+            // Only surface the unavailable banner when there's nothing
+            // to show. If utterances have already arrived the user can
+            // see the pipeline is working; a spurious ws.onerror during
+            // shutdown shouldn't override that signal.
+            setLiveSegments((prev) => {
+              if (prev.length === 0) setSpeechSupported(false);
+              return prev;
+            });
+          },
+          onDone: () => {
+            // Final utterances already delivered via onUtterances(final=true).
+            // No additional cleanup — stop() happens when recording stops.
+          },
+        })
+        .catch((e) => {
+          console.warn("live asr start failed:", e);
+          liveAsrRef.current = null;
           setSpeechSupported(false);
-        }
-      }
-    };
-    try {
-      failureCountRef.current = 0;
-      lastStartTsRef.current = Date.now();
-      rec.start();
-      recognitionRef.current = rec;
-    } catch {
-      setSpeechSupported(false);
-    }
-  }, [speakerName]);
+        });
+    },
+    [utterancesToSegments],
+  );
 
   const stopRecorder = useCallback(() => {
     const mr = mediaRecorderRef.current;
@@ -328,7 +338,7 @@ export function MeetingPanel({
       setRecording(true);
       setElapsed(0);
       setLiveSegments([]);
-      startRecognition();
+      startRecognition(m.id, m.topic);
       timerRef.current = setInterval(() => {
         setElapsed(Math.floor((Date.now() - startTsRef.current) / 1000));
       }, 1000);
@@ -422,21 +432,18 @@ export function MeetingPanel({
     }
   };
 
-  // markLiveSegment captures a final transcript segment as a highlight
-  // without the user having to re-type it. Stamps the elapsed-seconds
-  // cursor at click time so the timeline entry lands at the moment the
-  // user decided the line was important. De-dupes on exact text to keep
-  // accidental double-clicks from stacking.
-  const markLiveSegment = async (seg: { text: string }) => {
+  // toggleLiveSegmentMark flips the highlight state for a final transcript
+  // segment. Clicking an unmarked line adds a highlight stamped at the
+  // current elapsed-seconds cursor; clicking a marked line removes it.
+  const toggleLiveSegmentMark = async (seg: { text: string }) => {
     if (!meeting) return;
     const text = seg.text.trim();
     if (!text) return;
     const existing = meeting.highlights ?? [];
-    if (existing.some((h) => h.text === text)) return;
-    const next: ChannelMeeting["highlights"] = [
-      ...existing,
-      { t: elapsed, text },
-    ];
+    const isMarked = existing.some((h) => h.text === text);
+    const next: ChannelMeeting["highlights"] = isMarked
+      ? existing.filter((h) => h.text !== text)
+      : [...existing, { t: elapsed, text }];
     try {
       const updated = await api.updateChannelMeetingHighlights(
         meeting.id,
@@ -444,7 +451,7 @@ export function MeetingPanel({
       );
       setMeeting(updated);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "标记失败");
+      toast.error(e instanceof Error ? e.message : (isMarked ? "取消失败" : "标记失败"));
     }
   };
 
@@ -547,9 +554,19 @@ export function MeetingPanel({
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   正在生成转写与总结
                 </div>
-                <p className="text-[11px] text-muted-foreground/70">
-                  视频时长而定，通常 1-3 分钟。
-                </p>
+                {progress ? (
+                  <p className="text-[11px] text-muted-foreground/80 font-mono">
+                    已等待 {Math.round((progress.elapsedMs ?? 0) / 1000)}s
+                    {progress.doubaoStatus
+                      ? ` · ${progress.doubaoStatus}`
+                      : ""}
+                    {" · #"}{progress.attempt ?? 0}
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-muted-foreground/70">
+                    视频时长而定，通常 1-3 分钟。
+                  </p>
+                )}
               </div>
             )}
 
@@ -560,9 +577,9 @@ export function MeetingPanel({
               <div className="space-y-1.5">
                 <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
                   <span>实时转写 · 说话人日志</span>
-                  {!speechSupported && (
+                  {!speechSupported && liveSegments.length === 0 && (
                     <span className="text-destructive normal-case font-sans">
-                      浏览器不支持实时转写
+                      实时转写暂不可用
                     </span>
                   )}
                 </div>
@@ -583,65 +600,96 @@ export function MeetingPanel({
                       return (
                         <li
                           key={seg.id}
-                          className="group/seg text-[11px] leading-snug"
+                          className={`group/seg text-[11px] leading-snug rounded-md border transition-colors ${
+                            marked
+                              ? "border-amber-400 bg-amber-400/10 shadow-[0_0_0_1px_rgb(251_191_36_/_0.5)]"
+                              : "border-transparent"
+                          }`}
                         >
-                          <div className="flex items-start gap-1.5">
+                          <div
+                            role={!seg.interim ? "button" : undefined}
+                            tabIndex={!seg.interim ? 0 : undefined}
+                            onClick={() => {
+                              if (seg.interim) return;
+                              void toggleLiveSegmentMark(seg);
+                            }}
+                            onKeyDown={(e) => {
+                              if (seg.interim) return;
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                void toggleLiveSegmentMark(seg);
+                              }
+                            }}
+                            aria-pressed={!seg.interim ? marked : undefined}
+                            aria-label={
+                              seg.interim
+                                ? undefined
+                                : marked
+                                  ? "取消重点标记"
+                                  : "标记为重点"
+                            }
+                            title={
+                              seg.interim
+                                ? undefined
+                                : marked
+                                  ? "点击取消重点"
+                                  : "点击标记为重点"
+                            }
+                            className={`flex items-start gap-1.5 px-1.5 py-0.5 rounded-md ${
+                              seg.interim
+                                ? ""
+                                : "cursor-pointer hover:bg-muted/40 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                            }`}
+                          >
                             <span className="flex-1">
-                              <span className="text-primary font-mono mr-1">
+                              <span className={`font-mono mr-1 ${speakerColor(seg.speakerId)}`}>
                                 {seg.speaker}:
                               </span>
                               <span className={seg.interim ? "text-muted-foreground" : ""}>
                                 {seg.text}
                               </span>
                             </span>
+                            {marked && (
+                              <Star
+                                className="h-3 w-3 shrink-0 mt-0.5 text-amber-400"
+                                fill="currentColor"
+                                aria-hidden="true"
+                              />
+                            )}
                             {!seg.interim && (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setActiveNoteSegId(
-                                      noteOpen ? null : seg.id,
-                                    );
-                                    setSegNoteDraft("");
-                                  }}
-                                  aria-label={noteOpen ? "取消笔记" : "添加笔记"}
-                                  title={noteOpen ? "取消笔记" : "添加笔记"}
-                                  className={`shrink-0 mt-0.5 transition-opacity ${
-                                    noteOpen
-                                      ? "text-primary opacity-100"
-                                      : "text-muted-foreground opacity-0 group-hover/seg:opacity-100 hover:text-primary"
-                                  }`}
-                                >
-                                  <StickyNote className="h-3 w-3" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => markLiveSegment(seg)}
-                                  disabled={marked}
-                                  aria-label={marked ? "已标记重点" : "标记为重点"}
-                                  title={marked ? "已标记重点" : "标记为重点"}
-                                  className={`shrink-0 mt-0.5 transition-opacity ${
-                                    marked
-                                      ? "text-primary opacity-100"
-                                      : "text-muted-foreground opacity-0 group-hover/seg:opacity-100 hover:text-primary"
-                                  }`}
-                                >
-                                  <Star
-                                    className="h-3 w-3"
-                                    fill={marked ? "currentColor" : "none"}
-                                  />
-                                </button>
-                              </>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveNoteSegId(
+                                    noteOpen ? null : seg.id,
+                                  );
+                                  setSegNoteDraft("");
+                                }}
+                                aria-label={noteOpen ? "取消笔记" : "添加笔记"}
+                                title={noteOpen ? "取消笔记" : "添加笔记"}
+                                className={`shrink-0 mt-0.5 transition-opacity ${
+                                  noteOpen
+                                    ? "text-primary opacity-100"
+                                    : "text-muted-foreground opacity-0 group-hover/seg:opacity-100 hover:text-primary"
+                                }`}
+                              >
+                                <StickyNote className="h-3 w-3" />
+                              </button>
                             )}
                           </div>
                           {noteOpen && (
-                            <div className="mt-1 ml-2 flex items-start gap-1.5">
+                            <div
+                              className="mt-1 ml-2 flex items-start gap-1.5"
+                              onClick={(e) => e.stopPropagation()}
+                            >
                               <textarea
                                 value={segNoteDraft}
                                 onChange={(e) => setSegNoteDraft(e.target.value)}
                                 placeholder="针对这一句的笔记…"
                                 rows={2}
                                 autoFocus
+                                onClick={(e) => e.stopPropagation()}
                                 onKeyDown={(e) => {
                                   if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                                     e.preventDefault();
@@ -657,7 +705,10 @@ export function MeetingPanel({
                               />
                               <button
                                 type="button"
-                                onClick={() => void saveSegmentNote(seg)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void saveSegmentNote(seg);
+                                }}
                                 disabled={!segNoteDraft.trim() || savingNotes}
                                 className="rounded-md border border-border bg-primary text-primary-foreground px-2 py-1 text-[11px] disabled:opacity-50"
                               >
@@ -670,9 +721,9 @@ export function MeetingPanel({
                     })}
                   </ul>
                 )}
-                {!speechSupported && (
+                {!speechSupported && liveSegments.length === 0 && (
                   <p className="text-[10px] text-muted-foreground/70">
-                    当前浏览器未提供本地语音识别。录音结束后仍会通过服务端转写生成完整日志。
+                    实时转写当前不可用（服务器未配置或连接失败）。录音结束后仍会通过服务端完整转写生成最终日志。
                   </p>
                 )}
               </div>
@@ -801,6 +852,24 @@ function formatDuration(sec: number): string {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
+// speakerColor maps a diarized speaker_id to a stable Tailwind text
+// color. Speaker 0 (current user) reuses the primary tone so the
+// "self" voice stays visually consistent with other UI; others cycle
+// through an accessible palette.
+function speakerColor(speakerId: number | null): string {
+  if (speakerId == null || speakerId === 0) return "text-primary";
+  const palette = [
+    "text-sky-500",
+    "text-emerald-500",
+    "text-rose-500",
+    "text-violet-500",
+    "text-amber-500",
+    "text-cyan-500",
+    "text-fuchsia-500",
+  ];
+  return palette[(speakerId - 1) % palette.length] ?? "text-primary";
+}
+
 function pickMimeType(): string {
   // Prefer opus in webm — broadest browser support + compact size.
   const candidates = [
@@ -845,20 +914,51 @@ function TranscriptView({ transcript }: { transcript: Record<string, unknown> })
   return (
     <ul className="space-y-1 max-h-60 overflow-y-auto rounded bg-muted/20 p-2">
       {utterances.map((u, i) => {
-        const speaker =
-          (u.speaker_id as string) ??
-          (u.speaker as string) ??
-          (u.Speaker as string) ??
-          "S?";
+        // Doubao memo returns speaker as {id, name, type}; the
+        // streaming sauc shape returns a flat speaker_id number. Be
+        // tolerant to both — never render the object directly or
+        // React throws "Objects are not valid as a React child".
+        const rawSpeaker = u.speaker ?? u.Speaker;
+        let speakerLabel = "";
+        let speakerIdNum: number | null = null;
+        if (rawSpeaker && typeof rawSpeaker === "object") {
+          const s = rawSpeaker as Record<string, unknown>;
+          speakerLabel =
+            (typeof s.name === "string" && s.name) ||
+            (typeof s.Name === "string" && s.Name) ||
+            "";
+          const idRaw = s.id ?? s.Id ?? s.ID;
+          if (typeof idRaw === "string") {
+            const n = Number(idRaw);
+            if (Number.isFinite(n)) speakerIdNum = n;
+          } else if (typeof idRaw === "number") {
+            speakerIdNum = idRaw;
+          }
+        } else if (typeof rawSpeaker === "string") {
+          speakerLabel = rawSpeaker;
+        } else if (typeof u.speaker_id === "number") {
+          speakerIdNum = u.speaker_id as number;
+        } else if (typeof u.speaker_id === "string") {
+          const n = Number(u.speaker_id);
+          if (Number.isFinite(n)) speakerIdNum = n;
+          else speakerLabel = u.speaker_id;
+        }
+        if (!speakerLabel && speakerIdNum != null) {
+          speakerLabel = `说话人 ${speakerIdNum}`;
+        }
+        if (!speakerLabel) speakerLabel = "S?";
+
         const text =
           (u.text as string) ??
           (u.Text as string) ??
+          (u.content as string) ??
+          (u.Content as string) ??
           (u.sentence as string) ??
           "";
         return (
           <li key={i} className="text-[11px] leading-snug">
-            <span className="text-muted-foreground font-mono mr-1">
-              {speaker}:
+            <span className={`font-mono mr-1 ${speakerColor(speakerIdNum)}`}>
+              {speakerLabel}:
             </span>
             <span>{text}</span>
           </li>
@@ -870,15 +970,19 @@ function TranscriptView({ transcript }: { transcript: Record<string, unknown> })
 
 function SummarySection({ meeting }: { meeting: ChannelMeeting }) {
   const summary = meeting.summary ?? {};
-  // Pull best-effort summary text. Doubao memo returns a Summary
-  // object + per-section result URLs; when the server consolidated
-  // them we may get {summary: "..."} or {Summary: {content: "..."}}.
+  // The server flattens Doubao's per-section file URLs into these
+  // flat keys at transcription completion time. We fall back to the
+  // legacy camel-case shapes in case any old row still carries them.
+  const title =
+    pickString(summary, ["title", "Title"]) ||
+    pickString(summary.Summary ?? {}, ["title", "Title"]);
   const summaryText =
     pickString(summary, ["summary", "Summary", "summaryText", "SummaryText"]) ||
-    pickString(summary.Summary ?? {}, ["content", "text"]) ||
+    pickString(summary.Summary ?? {}, ["content", "text", "paragraph"]) ||
     "";
-  const chapters = pickArray(summary, ["Chapters", "chapters"]);
-  const todos = pickArray(summary, ["Todos", "TodoList", "todo_list"]);
+  const chapters = pickArray(summary, ["Chapters", "chapters", "chapter_summary"]);
+  const todos = pickArray(summary, ["Todos", "TodoList", "todo_list", "todos"]);
+  const qa = pickArray(summary, ["QA", "qa", "question_answer", "QuestionAnswer"]);
 
   return (
     <div className="rounded-md border border-border bg-card/60 p-2.5 space-y-2">
@@ -886,6 +990,12 @@ function SummarySection({ meeting }: { meeting: ChannelMeeting }) {
         <CheckCircle2 className="h-3.5 w-3.5 text-[#4ade80]" />
         会议总结
       </div>
+
+      {title && (
+        <p className="text-[11px] font-semibold leading-snug">
+          {title}
+        </p>
+      )}
 
       {summaryText && (
         <p className="text-[11px] leading-relaxed whitespace-pre-wrap">
@@ -947,6 +1057,31 @@ function SummarySection({ meeting }: { meeting: ChannelMeeting }) {
                 · {pickString(t, ["content", "Content", "text", "Text"])}
               </li>
             ))}
+          </ul>
+        </div>
+      )}
+
+      {qa.length > 0 && (
+        <div className="space-y-1">
+          <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+            问答
+          </div>
+          <ul className="space-y-1">
+            {qa.map((q, i) => {
+              const question = pickString(q, ["question", "Question", "q", "Q"]);
+              const answer = pickString(q, ["answer", "Answer", "a", "A"]);
+              if (!question && !answer) return null;
+              return (
+                <li key={i} className="text-[11px] leading-relaxed">
+                  {question && (
+                    <div className="font-semibold">Q: {question}</div>
+                  )}
+                  {answer && (
+                    <div className="text-muted-foreground">A: {answer}</div>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         </div>
       )}

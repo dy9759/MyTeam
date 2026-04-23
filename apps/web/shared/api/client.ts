@@ -124,8 +124,13 @@ export class ApiClient implements ApiTransport {
 
   handleUnauthorized() {
     if (typeof window !== "undefined") {
+      // Current storage keys — match the auth store + live ASR client.
       localStorage.removeItem("myteam_token");
       localStorage.removeItem("myteam_workspace_id");
+      // Legacy keys from the pre-rename build; purge so long-running
+      // browser sessions don't keep a stale multica_* pair alongside.
+      localStorage.removeItem("multica_token");
+      localStorage.removeItem("multica_workspace_id");
       this.token = null;
       this.workspaceId = null;
       if (window.location.pathname !== "/") {
@@ -917,7 +922,11 @@ export class ApiClient implements ApiTransport {
     return this.fetch<any>('/api/messages', { method: 'POST', body: JSON.stringify(data) })
   }
 
-  async listMessages(params: { channel_id?: string; recipient_id?: string; peer_type?: "member" | "agent"; thread_id?: string; limit?: number; offset?: number }) {
+  // Backend /api/messages accepts channel_id or recipient_id only.
+  // For thread fetches use getThreadMessages(threadId) — hits the
+  // dedicated /api/threads/:id/messages route. Passing a thread_id
+  // here produces a 400.
+  async listMessages(params: { channel_id?: string; recipient_id?: string; peer_type?: "member" | "agent"; limit?: number; offset?: number }) {
     const qs = new URLSearchParams(Object.entries(params).filter(([,v]) => v != null).map(([k,v]) => [k, String(v)])).toString()
     return this.fetch<{ messages: any[] }>(`/api/messages?${qs}`)
   }

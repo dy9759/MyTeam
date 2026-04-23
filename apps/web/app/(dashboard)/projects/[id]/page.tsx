@@ -1273,6 +1273,19 @@ function ConversationRefItem({
           return [];
         }
       };
+      const tryFetchThread = async (threadId: string) => {
+        try {
+          const res = await api.getThreadMessages(threadId, 20);
+          return (res?.messages ?? []) as Array<{
+            id: string;
+            sender_id: string;
+            content: string;
+            created_at: string;
+          }>;
+        } catch {
+          return [];
+        }
+      };
       try {
         let all = await tryFetch({
           channel_id: conv.conversation_id,
@@ -1280,12 +1293,10 @@ function ConversationRefItem({
         });
         if (all.length === 0) {
           // Thread fallback — source_refs of type="thread" persist the
-          // thread's root message id as conversation_id. The backend
-          // accepts thread_id in listMessages directly.
-          all = await tryFetch({
-            thread_id: conv.conversation_id,
-            limit: 20,
-          });
+          // thread's own id as conversation_id. Backend ListMessages
+          // only accepts channel_id / recipient_id, so route to the
+          // dedicated /api/threads/:id/messages endpoint instead.
+          all = await tryFetchThread(conv.conversation_id);
         }
         if (all.length === 0) {
           // DM fallback — try both peer types so we don't require the
