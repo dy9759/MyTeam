@@ -10,12 +10,13 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import {
   Bot, Terminal, Code, Key, ChevronDown, ChevronRight,
   Copy, Check, Plus, Zap, Circle, Shield, Wrench,
-  Globe, User, GitBranch, Settings, Sparkles, Layers
+  Globe, User, Users, Settings, Sparkles, Layers
 } from "lucide-react"
 import { MetricsOverview } from "@/features/workspace/components/metrics-overview"
 import { AgentAutoReplyConfig } from "@/features/workspace/components/agent-auto-reply-config"
 import { AgentProfileEditor } from "@/features/workspace/components/agent-profile-editor"
 import { SubagentsPage } from "@/features/subagents"
+import { MembersTab } from "@/features/workspace"
 
 /* ================================================================== */
 /* Helpers                                                             */
@@ -527,7 +528,7 @@ const knowledgeTabs = [
 ]
 
 const orgTabs = [
-  { value: "hierarchy", label: "组织层级", icon: GitBranch },
+  { value: "members", label: "成员", icon: Users },
 ]
 
 // Tabs that host their own full-bleed layout (resizable panels, left
@@ -611,7 +612,7 @@ function AccountPageBody() {
             <TabsContent value="overview"><OverviewTab /></TabsContent>
             <TabsContent value="agents"><AgentListTab /></TabsContent>
             <TabsContent value="add-agent"><AddAgentTab /></TabsContent>
-            <TabsContent value="hierarchy"><OverviewTab /></TabsContent>
+            <TabsContent value="members"><MembersTab /></TabsContent>
           </div>
         )}
       </div>
