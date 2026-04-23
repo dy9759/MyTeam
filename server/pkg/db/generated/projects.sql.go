@@ -53,8 +53,6 @@ RETURNING
     title,
     description,
     status,
-    created_by,
-    plan_id,
     created_at,
     updated_at,
     schedule_type,
@@ -82,8 +80,6 @@ type CreateProjectRow struct {
 	Title               string             `json:"title"`
 	Description         pgtype.Text        `json:"description"`
 	Status              string             `json:"status"`
-	CreatedBy           pgtype.UUID        `json:"created_by"`
-	PlanID              pgtype.UUID        `json:"plan_id"`
 	CreatedAt           pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
 	ScheduleType        string             `json:"schedule_type"`
@@ -112,8 +108,6 @@ func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (C
 		&i.Title,
 		&i.Description,
 		&i.Status,
-		&i.CreatedBy,
-		&i.PlanID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ScheduleType,
@@ -141,8 +135,6 @@ SELECT
     title,
     description,
     status,
-    created_by,
-    plan_id,
     created_at,
     updated_at,
     schedule_type,
@@ -160,8 +152,6 @@ type GetProjectRow struct {
 	Title               string             `json:"title"`
 	Description         pgtype.Text        `json:"description"`
 	Status              string             `json:"status"`
-	CreatedBy           pgtype.UUID        `json:"created_by"`
-	PlanID              pgtype.UUID        `json:"plan_id"`
 	CreatedAt           pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
 	ScheduleType        string             `json:"schedule_type"`
@@ -180,8 +170,6 @@ func (q *Queries) GetProject(ctx context.Context, id pgtype.UUID) (GetProjectRow
 		&i.Title,
 		&i.Description,
 		&i.Status,
-		&i.CreatedBy,
-		&i.PlanID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ScheduleType,
@@ -200,8 +188,6 @@ SELECT
     title,
     description,
     status,
-    created_by,
-    plan_id,
     created_at,
     updated_at,
     schedule_type,
@@ -220,8 +206,6 @@ type ListProjectsRow struct {
 	Title               string             `json:"title"`
 	Description         pgtype.Text        `json:"description"`
 	Status              string             `json:"status"`
-	CreatedBy           pgtype.UUID        `json:"created_by"`
-	PlanID              pgtype.UUID        `json:"plan_id"`
 	CreatedAt           pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
 	ScheduleType        string             `json:"schedule_type"`
@@ -246,8 +230,6 @@ func (q *Queries) ListProjects(ctx context.Context, workspaceID pgtype.UUID) ([]
 			&i.Title,
 			&i.Description,
 			&i.Status,
-			&i.CreatedBy,
-			&i.PlanID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.ScheduleType,
@@ -377,8 +359,6 @@ RETURNING
     title,
     description,
     status,
-    created_by,
-    plan_id,
     created_at,
     updated_at,
     schedule_type,
@@ -403,8 +383,6 @@ type UpdateProjectRow struct {
 	Title               string             `json:"title"`
 	Description         pgtype.Text        `json:"description"`
 	Status              string             `json:"status"`
-	CreatedBy           pgtype.UUID        `json:"created_by"`
-	PlanID              pgtype.UUID        `json:"plan_id"`
 	CreatedAt           pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
 	ScheduleType        string             `json:"schedule_type"`
@@ -430,8 +408,6 @@ func (q *Queries) UpdateProject(ctx context.Context, arg UpdateProjectParams) (U
 		&i.Title,
 		&i.Description,
 		&i.Status,
-		&i.CreatedBy,
-		&i.PlanID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ScheduleType,

@@ -275,6 +275,43 @@ type CommentReaction struct {
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 }
 
+type ConversationAgentRun struct {
+	ID                pgtype.UUID        `json:"id"`
+	WorkspaceID       pgtype.UUID        `json:"workspace_id"`
+	TriggerMessageID  pgtype.UUID        `json:"trigger_message_id"`
+	ResponseMessageID pgtype.UUID        `json:"response_message_id"`
+	AgentID           pgtype.UUID        `json:"agent_id"`
+	RuntimeID         pgtype.UUID        `json:"runtime_id"`
+	PeerUserID        pgtype.UUID        `json:"peer_user_id"`
+	Provider          string             `json:"provider"`
+	Status            string             `json:"status"`
+	Prompt            string             `json:"prompt"`
+	Output            string             `json:"output"`
+	SessionID         pgtype.Text        `json:"session_id"`
+	WorkDir           pgtype.Text        `json:"work_dir"`
+	ErrorMessage      pgtype.Text        `json:"error_message"`
+	Metadata          []byte             `json:"metadata"`
+	ClaimedAt         pgtype.Timestamptz `json:"claimed_at"`
+	StartedAt         pgtype.Timestamptz `json:"started_at"`
+	CompletedAt       pgtype.Timestamptz `json:"completed_at"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+}
+
+type ConversationAgentRunEvent struct {
+	ID        pgtype.UUID        `json:"id"`
+	RunID     pgtype.UUID        `json:"run_id"`
+	Seq       int64              `json:"seq"`
+	Type      string             `json:"type"`
+	Content   pgtype.Text        `json:"content"`
+	Tool      pgtype.Text        `json:"tool"`
+	Input     []byte             `json:"input"`
+	Output    pgtype.Text        `json:"output"`
+	Error     pgtype.Text        `json:"error"`
+	Metadata  []byte             `json:"metadata"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
 type DaemonConnection struct {
 	ID              pgtype.UUID        `json:"id"`
 	AgentID         pgtype.UUID        `json:"agent_id"`
